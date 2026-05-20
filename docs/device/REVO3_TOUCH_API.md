@@ -2,7 +2,7 @@
 
 Revo3 Tactile Array sensors provide high-resolution force feedback through 11 physical modules distributed across the hand.
 
-> **Note:** All APIs use the V1.4+ protocol with the **4000-series** touch register mapping.
+> **Note:** All APIs use the Revo3 protocol with the **4000-series** touch register mapping.
 
 ## Touch Modules and Arrays
 
