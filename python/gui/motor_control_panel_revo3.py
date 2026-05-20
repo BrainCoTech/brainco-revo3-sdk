@@ -791,7 +791,7 @@ class V3CartesianFingerGroup(QGroupBox):
 # ============================================================================
 
 class Revo3MotorControlPanel(QWidget):
-    """Motor Control Panel for Revo3 (23 motors, float values)
+    """Motor Control Panel for Revo3 (21 motors, float values)
 
     Modes:
       - Position / Current: per-motor slider control

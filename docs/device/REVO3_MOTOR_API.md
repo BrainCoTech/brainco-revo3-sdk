@@ -1,6 +1,6 @@
 # Revo3 Motor API Reference
 
-21 DoF Dexterous Hand with 23 Motors
+21 DoF Dexterous Hand with 21 Motors
 
 > **Note:** All APIs use the Revo3 protocol with **joint-based** addressing (21 joints).
 > All speed/velocity parameters use **RPM** (`1 RPM = 6 °/s`).

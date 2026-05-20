@@ -191,9 +191,8 @@ is_revo3 = device_info.revo3_uses_motor_api()  # → bool
 
 | Constant        | Value | Description            |
 |-----------------|-------|------------------------|
-| Motor Count     | 23    | motor_id: 0 ~ 22      |
+| Motor Count     | 21    | motor_id: 0 ~ 20      |
 | Finger Count    | 5     | Thumb, Index, Middle, Ring, Pinky |
-| Wrist Motors    | 2     | motor_id: 21, 22       |
 
 ### Device Info
 
@@ -207,15 +206,15 @@ temperature = await ctx.revo3_get_board_temperature(slave_id)   # → float (°C
 ### Motor Status
 
 ```python
-# Read all 23 motors status in a single call
+# Read all 21 motors status in a single call
 status = await ctx.revo3_get_motor_status_data(slave_id)
 # Revo3MotorStatusData fields:
-#   .positions   → List[float]  (23 values, degrees)
-#   .velocities  → List[float]  (23 values)
-#   .currents    → List[float]  (23 values, Amperes)
+#   .positions   → List[float]  (21 values, degrees)
+#   .velocities  → List[float]  (21 values)
+#   .currents    → List[float]  (21 values, Amperes)
 
 # Read positions only
-positions = await ctx.revo3_get_all_motor_positions(slave_id)  # → List[float] (23 values)
+positions = await ctx.revo3_get_all_motor_positions(slave_id)  # → List[float] (21 values)
 ```
 
 ### Position Control
@@ -223,18 +222,18 @@ positions = await ctx.revo3_get_all_motor_positions(slave_id)  # → List[float]
 ```python
 # Single motor position (degrees, float)
 await ctx.revo3_set_motor_position(slave_id, motor_id, degrees)
-# motor_id: 0~22
+# motor_id: 0~20
 # degrees: float
-#   Motor 0~18, 21~22: range [-90.0, 90.0]
+#   Motor 0~18: range [-90.0, 90.0]
 #   Motor 19~20 (differential): range [-105.0, 105.0]
 
 # Example
 await ctx.revo3_set_motor_position(slave_id, 0, 45.0)
 
-# Batch: set all 23 motors at once
-positions = [30.0] * 23
+# Batch: set all 21 motors at once
+positions = [30.0] * 21
 await ctx.revo3_set_all_motor_positions(slave_id, positions)
-# positions: List[float] of exactly 23 values
+# positions: List[float] of exactly 21 values
 ```
 
 ### Velocity Control
@@ -614,9 +613,9 @@ collector.update_touch_frequency(0)     # Disable touch collection
 | `Revo3TouchDataBuffer`     | `Revo3TouchData`        | `peek_latest()`, `pop_all()`, `clear()`, `len()`     |
 
 **Revo3MotorStatusData** fields:
-- `.positions` → `List[float]` (23 values, degrees)
-- `.velocities` → `List[float]` (23 values)
-- `.currents` → `List[float]` (23 values, mA)
+- `.positions` → `List[float]` (21 values, degrees)
+- `.velocities` → `List[float]` (21 values)
+- `.currents` → `List[float]` (21 values, mA)
 
 **Revo3TouchData** fields:
 - `.summary` → `List[int]` (26 values, mN)
@@ -638,9 +637,8 @@ Index     M15(DIP), M14(PIP), M13(MCP), M12(Abd)   4
 Middle    M11(DIP), M10(PIP), M09(MCP), M08(Abd)   4
 Ring      M07(DIP), M06(PIP), M05(MCP), M04(Abd)   4
 Pinky     M03(DIP), M02(PIP), M01(MCP), M00(Abd)   4
-Wrist     M21(Flex/Ext), M22(Abd)            2
                                            ──
-                                     Total: 23 motors, 21 DoF
+                                     Total: 21 motors, 21 DoF
 ```
 
 ### Position Ranges
@@ -660,8 +658,6 @@ Wrist     M21(Flex/Ext), M22(Abd)            2
 | M18 | Thumb | IP | -10° ~ 103° |
 | M19 | Thumb | CMC Abd (diff) | 0° ~ 110° |
 | M20 | Thumb | CMC Flex (diff) | 0° ~ 75° |
-| M21 | Wrist | Flex/Extension | ±60° |
-| M22 | Wrist | Abduction | ±25° |
 
 ### Touch Module Layout
 
