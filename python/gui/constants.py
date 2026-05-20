@@ -1,0 +1,127 @@
+"""Shared constants for GUI panels"""
+
+# =============================================================================
+# Legacy 6-slot display constants kept for shared chart helpers.
+# =============================================================================
+
+# Revo3-only SDK uses simple display IDs for chart helpers that still expect a
+# 6-slot color/name table.
+FINGER_IDS = list(range(6))
+
+MOTOR_NAMES_EN = ['Thumb', 'ThumbAux', 'Index', 'Middle', 'Ring', 'Pinky']
+MOTOR_NAMES_ZH = ['拇指', '拇指辅助', '食指', '中指', '无名指', '小指']
+
+MOTOR_COLORS = [
+    (255, 107, 107),  # Thumb - Red
+    (255, 182, 193),  # ThumbAux - Light Pink
+    (78, 205, 196),   # Index - Teal
+    (69, 183, 209),   # Middle - Blue
+    (255, 160, 122),  # Ring - Orange
+    (152, 216, 200),  # Pinky - Green
+]
+
+MOTOR_COUNT = 6
+
+
+# =============================================================================
+# Revo3 Motor Constants (21 DOF)
+# =============================================================================
+
+REVO3_MOTOR_COUNT = 21
+
+REVO3_MOTOR_NAMES_EN = [
+    'M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10',
+    'M11', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20'
+]
+
+REVO3_MOTOR_NAMES_ZH = REVO3_MOTOR_NAMES_EN  # Same naming for Revo3
+
+
+def get_revo3_motor_count() -> int:
+    """Get motor/joint count active Revo3 protocol version."""
+    return REVO3_MOTOR_COUNT
+
+
+# =============================================================================
+# Touch Sensor Constants (5 fingers, no ThumbAux)
+# =============================================================================
+
+TOUCH_NAMES_EN = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']
+TOUCH_NAMES_ZH = ['拇指', '食指', '中指', '无名指', '小指']
+
+TOUCH_COLORS = [
+    (255, 107, 107),  # Thumb - Red
+    (78, 205, 196),   # Index - Teal
+    (69, 183, 209),   # Middle - Blue
+    (255, 160, 122),  # Ring - Orange
+    (152, 216, 200),  # Pinky - Green
+]
+
+TOUCH_COUNT = 5
+
+# Touch sensor configuration per finger used by legacy-compatible widgets.
+# Each finger has different number of force sensors
+# Format: (force_groups, self_proximity_groups, mutual_proximity_groups)
+TOUCH_SENSOR_CONFIG = {
+    'Thumb':  (2, 1, 0),  # 2 force groups, 1 self-proximity, 0 mutual
+    'Index':  (3, 2, 1),  # 3 force groups, 2 self-proximity, 1 mutual
+    'Middle': (3, 2, 1),  # 3 force groups
+    'Ring':   (3, 2, 1),  # 3 force groups
+    'Pinky':  (2, 1, 0),  # 2 force groups, 1 self-proximity, NO mutual
+}
+
+# Default force sensor index to display per finger
+# Use the first sensor (index 0) for all fingers by default
+TOUCH_DEFAULT_FORCE_INDEX = [0, 0, 0, 0, 0]  # force1 for all
+
+
+# =============================================================================
+# Buffer Sizes
+# =============================================================================
+
+MOTOR_BUFFER_SIZE = 1000
+TOUCH_BUFFER_SIZE = 500
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+def format_motor_state(state) -> str:
+    """Format motor state for display"""
+    state_name = state.name if hasattr(state, 'name') else str(state)
+    return state_name.replace('MotorState.', '')
+
+
+def get_motor_names(language: str = 'en') -> list:
+    """Get motor names in specified language"""
+    return MOTOR_NAMES_ZH if language == 'zh' else MOTOR_NAMES_EN
+
+
+def get_touch_names(language: str = 'en') -> list:
+    """Get touch sensor names in specified language"""
+    return TOUCH_NAMES_ZH if language == 'zh' else TOUCH_NAMES_EN
+
+
+def get_force_count(finger_name: str) -> int:
+    """Get number of force sensors for a finger"""
+    config = TOUCH_SENSOR_CONFIG.get(finger_name, (1, 0, 0))
+    return config[0]
+
+
+def get_touch_force_value(touch_item, force_index: int = 0, force_type: str = 'normal'):
+    """Get force value from a touch data item.
+
+    Args:
+        touch_item: Revo3 touch item-like object
+        force_index: 0, 1, or 2 (which sensor)
+        force_type: 'normal' or 'tangential'
+
+    Returns:
+        Force value (int)
+    """
+    if not touch_item:
+        return 0
+
+    attr_name = f"{force_type}_force{force_index + 1}"
+    return getattr(touch_item, attr_name, 0)

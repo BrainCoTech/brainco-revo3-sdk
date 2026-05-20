@@ -1,0 +1,46 @@
+#include "../common/revo3_common.h"
+
+#include <cstdio>
+
+int main(int argc, char **argv) {
+  init_logging(LOG_LEVEL_INFO);
+
+  Revo3Context ctx;
+  if (!revo3_init_from_args(ctx, argc, argv)) {
+    return 1;
+  }
+
+  std::printf("=== Revo3 C++ Motor Demo ===\n");
+  revo3_print_device_info(ctx.handle, ctx.slave_id);
+
+  CRevo3MotorStatusData *status = revo3_get_motor_status_data(ctx.handle, ctx.slave_id);
+  if (status) {
+    std::printf("Positions[0..4]:");
+    for (int i = 0; i < 5; ++i) {
+      std::printf(" %.2f", status->positions[i]);
+    }
+    std::printf("\n");
+    free_revo3_motor_status_data(status);
+  }
+
+  std::printf("Move joint 0 to 10 deg...\n");
+  revo3_set_motor_position(ctx.handle, ctx.slave_id, 0, 10.0f);
+  revo3_sleep_ms(500);
+
+  float positions[21] = {0.0f};
+  for (float &position : positions) {
+    position = 5.0f;
+  }
+  std::printf("Move all joints to 5 deg...\n");
+  revo3_set_all_motor_positions(ctx.handle, ctx.slave_id, positions);
+  revo3_sleep_ms(500);
+
+  for (float &position : positions) {
+    position = 0.0f;
+  }
+  std::printf("Move all joints back to 0 deg...\n");
+  revo3_set_all_motor_positions(ctx.handle, ctx.slave_id, positions);
+
+  revo3_close(ctx);
+  return 0;
+}
