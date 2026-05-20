@@ -85,8 +85,12 @@ async def main(port_name=None):
     logger.info("Servo loop complete. Resetting hand gently to zero positions...")
     zero_positions = [0.0] * REVO3_MOTOR_COUNT
     zero_velocities = [0.0] * REVO3_MOTOR_COUNT
+    # Best Practice: To prevent high-frequency jitter at target/rest positions
+    # due to derivative measurement noise, set Kd = 0.0 during static holding.
     try:
-        await client.revo3_servo_hand(slave_id, zero_positions, zero_velocities)
+        await client.revo3_servo_hand_with_gains(
+            slave_id, zero_positions, zero_velocities, 2.25, 0.0
+        )
     except Exception as e:
         logger.warning(f"Failed to reset hand: {e}")
     await asyncio.sleep(0.5)

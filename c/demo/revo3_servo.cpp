@@ -84,7 +84,9 @@ int main(int argc, char **argv) {
   std::printf("[INFO] Servo loop complete. Resetting hand gently to zero positions...\n");
   std::vector<float> zero_positions(21, 0.0f);
   std::vector<float> zero_velocities(21, 0.0f);
-  revo3_servo_hand(ctx.handle, ctx.slave_id, zero_positions.data(), zero_velocities.data());
+  // Best Practice: To prevent high-frequency jitter at target/rest positions
+  // due to derivative measurement noise, set Kd = 0.0 during static holding.
+  revo3_servo_hand_with_gains(ctx.handle, ctx.slave_id, zero_positions.data(), zero_velocities.data(), 2.25f, 0.0f);
   revo3_sleep_ms(500);
 
   revo3_close(ctx);
