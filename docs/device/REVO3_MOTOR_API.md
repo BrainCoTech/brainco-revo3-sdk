@@ -5,6 +5,18 @@
 > **Note:** All APIs use the V1.4+ protocol with **joint-based** addressing (21 joints).
 > All speed/velocity parameters use **RPM** (`1 RPM = 6 °/s`).
 
+## Table of Contents
+1. [Control Modes](#control-modes)
+2. [Single / Multi Joint Control](#single--multi-joint-control)
+3. [MIT Control (Impedance / Force-Position Hybrid)](#mit-control-impedance--force-position-hybrid)
+4. [High-Frequency Real-Time Servo Control (Servo APIs)](#high-frequency-real-time-servo-control-servo-apis)
+5. [High-Level Motion Control (Trajectory & Teaching)](#high-level-motion-control-trajectory--teaching)
+6. [Status Read](#status-read)
+7. [System Info](#system-info)
+8. [Calibration & Config](#calibration--config)
+9. [Motor Status Code (Bitmask)](#motor-status-code-bitmask)
+10. [Register Map](#register-map)
+
 ## Control Modes
 
 | Value | Mode | Parameter | Description |
@@ -53,7 +65,7 @@
 - Full MIT = complete Kp + Kd + pos_ref + vel_ref + τ_ff control
 
 > **Understanding `τ_ff` (Feedforward Torque):**
-> In advanced robotics (e.g., quadruped legs, robotic arms), `τ_ff` is used for **Gravity Compensation** (outputting a constant force against gravity so the joint feels "weightless" while maintaining 0 positional error) and **Dynamic/Inertial Feedforward** (providing pre-calculated $F=ma$ force to eliminate phase lag during high-speed trajectory tracking).
+> In advanced robotics (e.g., quadruped legs, robotic arms), `τ_ff` is used for **Gravity Compensation** (outputting a constant force against gravity so the joint feels "weightless" while maintaining 0 positional error) and **Dynamic/Inertial Feedforward** (providing pre-calculated F=m*a force to eliminate phase lag during high-speed trajectory tracking).
 > 
 > **For the Revo3 Dexterous Hand:** Given the extremely light mass of the finger linkages and the transmission characteristics, complex dynamic heavy-lifting or gravity compensation is rarely required. Consequently, `τ_ff` is typically maintained at `0`, and the control relies on the `Kp` and `Kd` error-driven terms to provide a compliant, elastic impedance response.
 
@@ -106,13 +118,61 @@
 
 ---
 
+## High-Frequency Real-Time Servo Control (Servo APIs)
+
+For high-frequency, real-time closed-loop control applications (e.g., 100Hz - 500Hz haptic teleoperation, VR glove mapping, or compliance controllers), conventional trajectory planning and standard blocking Modbus commands cause command starvation and mechanical jitter.
+
+The SDK introduces a dedicated **Servo Control Suite** that features:
+- **Zero-Retry, Single-Write Architecture:** Executes single Modbus/CANFD writes and returns immediately without blocking thread progression or retrying.
+- **Built-in First-Order Low-Pass Filter (LPF):** Automatically filters incoming high-frequency positional commands locally on the host to ensure smooth mechanical transitions and reduce current spikes.
+- **Second-Order Critically Damped System Simulator:** Numerical physics simulation of a mass-spring-damper system, guaranteeing both position and velocity continuity with absolutely zero overshoot even under step targets.
+- **Auto Filter State Warm-Up:** Automatically warms the filter's history cache using current actual joint positions upon receiving the first command to prevent severe zero-drop jumps.
+
+### Servo APIs
+
+| API | Description | Typical Application |
+|-----|-------------|---------------------|
+| `revo3_set_servo_lpf_alpha(alpha)` | Sets first-order LPF factor alpha in (0.0, 1.0]. Default is `1.0` (filtering disabled). | Set to e.g. `0.2` to smooth jagged input trajectories (deprecated for mode-based API). |
+| `revo3_get_servo_lpf_alpha()` | Gets current LPF alpha factor. | Debugging current smoothing. |
+| `revo3_set_servo_filter_mode(mode)` | Sets servo smoothing filter mode: `0` = None, `1` = FirstOrderLpf, `2` = SecondOrderCriticallyDamped. Default is `0`. | Select `2` for advanced physics-based smooth tracking. |
+| `revo3_get_servo_filter_mode()` | Gets current servo filter mode. | Verification of active filter configurations. |
+| `revo3_set_servo_damping_omega(omega)` | Sets second-order filter natural frequency $\omega_n$ (rad/s). Higher values mean faster tracking but less smoothing. Default is `20.0`. | Tune for physical responsiveness. |
+| `revo3_get_servo_damping_omega()` | Gets current natural frequency $\omega_n$. | Debugging damping parameters. |
+| `revo3_servo_joint(slave_id, joint_id, pos, vel)` | Servos single joint using default gains (Kp=2.25, Kd=0.35). | Single finger real-time mapping. |
+| `revo3_servo_joint_with_gains(..., kp, kd)` | Servos single joint using custom gains. | Interactive compliance tuning. |
+| `revo3_servo_hand(slave_id, positions[21], velocities[21])` | Servos all 21 joints simultaneously using default gains (Kp=2.25, Kd=0.35). | Full-hand VR glove tracking. |
+| `revo3_servo_hand_with_gains(..., kp, kd)` | Servos all 21 joints simultaneously using custom gains. | Dynamic impedance/admittance loops. |
+
 ## High-Level Motion Control (Trajectory & Teaching)
 
 The SDK provides high-level motion primitives that perform smooth trajectory interpolation and manual guidance (drag-teaching) on the host side. These APIs do not directly map to single hardware registers but internally manage high-frequency control loops using the underlying MIT protocol.
 
-### Trajectory Control (Quintic Polynomial)
+### Why High-Level Motion Control is Optimized for Low-Frequency / Non-Real-Time Decision Loops
 
-Moves joints smoothly over a specified duration with zero initial and final velocity/acceleration to eliminate mechanical jerks.
+In practical robotic tasks (e.g., high-level RL policy planning, vision-guided grasping, or state-machine behavior execution), the user's decision-making loop typically runs at a **low frequency (e.g., 10Hz to 30Hz)** or is event-driven (single point-to-point command trigger). Directly streaming raw positional targets to the hand at low rates creates massive mechanical steps and joint jitter.
+
+The High-Level Motion Control suite perfectly addresses this by decoupling the **low-frequency user decision loop** from the **high-frequency motor control loop**:
+
+```mermaid
+graph TD
+    User["User Low-Frequency Policy Loop (10Hz - 30Hz) <br> e.g., move_hand(target, duration=0.8s)"]
+    SDK["SDK Trajectory Solver (Quintic Blending) <br> Decouples & Computes C2 Continuous Curve"]
+    MIT["Interleaved / Grouped MIT Protocol Writes <br> to Dexterous Hand Hardware"]
+
+    User -->|Asynchronous Interrupt / Target Update| SDK
+    SDK -->|High-Frequency Loop 100Hz - 500Hz, dt=2ms - 10ms| MIT
+```
+
+| Dimension | High-Frequency Real-Time Servo (Servo APIs) | High-Level Motion Control (Trajectory APIs) |
+| :--- | :--- | :--- |
+| **Control Frequency** | High-frequency streaming (**100Hz - 500Hz**) | Low-frequency / non-real-time (**10Hz - 30Hz** or event-driven) |
+| **Decoupling Layer** | None. User must manually handle trajectory smoothing. | Fully managed by the SDK host-side runner thread. |
+| **Command Interruption** | Step targets cause physical shocks unless filtered by LPF/Second-order model. | Smoothly resolved mid-course via dynamic **Quintic Blending**. |
+| **Typical Use Cases** | Haptic teleoperation, VR glove tracking, real-time closed-loop admittance. | Vision-based grasping pipelines, pick-and-place, sequence-based tasks. |
+
+### Trajectory Control (Quintic Polynomial & Quintic Blending)
+
+Moves joints smoothly over a specified duration with automatic support for **Quintic Blending**. Under the hood, the trajectory solver calculates a 5th-order polynomial trajectory supporting arbitrary non-zero initial boundary conditions (initial velocity $v_0$ and initial acceleration $a_0$) and smoothly decelerates to zero velocity and acceleration at the target. This ensures perfectly smooth transitions during dynamic mid-course re-planning or target interruptions without physical shocks.
 
 | API | Description | Default Gains |
 |-----|-------------|---------------|

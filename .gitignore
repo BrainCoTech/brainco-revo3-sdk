@@ -11,11 +11,12 @@ __pycache__/
 *.dylib
 *.dll
 *.zip
-c/demo/auto_detect
-c/demo/hand_demo
-c/demo/hand_dfu
-c/demo/hand_trajectory
-c/demo/revo3_monitor
-c/demo/revo3_motor
-c/demo/revo3_touch
-c/demo/*.dSYM/
+# Ignore all compiled binaries in c/demo/
+c/demo/*
+!c/demo/Makefile
+!c/demo/CMakeLists.txt
+!c/demo/**/*.cpp
+!c/demo/**/*.h
+!c/demo/**/*.hpp
+!c/demo/**/*.c
+!c/demo/**/*.md

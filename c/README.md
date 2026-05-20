@@ -24,6 +24,7 @@ Auto-detect:
 ./c/demo/revo3_motor
 ./c/demo/revo3_touch
 ./c/demo/revo3_monitor
+./c/demo/revo3_servo
 ```
 
 Manual Modbus:
@@ -35,6 +36,7 @@ Manual Modbus:
 ./c/demo/revo3_motor --modbus /dev/ttyUSB0 5000000 1
 ./c/demo/revo3_touch --modbus /dev/ttyUSB0 5000000 1
 ./c/demo/revo3_monitor --modbus /dev/ttyUSB0 5000000 1
+./c/demo/revo3_servo --modbus /dev/ttyUSB0 5000000 1
 ```
 
 The examples intentionally avoid legacy transports and APIs.

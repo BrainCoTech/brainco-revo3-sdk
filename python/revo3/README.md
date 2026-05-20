@@ -694,6 +694,7 @@ Module  Name        Pts    Location
 | `revo3/revo3_teaching.py` | Interactive teaching: record & playback hand movements |
 | `revo3/revo3_dfu.py`      | Firmware upgrade (OTA via Modbus) |
 | `revo3/revo3_timing_test.py` | Single motor timing test w/ DataCollector |
+| `revo3/revo3_servo.py`    | High-frequency (100Hz) real-time servo control |
 | `revo3/auto_detect.py` | Revo3 auto-detection |
 | `revo3/hand_demo.py` | Revo3 hand-level info/status/touch/movement demo |
 | `revo3/hand_trajectory.py` | Revo3 hand-level trajectory demo |
@@ -709,6 +710,10 @@ Module  Name        Pts    Location
 # Motor control
 python revo3/revo3_motor.py
 python revo3/revo3_motor.py --port /dev/ttyUSB0
+
+# High-frequency Real-time Servo control (100Hz)
+python revo3/revo3_servo.py
+python revo3/revo3_servo.py --port /dev/ttyUSB0
 
 # Timing test (M3, 5 cycles)
 python revo3/revo3_timing_test.py

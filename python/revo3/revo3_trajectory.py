@@ -1,9 +1,8 @@
-"""
 Revo3 Trajectory Control & Teaching Mode Example
 
 Demonstrates the high-level trajectory and teaching APIs:
-  - move_joint: quintic polynomial trajectory for a single joint
-  - move_hand: synchronized multi-joint trajectory
+  - move_joint: quintic polynomial trajectory with built-in **Quintic Blending** (seamlessly transitions even on mid-course interruptions by matching non-zero initial velocities and accelerations)
+  - move_hand: synchronized multi-joint trajectory with blending protection
   - teach_joint: backdrive recording for a single joint
   - teach_hand: full-hand backdrive recording
   - replay_joint / replay_hand: playback recorded trajectories

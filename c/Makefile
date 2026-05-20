@@ -25,7 +25,7 @@ INCLUDES := -I$(INCLUDE_DIR)
 LDFLAGS := -L$(LIB_DIR) -lbc_revo3_sdk $(RPATH)
 
 COMMON_SRC := common/revo3_common.cpp
-TARGETS := demo/auto_detect demo/hand_demo demo/hand_trajectory demo/hand_dfu demo/revo3_motor demo/revo3_touch demo/revo3_monitor
+TARGETS := demo/auto_detect demo/hand_demo demo/hand_trajectory demo/hand_dfu demo/revo3_motor demo/revo3_touch demo/revo3_monitor demo/revo3_servo
 
 all: $(TARGETS)
 
@@ -48,6 +48,9 @@ demo/revo3_touch: demo/revo3_touch.cpp $(COMMON_SRC) common/revo3_common.h $(SDK
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
 
 demo/revo3_monitor: demo/revo3_monitor.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+
+demo/revo3_servo: demo/revo3_servo.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
 
 $(SDK_LIB):
