@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
   std::vector<float> zero_velocities(21, 0.0f);
   // Best Practice: To prevent high-frequency jitter at target/rest positions
   // due to derivative measurement noise, set Kd = 0.0 during static holding.
-  revo3_servo_hand_with_gains(ctx.handle, ctx.slave_id, zero_positions.data(), zero_velocities.data(), 2.25f, 0.0f);
+  revo3_servo_hand_with_gains(ctx.handle, ctx.slave_id, zero_positions.data(), zero_velocities.data(), 3.0f, 0.0f);
   revo3_sleep_ms(500);
 
   revo3_close(ctx);
