@@ -106,6 +106,44 @@
 
 ---
 
+## High-Level Motion Control (Trajectory & Teaching)
+
+The SDK provides high-level motion primitives that perform smooth trajectory interpolation and manual guidance (drag-teaching) on the host side. These APIs do not directly map to single hardware registers but internally manage high-frequency control loops using the underlying MIT protocol.
+
+### Trajectory Control (Quintic Polynomial)
+
+Moves joints smoothly over a specified duration with zero initial and final velocity/acceleration to eliminate mechanical jerks.
+
+| API | Description | Default Gains |
+|-----|-------------|---------------|
+| `revo3_move_joint(slave_id, joint_id, target_pos, duration, dt)` | Move a single joint to target position | Kp=2.25, Kd=0.35 |
+| `revo3_move_joint_with_gains(slave_id, joint_id, target_pos, duration, dt, kp, kd)` | Move a single joint with custom gains | Custom |
+| `revo3_move_joint_with_speed(slave_id, joint_id, target_pos, speed, dt)` | Move a single joint with specified speed (rpm) | Kp=2.25, Kd=0.35 |
+| `revo3_move_joint_with_speed_and_gains(..., speed, dt, kp, kd)` | Move a single joint with speed and custom gains | Custom |
+| `revo3_move_hand(slave_id, target_positions, duration, dt)` | Move all joints simultaneously | Kp=2.25, Kd=0.35 |
+| `revo3_move_hand_with_gains(..., target_positions, duration, dt, kp, kd)` | Move all joints with custom gains | Custom |
+| `revo3_move_hand_with_speed(slave_id, target_positions, speed, dt)` | Move all joints with uniform speed (rpm) | Kp=2.25, Kd=0.35 |
+| `revo3_move_hand_with_speed_and_gains(..., speed, dt, kp, kd)` | Move all joints with speed and custom gains | Custom |
+
+> **Note on Hand Array Lengths:** For `move_hand` APIs, `target_positions` must be a list/sequence of physical float angles (in degrees) whose length matches the device's actual motor count (21 for Revo3 hands).
+> 
+> **Note on Control Period (dt):** The `dt` parameter represents the control cycle period in seconds. Common values are: `0.01` for 100Hz, `0.005` for 200Hz, or `0.002` for 500Hz.
+
+### Drag Teaching & Replay (Backdrive)
+
+Enables manual joint guidance by entering a zero-impedance state, recording physical positions over time, and playing back the recorded trajectories.
+
+| API | Description | Action / Return Type |
+|-----|-------------|----------------------|
+| `revo3_teach_joint(slave_id, joint_id, dt, duration)` | Enter backdrive mode & record single joint positions | Returns recorded `float` list |
+| `revo3_teach_hand(slave_id, dt, duration)` | Enter backdrive mode & record all joint positions | Returns nested `float` list |
+| `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Playback a recorded single-joint trajectory | Tracks via Kp/Kd loops |
+| `revo3_replay_hand(slave_id, trajectory, dt, kp, kd)` | Playback a recorded full-hand trajectory | Tracks via Kp/Kd loops |
+
+> **Note on Backdrive Stabilization:** After the teaching duration expires, the SDK automatically transitions the affected joints to a gentle stabilization hold state (`Kp=1.0`, `Kd=0.2`) at the final recorded position to prevent the fingers from dropping due to gravity.
+
+---
+
 ## Status Read
 
 | API | Description | Registers |
