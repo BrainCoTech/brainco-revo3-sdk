@@ -3,7 +3,7 @@ set -e
 
 # BrainCo Revo3 SDK - Install .whl from OSS
 # Usage: bash install_whl.sh [version]
-# Example: bash install_whl.sh 1.0.1
+# Example: bash install_whl.sh 1.0.2
 
 OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 
@@ -11,7 +11,7 @@ OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 if [ -n "$1" ]; then
   VERSION="$1"
 else
-  VERSION="1.0.1"
+  VERSION="1.0.2"
 fi
 
 echo "Installing bc-revo3-sdk v${VERSION}..."
