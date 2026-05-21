@@ -89,7 +89,7 @@ async def main(port_name=None):
     # due to derivative measurement noise, set Kd = 0.0 during static holding.
     try:
         await client.revo3_servo_hand_with_gains(
-            slave_id, zero_positions, zero_velocities, 3.0, 0.0
+            slave_id, zero_positions, zero_velocities, 1.0, 0.0
         )
     except Exception as e:
         logger.warning(f"Failed to reset hand: {e}")

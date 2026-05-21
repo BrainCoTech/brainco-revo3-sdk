@@ -1013,7 +1013,7 @@ class Revo3MotorControlPanel(QWidget):
         self.spin_kp = QDoubleSpinBox()
         self.spin_kp.setRange(0, 5.0)
         self.spin_kp.setSingleStep(0.1)
-        self.spin_kp.setValue(3.0)
+        self.spin_kp.setValue(1.0)
         self.spin_kp.setFixedWidth(55)
         traj_layout.addWidget(self.spin_kp)
         

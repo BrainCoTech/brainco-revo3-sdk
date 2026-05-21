@@ -138,9 +138,9 @@ The SDK introduces a dedicated **Servo Control Suite** that features:
 | `revo3_get_servo_filter_mode()` | Gets current servo filter mode. | Verification of active filter configurations. |
 | `revo3_set_servo_damping_omega(omega)` | Sets second-order filter natural frequency $\omega_n$ (rad/s). Higher values mean faster tracking but less smoothing. Default is `20.0`. | Tune for physical responsiveness. |
 | `revo3_get_servo_damping_omega()` | Gets current natural frequency $\omega_n$. | Debugging damping parameters. |
-| `revo3_servo_joint(slave_id, joint_id, pos, vel)` | Servos single joint using default gains (Kp=3.0, Kd=0.1). | Single finger real-time mapping. |
+| `revo3_servo_joint(slave_id, joint_id, pos, vel)` | Servos single joint using default gains (Kp=1.0, Kd=0.1). | Single finger real-time mapping. |
 | `revo3_servo_joint_with_gains(..., kp, kd)` | Servos single joint using custom gains. | Interactive compliance tuning. |
-| `revo3_servo_hand(slave_id, positions[21], velocities[21])` | Servos all 21 joints simultaneously using default gains (Kp=3.0, Kd=0.1). | Full-hand VR glove tracking. |
+| `revo3_servo_hand(slave_id, positions[21], velocities[21])` | Servos all 21 joints simultaneously using default gains (Kp=1.0, Kd=0.1). | Full-hand VR glove tracking. |
 | `revo3_servo_hand_with_gains(..., kp, kd)` | Servos all 21 joints simultaneously using custom gains. | Dynamic impedance/admittance loops. |
 
 ## High-Level Motion Control (Trajectory & Teaching)
@@ -176,13 +176,13 @@ Moves joints smoothly over a specified duration with automatic support for **Qui
 
 | API | Description | Default Gains |
 |-----|-------------|---------------|
-| `revo3_move_joint(slave_id, joint_id, target_pos, duration, dt)` | Move a single joint to target position | Kp=3.0, Kd=0.1 |
+| `revo3_move_joint(slave_id, joint_id, target_pos, duration, dt)` | Move a single joint to target position | Kp=1.0, Kd=0.1 |
 | `revo3_move_joint_with_gains(slave_id, joint_id, target_pos, duration, dt, kp, kd)` | Move a single joint with custom gains | Custom |
-| `revo3_move_joint_with_speed(slave_id, joint_id, target_pos, speed, dt)` | Move a single joint with specified speed (rpm) | Kp=3.0, Kd=0.1 |
+| `revo3_move_joint_with_speed(slave_id, joint_id, target_pos, speed, dt)` | Move a single joint with specified speed (rpm) | Kp=1.0, Kd=0.1 |
 | `revo3_move_joint_with_speed_and_gains(..., speed, dt, kp, kd)` | Move a single joint with speed and custom gains | Custom |
-| `revo3_move_hand(slave_id, target_positions, duration, dt)` | Move all joints simultaneously | Kp=3.0, Kd=0.1 |
+| `revo3_move_hand(slave_id, target_positions, duration, dt)` | Move all joints simultaneously | Kp=1.0, Kd=0.1 |
 | `revo3_move_hand_with_gains(..., target_positions, duration, dt, kp, kd)` | Move all joints with custom gains | Custom |
-| `revo3_move_hand_with_speed(slave_id, target_positions, speed, dt)` | Move all joints with uniform speed (rpm) | Kp=3.0, Kd=0.1 |
+| `revo3_move_hand_with_speed(slave_id, target_positions, speed, dt)` | Move all joints with uniform speed (rpm) | Kp=1.0, Kd=0.1 |
 | `revo3_move_hand_with_speed_and_gains(..., speed, dt, kp, kd)` | Move all joints with speed and custom gains | Custom |
 
 > **Note on Hand Array Lengths:** For `move_hand` APIs, `target_positions` must be a list/sequence of physical float angles (in degrees) whose length matches the device's actual motor count (21 for Revo3 hands).
