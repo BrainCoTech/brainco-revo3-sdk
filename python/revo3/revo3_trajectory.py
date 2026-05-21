@@ -1,3 +1,4 @@
+"""
 Revo3 Trajectory Control & Teaching Mode Example
 
 Demonstrates the high-level trajectory and teaching APIs:
