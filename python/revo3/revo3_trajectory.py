@@ -27,6 +27,7 @@ async def main(port_name=None):
     await demo_single_joint_move(client, slave_id)
     await demo_single_joint_custom_gains(client, slave_id)
     await demo_single_joint_move_with_speed(client, slave_id)
+    await demo_finger_and_thumb_move(client, slave_id)
     await demo_full_hand_move(client, slave_id)
     await demo_full_hand_move_with_speed(client, slave_id)
     await demo_position_protection(client, slave_id)
@@ -110,6 +111,35 @@ async def demo_single_joint_move_with_speed(client, slave_id):
     # Move back
     logger.info(f"  Moving J{joint_id} back to 0° at {speed} rpm...")
     await client.revo3_move_joint_with_speed(slave_id, joint_id, 0.0, speed, 0.01)
+    await asyncio.sleep(0.5)
+
+
+async def demo_finger_and_thumb_move(client, slave_id):
+    """Move a specific finger and the thumb using quintic trajectories"""
+    logger.info("\n=== Finger and Thumb Trajectory Move ===")
+
+    finger_id = 1  # Index finger (1=Index, 2=Middle, 3=Ring, 4=Pinky)
+    # Target positions of 4 joints: [Abd, MCP, PIP, DIP]
+    # Bend MCP to 45°, PIP to 45°, others at 0°
+    finger_targets = [0.0, 45.0, 45.0, 0.0]
+    duration = 2.0
+    dt = 0.01
+
+    logger.info(f"  Moving Index finger (F{finger_id}) to {finger_targets} over {duration}s...")
+    await client.revo3_move_finger(slave_id, finger_id, finger_targets, duration, dt)
+    await asyncio.sleep(0.2)
+
+    # Thumb targets of 5 joints: [CMC_flex, CMC_abd, MCP, IP, DIP]
+    # Bend MCP to 30°, IP to 30°, others at 0°
+    thumb_targets = [0.0, 0.0, 30.0, 30.0, 0.0]
+    logger.info(f"  Moving Thumb to {thumb_targets} over {duration}s...")
+    await client.revo3_move_thumb(slave_id, thumb_targets, duration, dt)
+    await asyncio.sleep(0.5)
+
+    # Move back to 0°
+    logger.info("  Resetting Index and Thumb back to 0°...")
+    await client.revo3_move_finger(slave_id, finger_id, [0.0, 0.0, 0.0, 0.0], duration, dt)
+    await client.revo3_move_thumb(slave_id, [0.0, 0.0, 0.0, 0.0, 0.0], duration, dt)
     await asyncio.sleep(0.5)
 
 

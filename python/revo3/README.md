@@ -105,6 +105,10 @@ Trajectory & Teaching APIs:
 | `revo3_move_hand_with_gains(slave_id, targets, T, dt, kp, kd)` | Full hand move with custom Kp/Kd |
 | `revo3_move_hand_with_speed(slave_id, targets, speed, dt)` | Full hand move synchronized by speed (rpm) |
 | `revo3_move_hand_with_speed_and_gains(slave_id, targets, speed, dt, kp, kd)` | Full hand move by speed with custom Kp/Kd |
+| `revo3_move_finger(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints simultaneously (4 joints) |
+| `revo3_move_finger_with_gains(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move with custom Kp/Kd |
+| `revo3_move_thumb(slave_id, targets, T, dt)` | Move thumb joints simultaneously (5 joints) |
+| `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom Kp/Kd |
 | `revo3_teach_joint(slave_id, joint_id, dt, T)` | Record single joint (backdrive mode) |
 | `revo3_teach_hand(slave_id, dt, T)` | Record full hand (backdrive mode) |
 | `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Replay recorded single joint |
@@ -382,6 +386,12 @@ await ctx.revo3_move_hand_with_speed(slave_id, targets, speed=20.0, dt=0.01)
 await ctx.revo3_move_hand_with_gains(
     slave_id, targets, duration=3.0, dt=0.01, kp=5.0, kd=0.5
 )
+
+# Move non-thumb finger: move Index (finger_id=1) MCP & PIP joints to 45° over 2 seconds
+await ctx.revo3_move_finger(slave_id, finger_id=1, target_positions=[0.0, 45.0, 45.0, 0.0], duration=2.0, dt=0.01)
+
+# Move thumb: move CMC Flex & CMC Abd to 30° over 2 seconds
+await ctx.revo3_move_thumb(slave_id, target_positions=[30.0, 30.0, 0.0, 0.0, 0.0], duration=2.0, dt=0.01)
 ```
 
 ### Teaching Mode
