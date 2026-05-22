@@ -327,6 +327,11 @@ Use joint-level Revo3 APIs (`revo3_finger_control`, `revo3_thumb_control`,
 await ctx.revo3_set_calibration_current(slave_id, current)  # float, mA
 await ctx.revo3_set_auto_calibration(slave_id, enabled)      # bool
 
+# Zero-position setup changes persistent calibration. Use only when the hand
+# is in the intended reference pose.
+await ctx.revo3_set_zero_position(slave_id)                  # use current feedback as zero
+await ctx.revo3_set_zero_position(slave_id, offsets_deg)     # 21 float offsets, degree
+
 # Motion limits
 await ctx.revo3_set_global_protect_current(slave_id, current) # float, mA
 

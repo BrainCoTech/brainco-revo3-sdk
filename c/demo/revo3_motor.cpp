@@ -41,6 +41,12 @@ int main(int argc, char **argv) {
   std::printf("Move all joints back to 0 deg...\n");
   revo3_set_all_motor_positions(ctx.handle, ctx.slave_id, positions);
 
+  // Zero-position setup changes persistent device calibration. Uncomment only
+  // when the hand is in the intended reference pose.
+  // revo3_set_zero_position(ctx.handle, ctx.slave_id, nullptr);
+  // float zero_offsets_deg[21] = {0.0f};
+  // revo3_set_zero_position(ctx.handle, ctx.slave_id, zero_offsets_deg);
+
   revo3_close(ctx);
   return 0;
 }

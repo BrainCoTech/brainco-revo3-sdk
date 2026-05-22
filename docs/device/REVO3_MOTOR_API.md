@@ -243,6 +243,7 @@ Enables manual joint guidance by entering a zero-impedance state, recording phys
 | API | Description |
 |-----|-------------|
 | `revo3_manual_calibration(slave_id)` | Trigger manual calibration |
+| `revo3_set_zero_position(slave_id, offsets_deg=None)` | Set zero position: without offsets, trigger current feedback positions as zero; with 21 offsets, write zero offset values |
 | `revo3_set_auto_calibration(slave_id, enabled)` | Enable/disable auto calibration |
 | `revo3_clear_motor_errors(slave_id)` | Clear all motor errors |
 | `revo3_enter_ota(slave_id)` | Enter OTA mode |
@@ -270,6 +271,8 @@ Each motor status is a `u16` bitmask:
 
 | Address | Description | Count |
 |---------|-------------|:-----:|
+| 60~80 | Motor zero offset values (degree) | 21 |
+| 81 | Trigger set-current-position-as-zero, write 1 | 1 |
 | 200 | Global protection current | 1 |
 | 201~221 | Per-joint protection current | 21 |
 | 240~260 | Joint min position limits | 21 |
