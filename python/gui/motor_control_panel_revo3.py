@@ -187,7 +187,7 @@ MIT_KD_RANGE = (0.0, 5.0, 0.1)
 CARTESIAN_RANGE = (-100.0, 100.0, 0.5)
 
 
-class V3DeviceInfoPanel(QWidget):
+class DeviceInfoPanel(QWidget):
     """Device info summary panel for the empty grid slot."""
     def __init__(self):
         super().__init__()
@@ -473,7 +473,7 @@ class Revo3MotorSlider(QWidget):
 # Finger Group (shared by Position/Current modes)
 # ============================================================================
 
-class V3FingerGroup(QGroupBox):
+class FingerGroup(QGroupBox):
     """A finger group containing multiple motor sliders"""
 
     def __init__(self, finger_name, motor_ids, send_callback, finger_action_callback=None):
@@ -559,7 +559,7 @@ class V3FingerGroup(QGroupBox):
 # MIT Motor Row (per motor: position + velocity + current + Kp + Kd)
 # ============================================================================
 
-class V3MitMotorRow(QWidget):
+class MitMotorRow(QWidget):
     """Single motor MIT control: 5 spinboxes in a row"""
 
     def __init__(self, motor_id, send_callback):
@@ -707,7 +707,7 @@ class V3MitMotorRow(QWidget):
 # MIT Finger Group
 # ============================================================================
 
-class V3MitFingerGroup(QGroupBox):
+class MitFingerGroup(QGroupBox):
     """MIT finger group with 5-param rows per motor"""
 
     def __init__(self, finger_name, motor_ids, send_callback):
@@ -722,7 +722,7 @@ class V3MitFingerGroup(QGroupBox):
         self.setLayout(layout)
 
         for mid in motor_ids:
-            row = V3MitMotorRow(mid, send_callback)
+            row = MitMotorRow(mid, send_callback)
             self.motor_rows[mid] = row
             layout.addWidget(row)
 
@@ -739,7 +739,7 @@ class V3MitFingerGroup(QGroupBox):
 # Cartesian Finger Control (per finger: x, y, z, rx, ry, rz)
 # ============================================================================
 
-class V3CartesianFingerGroup(QGroupBox):
+class CartesianFingerGroup(QGroupBox):
     """Single finger cartesian control: 6 axis spinboxes"""
 
     def __init__(self, finger_id, finger_name, send_callback):
@@ -1065,7 +1065,7 @@ class Revo3MotorControlPanel(QWidget):
         finger_motors = get_revo3_finger_motors()
         for i, name in enumerate(finger_names):
             motor_ids = finger_motors[name]
-            group = V3FingerGroup(name, motor_ids, self._on_motor_value_changed, self._on_finger_action)
+            group = FingerGroup(name, motor_ids, self._on_motor_value_changed, self._on_finger_action)
             group.run_finger_callback = self._on_run_finger_trajectory
             self.finger_groups[name] = group
             for mid, slider in group.motor_sliders.items():
@@ -1075,7 +1075,7 @@ class Revo3MotorControlPanel(QWidget):
             grid.addWidget(group, row, col)
 
         # Device info panel in the empty slot (row 1, col 2)
-        self.info_panel = V3DeviceInfoPanel()
+        self.info_panel = DeviceInfoPanel()
         grid.addWidget(self.info_panel, 1, 2)
 
         for c in range(3):
@@ -1132,14 +1132,14 @@ class Revo3MotorControlPanel(QWidget):
         finger_motors = get_revo3_finger_motors()
         for i, name in enumerate(finger_names):
             motor_ids = finger_motors[name]
-            group = V3MitFingerGroup(name, motor_ids, self._on_mit_value_changed)
+            group = MitFingerGroup(name, motor_ids, self._on_mit_value_changed)
             self.mit_groups[name] = group
             row = 0 if i < 3 else 1
             col = i if i < 3 else i - 3
             grid.addWidget(group, row, col)
 
         # MIT info panel in the empty slot (row 1, col 2)
-        self.mit_info_panel = V3DeviceInfoPanel()
+        self.mit_info_panel = DeviceInfoPanel()
         grid.addWidget(self.mit_info_panel, 1, 2)
 
         for c in range(3):
@@ -1162,14 +1162,14 @@ class Revo3MotorControlPanel(QWidget):
 
         self.cartesian_groups = {}
         for i, name in enumerate(REVO3_CARTESIAN_FINGERS):
-            group = V3CartesianFingerGroup(i, name, self._on_cartesian_value_changed)
+            group = CartesianFingerGroup(i, name, self._on_cartesian_value_changed)
             self.cartesian_groups[name] = group
             row = 0 if i < 3 else 1
             col = i if i < 3 else i - 3
             grid.addWidget(group, row, col)
 
         # Cartesian info panel in the empty slot (row 1, col 2)
-        self.cart_info_panel = V3DeviceInfoPanel()
+        self.cart_info_panel = DeviceInfoPanel()
         grid.addWidget(self.cart_info_panel, 1, 2)
 
         for c in range(3):
@@ -1196,67 +1196,67 @@ class Revo3MotorControlPanel(QWidget):
             return
         enabled = self.auto_calib_cb.isChecked()
         run_async(lambda: self.device.revo3_set_auto_calibration(self.slave_id, enabled))
-        print(f"[V3Settings] Auto calibration: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Auto calibration: {'enabled' if enabled else 'disabled'}")
 
     def _on_manual_calibration(self):
         if not self.device:
             return
         run_async(lambda: self.device.revo3_manual_calibration(self.slave_id))
-        print("[V3Settings] Manual calibration triggered")
+        print("[Settings] Manual calibration triggered")
 
     def _on_clear_motor_errors(self):
         if not self.device:
             return
         run_async(lambda: self.device.revo3_clear_motor_errors(self.slave_id))
-        print("[V3Settings] Motor errors cleared")
+        print("[Settings] Motor errors cleared")
 
     def _on_reset_finger_defaults(self):
         if not self.device:
             return
         run_async(lambda: self.device.revo3_reset_finger_defaults(self.slave_id))
-        print("[V3Settings] Finger parameters reset to defaults")
+        print("[Settings] Finger parameters reset to defaults")
 
     def _on_touch_screen_changed(self):
         if not self.device:
             return
         enabled = self.touch_screen_cb.isChecked()
         run_async(lambda: self.device.revo3_set_touch_screen(self.slave_id, enabled))
-        print(f"[V3Settings] Touch screen: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Touch screen: {'enabled' if enabled else 'disabled'}")
 
     def _on_buzzer_changed(self):
         if not self.device:
             return
         enabled = self.buzzer_cb.isChecked()
         run_async(lambda: getattr(self.device, "revo3_set_buzzer_switch", lambda s, e: None)(self.slave_id, 1 if enabled else 0))
-        print(f"[V3Settings] Buzzer: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Buzzer: {'enabled' if enabled else 'disabled'}")
 
     def _on_vibration_changed(self):
         if not self.device:
             return
         enabled = self.vibration_cb.isChecked()
         run_async(lambda: getattr(self.device, "revo3_set_vibration_switch", lambda s, e: None)(self.slave_id, 1 if enabled else 0))
-        print(f"[V3Settings] Vibration: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Vibration: {'enabled' if enabled else 'disabled'}")
 
     def _on_teaching_mode_changed(self):
         if not self.device:
             return
         enabled = self.teaching_mode_cb.isChecked()
         run_async(lambda: self.device.revo3_set_teaching_mode(self.slave_id, enabled))
-        print(f"[V3Settings] Teaching mode: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Teaching mode: {'enabled' if enabled else 'disabled'}")
 
     def _on_software_e_stop_changed(self):
         if not self.device:
             return
         enabled = self.software_e_stop_cb.isChecked()
         run_async(lambda: self.device.revo3_set_software_e_stop(self.slave_id, enabled))
-        print(f"[V3Settings] Software e-stop: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Software e-stop: {'enabled' if enabled else 'disabled'}")
 
     def _on_use_broadcast_id_changed(self):
         if not self.device:
             return
         enabled = self.use_broadcast_id_cb.isChecked()
         run_async(lambda: self.device.revo3_set_use_broadcast_id(self.slave_id, enabled))
-        print(f"[V3Settings] Use broadcast ID: {'enabled' if enabled else 'disabled'}")
+        print(f"[Settings] Use broadcast ID: {'enabled' if enabled else 'disabled'}")
 
     def _on_read_diagnostics(self):
         async def fetch_diag():
@@ -1481,13 +1481,13 @@ class Revo3MotorControlPanel(QWidget):
             elif self.current_mode == MODE_CURRENT:
                 await device.revo3_set_motor_current(sid, motor_id, value)
             elif self.current_mode == MODE_IMPEDANCE:
-                # V3ControlMode.Impedance=4, param = coefficient × 100
+                # ControlMode.Impedance=4, param = coefficient × 100
                 await device.revo3_single_joint_control(sid, motor_id, 4, int(value * 100))
             elif self.current_mode == MODE_DAMPING:
-                # V3ControlMode.Damping=5, param = coefficient × 100
+                # ControlMode.Damping=5, param = coefficient × 100
                 await device.revo3_single_joint_control(sid, motor_id, 5, int(value * 100))
         except Exception as e:
-            print(f"[V3Motor] Send command failed (motor {motor_id}): {e}")
+            print(f"[Motor] Send command failed (motor {motor_id}): {e}")
 
     def _on_mit_value_changed(self, motor_id, params):
         device = self.device
@@ -1505,7 +1505,7 @@ class Revo3MotorControlPanel(QWidget):
                 params['kp'], params['kd']
             )
         except Exception as e:
-            print(f"[V3Motor] MIT command failed (motor {motor_id}): {e}")
+            print(f"[Motor] MIT command failed (motor {motor_id}): {e}")
 
     def _on_mit_apply_all_gains(self):
         kp = self.mit_global_kp.value()
@@ -1524,7 +1524,7 @@ class Revo3MotorControlPanel(QWidget):
         try:
             device = self.device
             if not hasattr(device, "revo3_set_fingertip_pose") or not hasattr(sdk, "FingertipPose"):
-                print("[V3Motor] Fingertip Cartesian control is not exported by this SDK build.")
+                print("[Motor] Fingertip Cartesian control is not exported by this SDK build.")
                 return
             sid = self.slave_id
             fp = sdk.FingertipPose(
@@ -1533,7 +1533,7 @@ class Revo3MotorControlPanel(QWidget):
             )
             await device.revo3_set_fingertip_pose(sid, finger_id, fp)
         except Exception as e:
-            print(f"[V3Motor] Cartesian command failed (finger {finger_id}): {e}")
+            print(f"[Motor] Cartesian command failed (finger {finger_id}): {e}")
 
 
     # ========================================================================
@@ -1577,7 +1577,7 @@ class Revo3MotorControlPanel(QWidget):
                             group.update_motor_status(mid, values[mid])
 
         except Exception as e:
-            print(f"[V3Motor] Update status failed: {e}")
+            print(f"[Motor] Update status failed: {e}")
 
     # ========================================================================
     # Device management
@@ -1625,7 +1625,7 @@ class Revo3MotorControlPanel(QWidget):
                     ub = await _get("revo3_get_use_broadcast_id", self.use_broadcast_id_cb.isChecked())
                     self.sig_toggles_fetched.emit(ac, ts, bz, vib, tm, es, ub)
                 except Exception as e:
-                    print(f"[V3Settings] Failed to sync toggles: {e}")
+                    print(f"[Settings] Failed to sync toggles: {e}")
 
             run_async(fetch_toggles)
         else:

@@ -3,7 +3,7 @@
 Common chart widgets, constants, and utilities used across all touch sensor panels:
 - PressureTouchPanel (Modulus/Pressure)
 - ForceTouchPanel (ArrayPressure/Force-Torque)
-- V3TouchPanel (Revo3 Tactile Arrays)
+- TouchPanelRevo3 (Revo3 Tactile Arrays)
 """
 
 import asyncio

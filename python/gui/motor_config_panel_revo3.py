@@ -153,7 +153,7 @@ class QRangeSlider(QWidget):
             self.sliderReleased.emit()
         self._active = None
 
-class V3ConfigSlider(QWidget):
+class ConfigSlider(QWidget):
     """Slider and spinbox for a single motor setting"""
     def __init__(self, motor_id, set_callback):
         super().__init__()
@@ -299,7 +299,7 @@ class V3ConfigSlider(QWidget):
             self.range_slider.blockSignals(False)
             self.set_callback(self.motor_id, self.current_mode, high, low)
 
-class V3ConfigFingerGroup(QGroupBox):
+class ConfigFingerGroup(QGroupBox):
     def __init__(self, name, motor_ids, set_callback):
         super().__init__(name)
         self.motor_ids = motor_ids
@@ -325,7 +325,7 @@ class V3ConfigFingerGroup(QGroupBox):
         layout.setSpacing(6)
 
         for motor_id in motor_ids:
-            slider = V3ConfigSlider(motor_id, set_callback)
+            slider = ConfigSlider(motor_id, set_callback)
             layout.addWidget(slider)
             self.sliders[motor_id] = slider
 
@@ -409,7 +409,7 @@ class Revo3MotorConfigPanel(QWidget):
 
         for i, name in enumerate(finger_names):
             motor_ids = finger_motors[name]
-            group = V3ConfigFingerGroup(name, motor_ids, self._on_set_single_parameter)
+            group = ConfigFingerGroup(name, motor_ids, self._on_set_single_parameter)
             self.finger_groups[name] = group
             for m, s in group.sliders.items():
                 self.all_sliders[m] = s

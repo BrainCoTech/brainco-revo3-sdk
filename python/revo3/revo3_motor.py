@@ -6,7 +6,7 @@ Demonstrates Revo3-specific motor control APIs:
   - Single motor and batch motor control
   - MIT mode: τ = Kp*(P_des - P_act) + Kd*(V_des - V_act) + T_ff
   - Motor status monitoring
-  - Single/multi joint control with V3ControlMode
+  - Single/multi joint control with ControlMode
   - MIT joint control (single, multi-joint, batch)
   - Finger-level and thumb control
   - Motor temperature monitoring
@@ -181,7 +181,7 @@ async def demo_single_joint(client, slave_id):
     """Single joint control"""
     logger.info("=== [New] Single Joint Control ===")
 
-    mode = libstark.V3ControlMode.Position
+    mode = libstark.ControlMode.Position
     logger.info(f"  Joint 0: mode=Position({int(mode)}), param=45.0°")
     await client.revo3_single_joint_control(slave_id, 0, int(mode), 45.0)
     await asyncio.sleep(0.5)
@@ -191,7 +191,7 @@ async def demo_multi_joint(client, slave_id):
     """Multi-joint synchronous control"""
     logger.info("=== [New] Multi-Joint Control ===")
 
-    mode = libstark.V3ControlMode.Position
+    mode = libstark.ControlMode.Position
     params = [30.0] * REVO3_MOTOR_COUNT  # 21 joints to 30° (raw)
     logger.info(f"  All 21 joints: mode=Position, param=30.0°")
     await client.revo3_multi_joint_control(slave_id, int(mode), params)
@@ -257,7 +257,7 @@ async def demo_finger_control(client, slave_id):
     """Finger-level control (registers 1500–1574)"""
     logger.info("=== [New] Finger-Level Control ===")
 
-    mode = int(libstark.V3ControlMode.Position)
+    mode = int(libstark.ControlMode.Position)
 
     # Index finger position control (30.0°)
     logger.info(f"  Index finger: mode=Position, params=[30.0, 30.0, 30.0, 30.0]°")
@@ -298,12 +298,12 @@ async def demo_impedance_damping(client, slave_id):
     """Impedance and Damping mode control"""
     logger.info("=== [New] Impedance & Damping Mode ===")
 
-    # Impedance mode (V3ControlMode=4), param = coefficient (0.0-100.0)
+    # Impedance mode (ControlMode=4), param = coefficient (0.0-100.0)
     logger.info("  Joint 0: Impedance mode, coefficient=50.0")
     await client.revo3_single_joint_control(slave_id, 0, 4, 50.0)
     await asyncio.sleep(0.5)
 
-    # Damping mode (V3ControlMode=5), param = coefficient (0.0-100.0)
+    # Damping mode (ControlMode=5), param = coefficient (0.0-100.0)
     logger.info("  Joint 0: Damping mode, coefficient=30.0")
     await client.revo3_single_joint_control(slave_id, 0, 5, 30.0)
     await asyncio.sleep(0.5)
