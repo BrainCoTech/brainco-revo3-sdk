@@ -129,17 +129,26 @@ async def demo_finger_and_thumb_move(client, slave_id):
     await client.revo3_move_finger(slave_id, finger_id, finger_targets, duration, dt)
     await asyncio.sleep(0.2)
 
+    # Demo: Move index finger back using joint-specific gains
+    # We want different gains: Abd is lateral (soft Kp=1.0), MCP is strong (Kp=5.0), PIP/DIP are compliant (Kp=2.0, 1.0)
+    kp_gains = [1.0, 5.0, 2.0, 1.0]
+    kd_gains = [0.1, 0.5, 0.2, 0.1]
+    logger.info(f"  Moving Index finger back to [0.0, 0.0, 0.0, 0.0] with joint-specific gains: Kp={kp_gains}, Kd={kd_gains}...")
+    await client.revo3_move_finger_with_joint_gains(slave_id, finger_id, [0.0, 0.0, 0.0, 0.0], duration, dt, kp_gains, kd_gains)
+    await asyncio.sleep(0.2)
+
     # Thumb targets of 5 joints: [CMC_flex, CMC_abd, MCP, IP, DIP]
     # Bend MCP to 30°, IP to 30°, others at 0°
     thumb_targets = [0.0, 0.0, 30.0, 30.0, 0.0]
     logger.info(f"  Moving Thumb to {thumb_targets} over {duration}s...")
     await client.revo3_move_thumb(slave_id, thumb_targets, duration, dt)
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.2)
 
-    # Move back to 0°
-    logger.info("  Resetting Index and Thumb back to 0°...")
-    await client.revo3_move_finger(slave_id, finger_id, [0.0, 0.0, 0.0, 0.0], duration, dt)
-    await client.revo3_move_thumb(slave_id, [0.0, 0.0, 0.0, 0.0, 0.0], duration, dt)
+    # Demo: Move thumb back using joint-specific gains
+    thumb_kp = [1.5, 1.5, 4.0, 2.0, 1.0]
+    thumb_kd = [0.15, 0.15, 0.4, 0.2, 0.1]
+    logger.info(f"  Moving Thumb back to 0° with joint-specific gains: Kp={thumb_kp}, Kd={thumb_kd}...")
+    await client.revo3_move_thumb_with_joint_gains(slave_id, [0.0, 0.0, 0.0, 0.0, 0.0], duration, dt, thumb_kp, thumb_kd)
     await asyncio.sleep(0.5)
 
 

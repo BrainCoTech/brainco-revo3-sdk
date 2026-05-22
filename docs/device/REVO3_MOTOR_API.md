@@ -136,8 +136,8 @@ The SDK introduces a dedicated **Servo Control Suite** that features:
 | `revo3_get_servo_lpf_alpha()` | Gets current LPF alpha factor. | Debugging current smoothing. |
 | `revo3_set_servo_filter_mode(mode)` | Sets servo smoothing filter mode: `0` = None, `1` = FirstOrderLpf, `2` = SecondOrderCriticallyDamped. Default is `0`. | Select `2` for advanced physics-based smooth tracking. |
 | `revo3_get_servo_filter_mode()` | Gets current servo filter mode. | Verification of active filter configurations. |
-| `revo3_set_servo_damping_omega(omega)` | Sets second-order filter natural frequency $\omega_n$ (rad/s). Higher values mean faster tracking but less smoothing. Default is `20.0`. | Tune for physical responsiveness. |
-| `revo3_get_servo_damping_omega()` | Gets current natural frequency $\omega_n$. | Debugging damping parameters. |
+| `revo3_set_servo_damping_omega(omega)` | Sets second-order filter natural frequency omega_n (rad/s). Higher values mean faster tracking but less smoothing. Default is `20.0`. | Tune for physical responsiveness. |
+| `revo3_get_servo_damping_omega()` | Gets current natural frequency omega_n. | Debugging damping parameters. |
 | `revo3_servo_joint(slave_id, joint_id, pos, vel)` | Servos single joint using default gains (Kp=1.0, Kd=0.1). | Single finger real-time mapping. |
 | `revo3_servo_joint_with_gains(..., kp, kd)` | Servos single joint using custom gains. | Interactive compliance tuning. |
 | `revo3_servo_hand(slave_id, positions[21], velocities[21])` | Servos all 21 joints simultaneously using default gains (Kp=1.0, Kd=0.1). | Full-hand VR glove tracking. |
@@ -172,7 +172,7 @@ graph TD
 
 ### Trajectory Control (Quintic Polynomial & Quintic Blending)
 
-Moves joints smoothly over a specified duration with automatic support for **Quintic Blending**. Under the hood, the trajectory solver calculates a 5th-order polynomial trajectory supporting arbitrary non-zero initial boundary conditions (initial velocity $v_0$ and initial acceleration $a_0$) and smoothly decelerates to zero velocity and acceleration at the target. This ensures perfectly smooth transitions during dynamic mid-course re-planning or target interruptions without physical shocks.
+Moves joints smoothly over a specified duration with automatic support for **Quintic Blending**. Under the hood, the trajectory solver calculates a 5th-order polynomial trajectory supporting arbitrary non-zero initial boundary conditions (initial velocity v0 and initial acceleration a0) and smoothly decelerates to zero velocity and acceleration at the target. This ensures perfectly smooth transitions during dynamic mid-course re-planning or target interruptions without physical shocks.
 
 | API | Description | Default Gains |
 |-----|-------------|---------------|
@@ -186,8 +186,10 @@ Moves joints smoothly over a specified duration with automatic support for **Qui
 | `revo3_move_hand_with_speed_and_gains(..., speed, dt, kp, kd)` | Move all joints with speed and custom gains | Custom |
 | `revo3_move_finger(slave_id, finger_id, target_positions, duration, dt)` | Move non-thumb finger joints simultaneously (4 joints) | Kp=1.0, Kd=0.1 |
 | `revo3_move_finger_with_gains(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints with custom gains | Custom |
+| `revo3_move_finger_with_joint_gains(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints with joint-specific gains (kp/kd array size 4) | Custom |
 | `revo3_move_thumb(slave_id, target_positions, duration, dt)` | Move thumb joints simultaneously (5 joints) | Kp=1.0, Kd=0.1 |
 | `revo3_move_thumb_with_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with custom gains | Custom |
+| `revo3_move_thumb_with_joint_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with joint-specific gains (kp/kd array size 5) | Custom |
 
 > **Note on Hand Array Lengths:** For `move_hand` APIs, `target_positions` must be a list/sequence of physical float angles (in degrees) whose length matches the device's actual motor count (21 for Revo3 hands).
 > 
