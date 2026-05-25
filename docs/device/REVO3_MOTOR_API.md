@@ -243,7 +243,8 @@ Enables manual joint guidance by entering a zero-impedance state, recording phys
 | API | Description |
 |-----|-------------|
 | `revo3_manual_calibration(slave_id)` | Trigger manual calibration |
-| `revo3_set_zero_position(slave_id, offsets_deg=None)` | Set zero position: without offsets, trigger current feedback positions as zero; with 21 offsets, write zero offset values |
+| `revo3_set_zero_position(slave_id, offsets_deg=None)` | Set zero position: without offsets, trigger current feedback positions as zero; with offset values (matching joint count), write zero offset values |
+| `revo3_get_zero_position(slave_id)` | Read the zero position offsets (degrees) for all joints |
 | `revo3_set_auto_calibration(slave_id, enabled)` | Enable/disable auto calibration |
 | `revo3_clear_motor_errors(slave_id)` | Clear all motor errors |
 | `revo3_enter_ota(slave_id)` | Enter OTA mode |

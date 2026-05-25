@@ -47,6 +47,17 @@ int main(int argc, char **argv) {
   // float zero_offsets_deg[21] = {0.0f};
   // revo3_set_zero_position(ctx.handle, ctx.slave_id, zero_offsets_deg);
 
+  float read_offsets_deg[21] = {0.0f};
+  if (revo3_get_zero_position(ctx.handle, ctx.slave_id, read_offsets_deg) == 0) {
+    std::printf("Current zero position offsets (first 5 joints):");
+    for (int i = 0; i < 5; ++i) {
+      std::printf(" %.2f", read_offsets_deg[i]);
+    }
+    std::printf("\n");
+  } else {
+    std::printf("Failed to get zero position offsets.\n");
+  }
+
   revo3_close(ctx);
   return 0;
 }

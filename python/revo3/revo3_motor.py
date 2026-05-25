@@ -396,6 +396,9 @@ async def demo_motor_params(client, slave_id):
         
         use_bid = await client.revo3_get_use_broadcast_id(slave_id)
         logger.info(f"  Use broadcast ID: {use_bid}")
+        
+        zero_offsets = await client.revo3_get_zero_position(slave_id)
+        logger.info(f"  Zero position offsets (first 5): {zero_offsets[:5]}")
     except Exception as e:
         logger.info(f"  Config read error: {e}")
 
