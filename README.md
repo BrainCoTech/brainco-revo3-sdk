@@ -1,6 +1,6 @@
 # BrainCo Revo3 SDK Examples
 
-This repository contains Revo3-only examples for the BrainCo Revo3 SDK.
+This repository provides example applications and integration code demonstrating how to control BrainCo Revo3 dexterous hands using the SDK.
 
 ## Layout
 
@@ -44,9 +44,16 @@ pip install bc-revo3-sdk==1.0.8
 ```bash
 cd python
 pip install -r requirements.txt
+
+# Run CLI examples (requires a real Revo3 device)
 python revo3/auto_detect.py
 python revo3/hand_demo.py
 python revo3/hand_trajectory.py
 python revo3/hand_dfu.py /path/to/firmware.bin
+
+# Run GUI in mock mode (recommended for a quick UI demo without hardware)
 python gui/main.py --mock
+
+# Run GUI in real-device mode (requires a connected Revo3 device)
+python gui/main.py
 ```

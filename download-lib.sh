@@ -69,15 +69,38 @@ mkdir -p "$DIST_DIR"
 
 # Download library
 echo_y "[bc-revo3-sdk] Downloading (${LIB_VERSION}) for ${LIB_NAME}..."
-if ! command -v wget >/dev/null 2>&1; then
-  echo_r "Error: wget is not installed. Please install it and try again."
-  exit 1
+
+DOWNLOAD_SUCCESS=0
+
+# 1. Try downloading with curl if available
+if command -v curl >/dev/null 2>&1; then
+  echo_y "Trying to download using curl..."
+  if curl -L -# "$DOWNLOAD_URL" -o "${SCRIPT_DIR}/${ZIP_NAME}"; then
+    DOWNLOAD_SUCCESS=1
+  else
+    echo_r "Warning: curl download failed. Trying fallback options..."
+  fi
 fi
 
-wget -q --show-progress "$DOWNLOAD_URL" -O "${SCRIPT_DIR}/${ZIP_NAME}" || {
-  echo_r "Error: Failed to download ${ZIP_NAME}"
+# 2. Try downloading with wget if curl failed or is unavailable
+if [ $DOWNLOAD_SUCCESS -ne 1 ] && command -v wget >/dev/null 2>&1; then
+  echo_y "Trying to download using wget..."
+  if wget -q --show-progress "$DOWNLOAD_URL" -O "${SCRIPT_DIR}/${ZIP_NAME}"; then
+    DOWNLOAD_SUCCESS=1
+  else
+    echo_r "Error: wget download failed."
+  fi
+fi
+
+# 3. Check final download status
+if [ $DOWNLOAD_SUCCESS -ne 1 ]; then
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    echo_r "Error: Neither curl nor wget is installed. Please install one of them and try again."
+  else
+    echo_r "Error: Failed to download ${ZIP_NAME} using all available tools (curl/wget)."
+  fi
   exit 1
-}
+fi
 
 # Extract and clean up
 echo_y "[bc-revo3-sdk] Extracting ${ZIP_NAME}..."
