@@ -329,8 +329,14 @@ await ctx.revo3_set_auto_calibration(slave_id, enabled)      # bool
 
 # Zero-position setup changes persistent calibration. Use only when the hand
 # is in the intended reference pose.
-await ctx.revo3_set_zero_position(slave_id)                  # use current feedback as zero
-await ctx.revo3_set_zero_position(slave_id, offsets_deg)     # 21 float offsets, degree
+# 1. Set explicit zero offsets (accepts list up to 21 values, e.g. 13, 16, or 21)
+await ctx.revo3_set_zero_position(slave_id, offsets_deg)
+
+# 2. Set current position as zero (recommended workflow: disable -> pose -> enable -> set)
+# Step 1: Disable motors
+# Step 2: Manually pose hand to zero-reference
+# Step 3: Enable motors
+await ctx.revo3_set_current_position_as_zero(slave_id)
 
 # Motion limits
 await ctx.revo3_set_global_protect_current(slave_id, current) # float, mA

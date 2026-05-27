@@ -31,12 +31,12 @@ make -C c
 
 *For internal testing (download from OSS):*
 ```bash
-bash ../scripts/install_whl.sh 1.0.9
+bash ../scripts/install_whl.sh 1.1.0
 ```
 
 *For stable release (download from PyPI):*
 ```bash
-pip install bc-revo3-sdk==1.0.9
+pip install bc-revo3-sdk==1.1.0
 ```
 
 **2. Run examples**

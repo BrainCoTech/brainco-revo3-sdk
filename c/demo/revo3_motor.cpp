@@ -43,7 +43,8 @@ int main(int argc, char **argv) {
 
   // Zero-position setup changes persistent device calibration. Uncomment only
   // when the hand is in the intended reference pose.
-  // revo3_set_zero_position(ctx.handle, ctx.slave_id, nullptr);
+  // // Recommended Workflow: 1. Disable motors -> 2. Pose hand -> 3. Enable motors -> 4. Call API
+  // revo3_set_current_position_as_zero(ctx.handle, ctx.slave_id);
   // float zero_offsets_deg[21] = {0.0f};
   // revo3_set_zero_position(ctx.handle, ctx.slave_id, zero_offsets_deg);
 

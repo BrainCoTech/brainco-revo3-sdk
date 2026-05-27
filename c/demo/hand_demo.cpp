@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 
   uint16_t enabled = revo3_get_all_touch_modules_enabled(ctx.handle, ctx.slave_id);
   if (enabled != 0) {
-    uint16_t summary[26] = {0};
+    uint16_t summary[42] = {0};
     if (revo3_get_touch_summary(ctx.handle, ctx.slave_id, summary) == 0) {
       std::printf("Touch summary[0..7]:");
       for (int i = 0; i < 8; ++i) {

@@ -43,15 +43,19 @@ The examples intentionally avoid legacy transports and APIs.
 
 ## Zero Position
 
-`revo3_set_zero_position` supports both Revo3 zero-position modes. Passing
-`NULL` writes register 81 and lets the device use current feedback positions as
-zero. Passing a pointer to 21 `float` values writes zero offset values in
-degrees to registers 60~80.
+There are two separate APIs for zero-position calibration:
+1. `revo3_set_zero_position`: Writes explicit offset values in degrees for all 21 motors to registers 60~80, and registers them to take effect.
+2. `revo3_set_current_position_as_zero`: Registers the current feedback positions as zero (register 81).
+   * **Recommended Workflow**: Disable motors -> manually pose the hand -> enable motors -> call this API to lock in the zero pose.
 
 ```cpp
-// Persistent calibration change: use only in the intended reference pose.
-revo3_set_zero_position(handle, slave_id, NULL);
-
+// 1. Set explicit offsets
 float offsets_deg[21] = {0.0f};
 revo3_set_zero_position(handle, slave_id, offsets_deg);
+
+// 2. Set current position as zero (requires clamping/posing)
+// Step 1: Disable motors
+// Step 2: Manually pose hand to zero-reference
+// Step 3: Enable motors
+revo3_set_current_position_as_zero(handle, slave_id);
 ```

@@ -79,7 +79,7 @@ class MockRevo3MotorStatusData:
 class MockRevo3TouchData:
     def __init__(self, tick: float = 0.0):
         self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(16)]
-        module_sizes = [16, 16, 16, 16, 16, 12, 12, 12, 12, 12, 8]
+        module_sizes = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
         self.modules = []
         for module_index, size in enumerate(module_sizes):
             self.modules.append([
