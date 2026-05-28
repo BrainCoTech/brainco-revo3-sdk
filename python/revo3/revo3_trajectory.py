@@ -58,7 +58,7 @@ async def demo_single_joint_move(client, slave_id):
     logger.info(f"  J{joint_id} initial: {status.positions[joint_id]:.2f}°")
 
     logger.info(f"  Moving J{joint_id} to {target}° over {duration}s...")
-    await client.revo3_move_joint(slave_id, joint_id, target, duration, dt)
+    await client.revo3_move_joint_wait(slave_id, joint_id, target, duration, dt)
 
     # Verify
     await asyncio.sleep(0.2)
@@ -69,7 +69,7 @@ async def demo_single_joint_move(client, slave_id):
 
     # Move back
     logger.info(f"  Moving J{joint_id} back to 0°...")
-    await client.revo3_move_joint(slave_id, joint_id, 0.0, duration, dt)
+    await client.revo3_move_joint_wait(slave_id, joint_id, 0.0, duration, dt)
     await asyncio.sleep(0.5)
 
 
@@ -82,14 +82,14 @@ async def demo_single_joint_custom_gains(client, slave_id):
     kp, kd = 5.0, 0.5
 
     logger.info(f"  J{joint_id}: target={target}°, Kp={kp}, Kd={kd}, T=1.5s")
-    await client.revo3_move_joint_with_gains(slave_id, joint_id, target, 1.5, 0.01, kp, kd)
+    await client.revo3_move_joint_with_gains_wait(slave_id, joint_id, target, 1.5, 0.01, kp, kd)
 
     await asyncio.sleep(0.2)
     status = await client.revo3_get_motor_status_data(slave_id)
     logger.info(f"  Final: {status.positions[joint_id]:.2f}°")
 
     # Move back
-    await client.revo3_move_joint(slave_id, joint_id, 0.0, 1.5, 0.01)
+    await client.revo3_move_joint_wait(slave_id, joint_id, 0.0, 1.5, 0.01)
     await asyncio.sleep(0.5)
 
 
@@ -102,7 +102,7 @@ async def demo_single_joint_move_with_speed(client, slave_id):
     speed = 30.0  # 30 rpm
 
     logger.info(f"  J{joint_id}: target={target}°, speed={speed} rpm")
-    await client.revo3_move_joint_with_speed(slave_id, joint_id, target, speed, 0.01)
+    await client.revo3_move_joint_with_speed_wait(slave_id, joint_id, target, speed, 0.01)
 
     await asyncio.sleep(0.2)
     status = await client.revo3_get_motor_status_data(slave_id)
@@ -110,7 +110,7 @@ async def demo_single_joint_move_with_speed(client, slave_id):
 
     # Move back
     logger.info(f"  Moving J{joint_id} back to 0° at {speed} rpm...")
-    await client.revo3_move_joint_with_speed(slave_id, joint_id, 0.0, speed, 0.01)
+    await client.revo3_move_joint_with_speed_wait(slave_id, joint_id, 0.0, speed, 0.01)
     await asyncio.sleep(0.5)
 
 
@@ -126,7 +126,7 @@ async def demo_finger_and_thumb_move(client, slave_id):
     dt = 0.01
 
     logger.info(f"  Moving Index finger (F{finger_id}) to {finger_targets} over {duration}s...")
-    await client.revo3_move_finger(slave_id, finger_id, finger_targets, duration, dt)
+    await client.revo3_move_finger_wait(slave_id, finger_id, finger_targets, duration, dt)
     await asyncio.sleep(0.2)
 
     # Demo: Move index finger back using joint-specific gains
@@ -134,7 +134,7 @@ async def demo_finger_and_thumb_move(client, slave_id):
     kp_gains = [1.0, 5.0, 2.0, 1.0]
     kd_gains = [0.1, 0.5, 0.2, 0.1]
     logger.info(f"  Moving Index finger back to [0.0, 0.0, 0.0, 0.0] with joint-specific gains: Kp={kp_gains}, Kd={kd_gains}...")
-    await client.revo3_move_finger_with_joint_gains(slave_id, finger_id, [0.0, 0.0, 0.0, 0.0], duration, dt, kp_gains, kd_gains)
+    await client.revo3_move_finger_with_joint_gains_wait(slave_id, finger_id, [0.0, 0.0, 0.0, 0.0], duration, dt, kp_gains, kd_gains)
     await asyncio.sleep(0.2)
 
     # Thumb targets of 5 joints: [CMC_flex, CMC_abd, MCP, IP, DIP]
@@ -163,7 +163,7 @@ async def demo_full_hand_move(client, slave_id):
         targets[jid] = 45.0
 
     logger.info(f"  MCP joints {mcp_joints} → 45°, T=3.0s")
-    await client.revo3_move_hand(slave_id, targets, 3.0, 0.01)
+    await client.revo3_move_hand_wait(slave_id, targets, 3.0, 0.01)
 
     # Verify
     await asyncio.sleep(0.5)
@@ -176,7 +176,7 @@ async def demo_full_hand_move(client, slave_id):
 
     # Reset
     logger.info("  Resetting all to 0°...")
-    await client.revo3_move_hand(slave_id, [0.0] * REVO3_MOTOR_COUNT, 3.0, 0.01)
+    await client.revo3_move_hand_wait(slave_id, [0.0] * REVO3_MOTOR_COUNT, 3.0, 0.01)
     await asyncio.sleep(0.5)
 
 
@@ -192,7 +192,7 @@ async def demo_full_hand_move_with_speed(client, slave_id):
 
     speed = 20.0  # 20 rpm
     logger.info(f"  PIP joints {pip_joints} → 60°, speed={speed} rpm")
-    await client.revo3_move_hand_with_speed(slave_id, targets, speed, 0.01)
+    await client.revo3_move_hand_with_speed_wait(slave_id, targets, speed, 0.01)
 
     # Verify
     await asyncio.sleep(0.5)
@@ -205,7 +205,7 @@ async def demo_full_hand_move_with_speed(client, slave_id):
 
     # Reset
     logger.info(f"  Resetting all to 0° at {speed} rpm...")
-    await client.revo3_move_hand_with_speed(slave_id, [0.0] * REVO3_MOTOR_COUNT, speed, 0.01)
+    await client.revo3_move_hand_with_speed_wait(slave_id, [0.0] * REVO3_MOTOR_COUNT, speed, 0.01)
     await asyncio.sleep(0.5)
 
 
@@ -216,7 +216,7 @@ async def demo_position_protection(client, slave_id):
     # J0 (Pinky Abd, range [-14, 15]) to 50° — should fail
     logger.info("  J0 (Pinky Abd) → 50° (range: [-14, 15])...")
     try:
-        await client.revo3_move_joint(slave_id, 0, 50.0, 1.0, 0.01)
+        await client.revo3_move_joint_wait(slave_id, 0, 50.0, 1.0, 0.01)
         logger.info("  ⚠️ Command accepted (unexpected)")
     except Exception as e:
         logger.info(f"  ✅ Correctly rejected: {e}")
@@ -224,7 +224,7 @@ async def demo_position_protection(client, slave_id):
     # J20 (Thumb CMC Flex, range [0, 75]) to -10° — should fail
     logger.info("  J20 (Thumb CMC Flex) → -10° (range: [0, 75])...")
     try:
-        await client.revo3_move_joint(slave_id, 20, -10.0, 1.0, 0.01)
+        await client.revo3_move_joint_wait(slave_id, 20, -10.0, 1.0, 0.01)
         logger.info("  ⚠️ Command accepted (unexpected)")
     except Exception as e:
         logger.info(f"  ✅ Correctly rejected: {e}")
@@ -270,7 +270,7 @@ async def demo_teach_and_replay_joint(client, slave_id):
     logger.info("  Replay complete!")
 
     # Reset
-    await client.revo3_move_joint(slave_id, joint_id, 0.0, 2.0, 0.01)
+    await client.revo3_move_joint_wait(slave_id, joint_id, 0.0, 2.0, 0.01)
     await asyncio.sleep(0.5)
 
 
@@ -308,7 +308,7 @@ async def demo_teach_and_replay_hand(client, slave_id):
 
     # Reset
     logger.info("  Resetting to 0°...")
-    await client.revo3_move_hand(slave_id, [0.0] * REVO3_MOTOR_COUNT, 3.0, 0.01)
+    await client.revo3_move_hand_wait(slave_id, [0.0] * REVO3_MOTOR_COUNT, 3.0, 0.01)
     await asyncio.sleep(0.5)
 
 

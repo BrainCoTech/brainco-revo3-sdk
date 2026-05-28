@@ -97,18 +97,24 @@ Trajectory & Teaching APIs:
 
 | API | Description |
 |-----|-------------|
-| `revo3_move_joint(slave_id, joint_id, target, T, dt)` | Quintic polynomial single joint move |
-| `revo3_move_joint_with_gains(slave_id, joint_id, target, T, dt, kp, kd)` | Single joint move with custom Kp/Kd |
-| `revo3_move_joint_with_speed(slave_id, joint_id, target, speed, dt)` | Single joint move by speed (rpm) |
-| `revo3_move_joint_with_speed_and_gains(slave_id, joint_id, target, speed, dt, kp, kd)` | Single joint move by speed with custom Kp/Kd |
-| `revo3_move_hand(slave_id, targets, T, dt)` | Full hand synchronized move (21 joints) |
-| `revo3_move_hand_with_gains(slave_id, targets, T, dt, kp, kd)` | Full hand move with custom Kp/Kd |
-| `revo3_move_hand_with_speed(slave_id, targets, speed, dt)` | Full hand move synchronized by speed (rpm) |
-| `revo3_move_hand_with_speed_and_gains(slave_id, targets, speed, dt, kp, kd)` | Full hand move by speed with custom Kp/Kd |
-| `revo3_move_finger(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints simultaneously (4 joints) |
-| `revo3_move_finger_with_gains(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move with custom Kp/Kd |
-| `revo3_move_thumb(slave_id, targets, T, dt)` | Move thumb joints simultaneously (5 joints) |
-| `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom Kp/Kd |
+| `revo3_move_joint(slave_id, joint_id, target, T, dt)` | Quintic polynomial single joint move (Non-blocking) |
+| `revo3_move_joint_wait(slave_id, joint_id, target, T, dt)` | Quintic polynomial single joint move and block |
+| `revo3_move_joint_with_gains(slave_id, joint_id, target, T, dt, kp, kd)` | Single joint move with custom gains (Non-blocking) |
+| `revo3_move_joint_with_gains_wait(slave_id, joint_id, target, T, dt, kp, kd)` | Single joint move and block with custom gains |
+| `revo3_move_joint_with_speed(slave_id, joint_id, target, speed, dt)` | Single joint move by speed (Non-blocking) |
+| `revo3_move_joint_with_speed_wait(slave_id, joint_id, target, speed, dt)` | Single joint move and block by speed |
+| `revo3_move_hand(slave_id, targets, T, dt)` | Full hand synchronized move (21 joints, Non-blocking) |
+| `revo3_move_hand_wait(slave_id, targets, T, dt)` | Full hand move and block |
+| `revo3_move_hand_with_gains(slave_id, targets, T, dt, kp, kd)` | Full hand move with custom gains (Non-blocking) |
+| `revo3_move_hand_with_gains_wait(slave_id, targets, T, dt, kp, kd)` | Full hand move and block with custom gains |
+| `revo3_move_hand_with_speed(slave_id, targets, speed, dt)` | Full hand move synchronized by speed (Non-blocking) |
+| `revo3_move_hand_with_speed_wait(slave_id, targets, speed, dt)` | Full hand move and block by speed |
+| `revo3_move_finger(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints (4 joints, Non-blocking) |
+| `revo3_move_finger_wait(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints and block |
+| `revo3_move_finger_with_gains(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move with custom gains (Non-blocking) |
+| `revo3_move_finger_with_gains_wait(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move and block with custom gains |
+| `revo3_move_thumb(slave_id, targets, T, dt)` | Move thumb joints simultaneously (5 joints, Blocking/Await) |
+| `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom gains (Blocking/Await) |
 | `revo3_teach_joint(slave_id, joint_id, dt, T)` | Record single joint (backdrive mode) |
 | `revo3_teach_hand(slave_id, dt, T)` | Record full hand (backdrive mode) |
 | `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Replay recorded single joint |
@@ -370,13 +376,13 @@ with zero velocity/acceleration at start and end.
 
 ```python
 # Single joint: move J3 (Pinky DIP) to 45° over 2 seconds
-await ctx.revo3_move_joint(slave_id, joint_id=3, target=45.0, duration=2.0, dt=0.01)
+await ctx.revo3_move_joint_wait(slave_id, joint_id=3, target=45.0, duration=2.0, dt=0.01)
 
 # Single joint by speed: move J3 to 45° at 30 rpm
-await ctx.revo3_move_joint_with_speed(slave_id, joint_id=3, target=45.0, speed=30.0, dt=0.01)
+await ctx.revo3_move_joint_with_speed_wait(slave_id, joint_id=3, target=45.0, speed=30.0, dt=0.01)
 
 # Single joint with custom stiffness/damping
-await ctx.revo3_move_joint_with_gains(
+await ctx.revo3_move_joint_with_gains_wait(
     slave_id, joint_id=1, target=60.0,
     duration=1.5, dt=0.01, kp=5.0, kd=0.5
 )
@@ -388,13 +394,13 @@ targets[5] = 45.0   # Ring MCP
 targets[9] = 45.0   # Middle MCP
 targets[13] = 45.0  # Index MCP
 targets[17] = 45.0  # Thumb MCP
-await ctx.revo3_move_hand(slave_id, targets, duration=3.0, dt=0.01)
+await ctx.revo3_move_hand_wait(slave_id, targets, duration=3.0, dt=0.01)
 
 # Full hand by uniform speed: 20 rpm
-await ctx.revo3_move_hand_with_speed(slave_id, targets, speed=20.0, dt=0.01)
+await ctx.revo3_move_hand_with_speed_wait(slave_id, targets, speed=20.0, dt=0.01)
 
 # With custom gains
-await ctx.revo3_move_hand_with_gains(
+await ctx.revo3_move_hand_with_gains_wait(
     slave_id, targets, duration=3.0, dt=0.01, kp=5.0, kd=0.5
 )
 
@@ -690,7 +696,6 @@ Module  Name        Pts    Location
 | `revo3/revo3_trajectory.py` | Trajectory control & teaching mode demo |
 | `revo3/revo3_teaching.py` | Interactive teaching: record & playback hand movements |
 | `revo3/revo3_dfu.py`      | Firmware upgrade (OTA via Modbus) |
-| `revo3/revo3_timing_test.py` | Single motor timing test w/ DataCollector |
 | `revo3/revo3_servo.py`    | High-frequency (100Hz) real-time servo control |
 | `revo3/auto_detect.py` | Revo3 auto-detection |
 | `revo3/hand_demo.py` | Revo3 hand-level info/status/touch/movement demo |
@@ -711,10 +716,6 @@ python revo3/revo3_motor.py --port /dev/ttyUSB0
 # High-frequency Real-time Servo control (100Hz)
 python revo3/revo3_servo.py
 python revo3/revo3_servo.py --port /dev/ttyUSB0
-
-# Timing test (M3, 5 cycles)
-python revo3/revo3_timing_test.py
-python revo3/revo3_timing_test.py --motor 5 --cycles 10 --angle 60.0
 
 # Teaching mode (record hand movements, then replay)
 python revo3/revo3_teaching.py                                    # Interactive record + playback

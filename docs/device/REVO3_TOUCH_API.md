@@ -11,16 +11,16 @@ The hand has 11 physical tactile modules. The Modbus protocol maps these to 42 "
 | Module Index | Location | Array Address | Register Points |
 |:---:|----------|:---:|:---:|
 | 0 | Palm | `4200` | 36 |
-| 1 | Thumb Tip | `4250` | 31 |
-| 2 | Thumb Pad | `4290` | 57 |
+| 1 | Thumb Tip | `4250` | 22 |
+| 2 | Thumb Pad | `4290` | 51 |
 | 3 | Index Tip | `4350` | 21 |
-| 4 | Index Pad | `4400` | 52 |
+| 4 | Index Pad | `4400` | 49 |
 | 5 | Middle Tip | `4460` | 21 |
-| 6 | Middle Pad | `4500` | 52 |
+| 6 | Middle Pad | `4500` | 49 |
 | 7 | Ring Tip | `4560` | 21 |
-| 8 | Ring Pad | `4600` | 52 |
+| 8 | Ring Pad | `4600` | 49 |
 | 9 | Pinky Tip | `4660` | 21 |
-| 10| Pinky Pad | `4700` | 52 |
+| 10| Pinky Pad | `4700` | 49 |
 
 ## Control Registers (Holding, R/W)
 
@@ -55,7 +55,7 @@ summary_42 = sdk.revo3_get_touch_summary(slave_id)
 print(f"Palm Force: {summary_42[0]}")
 
 # 4. Read Dense Array Data
-# (e.g., Module 2 = Thumb Pad, returns 57 points)
+# (e.g., Module 2 = Thumb Pad, returns 51 points)
 thumb_pad_data = sdk.revo3_get_touch_module_data(slave_id, 2)
 
 # 5. Bulk Read All (Summary + 11 Arrays)

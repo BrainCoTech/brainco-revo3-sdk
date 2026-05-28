@@ -239,13 +239,25 @@ class MockDeviceContext:
     async def revo3_move_joint_with_gains(self, slave_id, motor_id, position, *_args):
         await self.revo3_set_motor_position(slave_id, motor_id, position)
 
+    async def revo3_move_joint_with_gains_wait(self, slave_id, motor_id, position, *_args):
+        await self.revo3_set_motor_position(slave_id, motor_id, position)
+
     async def revo3_move_joint_with_speed_and_gains(self, slave_id, motor_id, position, *_args):
+        await self.revo3_set_motor_position(slave_id, motor_id, position)
+
+    async def revo3_move_joint_with_speed_and_gains_wait(self, slave_id, motor_id, position, *_args):
         await self.revo3_set_motor_position(slave_id, motor_id, position)
 
     async def revo3_move_hand_with_gains(self, slave_id, positions, *_args):
         await self.revo3_set_all_motor_positions(slave_id, positions)
 
+    async def revo3_move_hand_with_gains_wait(self, slave_id, positions, *_args):
+        await self.revo3_set_all_motor_positions(slave_id, positions)
+
     async def revo3_move_hand_with_speed_and_gains(self, slave_id, positions, *_args):
+        await self.revo3_set_all_motor_positions(slave_id, positions)
+
+    async def revo3_move_hand_with_speed_and_gains_wait(self, slave_id, positions, *_args):
         await self.revo3_set_all_motor_positions(slave_id, positions)
 
     async def revo3_set_fingertip_pose(self, _slave_id, _finger_id, _pose):

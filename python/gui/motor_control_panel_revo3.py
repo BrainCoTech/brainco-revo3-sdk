@@ -348,6 +348,15 @@ class Revo3MotorSlider(QWidget):
         self.run_callback = None
         self._slider_scale = 10
         self.live_update = True
+        self.current_mode = MODE_POSITION # 默认是位置模式
+        
+        # 轨迹限频控制 (80ms 间隔 / 12.5Hz 刷新率，支持尾部补偿与瞬时物理打断)
+        self._last_traj_send_time = 0.0
+        self._traj_pending_value = None
+        self._traj_throttle_timer = QTimer()
+        self._traj_throttle_timer.setSingleShot(True)
+        self._traj_throttle_timer.timeout.connect(self._on_traj_throttle_timeout)
+        
         self._setup_ui()
 
     def _setup_ui(self):
@@ -374,6 +383,7 @@ class Revo3MotorSlider(QWidget):
         self.slider.setRange(int(min_pos * self._slider_scale), int(max_pos * self._slider_scale))
         self.slider.setValue(0)
         self.slider.valueChanged.connect(self._on_slider_changed)
+        self.slider.sliderReleased.connect(self._on_slider_released)
         layout.addWidget(self.slider, 1)
 
         self.spin = QDoubleSpinBox()
@@ -382,6 +392,7 @@ class Revo3MotorSlider(QWidget):
         self.spin.setSingleStep(1.0)
         self.spin.setFixedWidth(85)
         self.spin.valueChanged.connect(self._on_spin_changed)
+        self.spin.editingFinished.connect(self._on_spin_editing_finished)
         layout.addWidget(self.spin)
 
         self.run_btn = QPushButton("▶")
@@ -399,6 +410,8 @@ class Revo3MotorSlider(QWidget):
         layout.addWidget(self.status_label)
 
     def set_mode_range(self, min_val, max_val, step, mode=None):
+        if mode is not None:
+            self.current_mode = mode
         if mode == MODE_POSITION or mode == MODE_TRAJECTORY:
             min_val, max_val = get_motor_position_range(self.motor_id)
         self.slider.blockSignals(True)
@@ -417,18 +430,68 @@ class Revo3MotorSlider(QWidget):
         self.spin.blockSignals(True)
         self.spin.setValue(float_val)
         self.spin.blockSignals(False)
-        if self.live_update:
-            self.send_callback(self.motor_id, float_val)
+        
+        if self.current_mode == MODE_TRAJECTORY:
+            import time
+            now = time.time()
+            interval = 0.08 # 80ms interval (12.5Hz) for physical following
+            self._traj_pending_value = float_val
+            if now - self._last_traj_send_time >= interval:
+                self._send_pending_trajectory()
+            else:
+                rem = interval - (now - self._last_traj_send_time)
+                self._traj_throttle_timer.start(int(rem * 1000))
+        else:
+            if self.live_update:
+                self.send_callback(self.motor_id, float_val)
 
     def _on_spin_changed(self, value):
         self.slider.blockSignals(True)
         self.slider.setValue(int(value * self._slider_scale))
         self.slider.blockSignals(False)
-        if self.live_update:
-            self.send_callback(self.motor_id, value)
+        
+        if self.current_mode == MODE_TRAJECTORY:
+            import time
+            now = time.time()
+            interval = 0.08
+            self._traj_pending_value = value
+            if now - self._last_traj_send_time >= interval:
+                self._send_pending_trajectory()
+            else:
+                rem = interval - (now - self._last_traj_send_time)
+                self._traj_throttle_timer.start(int(rem * 1000))
+        else:
+            if self.live_update:
+                self.send_callback(self.motor_id, value)
+
+    def _send_pending_trajectory(self):
+        if self.current_mode == MODE_TRAJECTORY and self._traj_pending_value is not None:
+            import time
+            self._last_traj_send_time = time.time()
+            val = self._traj_pending_value
+            self._traj_pending_value = None
+            self._traj_throttle_timer.stop()
+            if self.run_callback:
+                self.run_callback(self.motor_id, val)
+
+    def _on_traj_throttle_timeout(self):
+        self._send_pending_trajectory()
 
     def _on_run_clicked(self):
         if self.run_callback:
+            self.run_callback(self.motor_id, self.spin.value())
+
+    def _on_slider_released(self):
+        # Force a terminal absolute target update on mouse release
+        if self.run_callback:
+            self._traj_throttle_timer.stop()
+            self._traj_pending_value = None
+            self.run_callback(self.motor_id, self.spin.value())
+
+    def _on_spin_editing_finished(self):
+        if self.run_callback:
+            self._traj_throttle_timer.stop()
+            self._traj_pending_value = None
             self.run_callback(self.motor_id, self.spin.value())
 
     def update_diagnostics(self, temp, is_online, err_val=0):
@@ -991,7 +1054,7 @@ class Revo3MotorControlPanel(QWidget):
         traj_layout.addWidget(QLabel("T(ms):"))
         self.spin_T = QSpinBox()
         self.spin_T.setRange(10, 10000)
-        self.spin_T.setValue(1000)
+        self.spin_T.setValue(500)
         self.spin_T.setFixedWidth(60)
         traj_layout.addWidget(self.spin_T)
         
@@ -1013,7 +1076,7 @@ class Revo3MotorControlPanel(QWidget):
         
         traj_layout.addWidget(QLabel("Kp:"))
         self.spin_kp = QDoubleSpinBox()
-        self.spin_kp.setRange(0, 5.0)
+        self.spin_kp.setRange(0, 10.0)
         self.spin_kp.setSingleStep(0.1)
         self.spin_kp.setValue(1.0)
         self.spin_kp.setFixedWidth(55)
@@ -1714,13 +1777,13 @@ class Revo3MotorControlPanel(QWidget):
         elif self.current_mode == MODE_TRAJECTORY:
             p = self._get_traj_params()
             if p['speed'] > 0:
-                run_async(lambda: self.device.revo3_move_hand_with_speed_and_gains(
+                self.device.revo3_move_hand_with_speed_and_gains(
                     self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-                ))
+                )
             else:
-                run_async(lambda: self.device.revo3_move_hand_with_gains(
+                self.device.revo3_move_hand_with_gains(
                     self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-                ))
+                )
 
     def _open_all(self):
         """Open hand: flexion joints → 0°, abduction/rotation → neutral (0°)"""
@@ -1760,8 +1823,8 @@ class Revo3MotorControlPanel(QWidget):
             elif self.current_mode == MODE_TRAJECTORY:
                 p = self._get_traj_params()
                 if p['speed'] > 0:
-                    run_async(lambda: self.device.revo3_move_hand_with_speed_and_gains(
-                        self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']))
+                    self.device.revo3_move_hand_with_speed_and_gains(
+                        self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd'])
 
         elif self.current_mode == MODE_MIT:
             for group in self.mit_groups.values():
@@ -1789,13 +1852,13 @@ class Revo3MotorControlPanel(QWidget):
         if not self.device: return
         p = self._get_traj_params()
         if p['speed'] > 0:
-            run_async(lambda: self.device.revo3_move_joint_with_speed_and_gains(
+            self.device.revo3_move_joint_with_speed_and_gains(
                 self.slave_id, motor_id, target, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            )
         else:
-            run_async(lambda: self.device.revo3_move_joint_with_gains(
+            self.device.revo3_move_joint_with_gains(
                 self.slave_id, motor_id, target, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            )
         
     def _on_run_finger_trajectory(self, finger_name, targets_dict):
         if not self.device: return
@@ -1814,13 +1877,13 @@ class Revo3MotorControlPanel(QWidget):
             targets[mid] = val
             
         if p['speed'] > 0:
-            run_async(lambda: self.device.revo3_move_hand_with_speed_and_gains(
+            self.device.revo3_move_hand_with_speed_and_gains(
                 self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            )
         else:
-            run_async(lambda: self.device.revo3_move_hand_with_gains(
+            self.device.revo3_move_hand_with_gains(
                 self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            )
         
     def _on_run_all(self):
         if not self.device or self.current_mode != MODE_TRAJECTORY:
@@ -1832,10 +1895,10 @@ class Revo3MotorControlPanel(QWidget):
                 targets[mid] = slider.spin.value()
                 
         if p['speed'] > 0:
-            run_async(lambda: self.device.revo3_move_hand_with_speed_and_gains(
+            self.device.revo3_move_hand_with_speed_and_gains(
                 self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            )
         else:
-            run_async(lambda: self.device.revo3_move_hand_with_gains(
+            self.device.revo3_move_hand_with_gains(
                 self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            )
