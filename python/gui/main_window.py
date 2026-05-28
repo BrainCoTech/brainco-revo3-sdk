@@ -29,9 +29,10 @@ from .system_config_panel import SystemConfigPanel
 from .teaching_panel import TeachingPanel
 from .timing_test_panel import TimingTestPanel
 from .touch_panel_revo3 import Revo3TouchSubPanel
+from .touch_common import run_async
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import get_hw_type_name, has_touch, sdk, uses_revo3_motor_api
+from common_imports import get_hw_type_name, has_touch, sdk, uses_revo3_motor_api, logger
 
 
 class DfuOverlay(QWidget):
@@ -76,7 +77,10 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_statusbar()
         self._update_texts()
-        self.setWindowTitle("BC Revo3 SDK")
+        sdk_version = "Unknown"
+        if sdk is not None:
+            sdk_version = getattr(sdk, "__version__", "1.1.1")
+        self.setWindowTitle(f"BC Revo3 SDK (v{sdk_version})")
         self.setMinimumSize(1000, 700)
         self.showMaximized()
 
@@ -197,6 +201,14 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
+        
+        sdk_version = "Unknown"
+        if sdk is not None:
+            sdk_version = getattr(sdk, "__version__", "1.1.1")
+        self.sdk_version_label = QLabel(f"SDK: v{sdk_version} ")
+        self.sdk_version_label.setStyleSheet("color: #7f8c8d; font-weight: bold; margin-right: 10px;")
+        self.statusbar.addPermanentWidget(self.sdk_version_label)
+
         self.device_info_label = QLabel("")
         self.statusbar.addPermanentWidget(self.device_info_label)
         self.lang_btn = QPushButton("🌐 EN")
@@ -275,6 +287,15 @@ class MainWindow(QMainWindow):
 
         self.shared_data.set_device(device, slave_id, device_info)
         self.shared_data.connection_lost.connect(self._on_connection_lost)
+
+        if has_touch(hw_type):
+            logger.info("Touch-enabled device detected. Automatically enabling touch sensor modules...")
+            try:
+                # Enable all 11 touch modules (0x7FF mask)
+                run_async(lambda: device.revo3_set_all_touch_modules_enabled(slave_id, 0x7FF))
+            except Exception as e:
+                logger.error(f"Failed to enable touch sensors: {e}")
+
         self.shared_data.start()
 
         self.motor_panel_revo3.set_device(device, slave_id, device_info, self.shared_data)
@@ -396,9 +417,13 @@ class MainWindow(QMainWindow):
         self.vision_touch_window.activateWindow()
 
     def _show_about(self):
-        about_text = """
+        sdk_version = "Unknown"
+        if sdk is not None:
+            sdk_version = getattr(sdk, "__version__", "1.1.1")
+        about_text = f"""
 <h2>BC Revo3 SDK GUI</h2>
 <p>Modern control interface for BrainCo Revo3 dexterous hands.</p>
+<p><b>SDK Version:</b> v{sdk_version}</p>
 <h3>Supported Protocols</h3>
 <ul><li>Modbus/RS485</li><li>CANFD</li><li>EtherCAT (Linux)</li></ul>
 <h3>Supported Devices</h3>
@@ -445,18 +470,18 @@ class MainWindow(QMainWindow):
 
 class Revo3TouchPanel(Revo3TouchSubPanel):
     def set_device(self, device, slave_id, device_info=None, shared_data=None):
-        self.device = device
-        self.slave_id = slave_id
+        super().set_device(device, slave_id, device_info, shared_data)
         self.device_info = device_info
         self.shared_data = shared_data
         if shared_data:
             shared_data.touch_updated.connect(self.update_data)
 
     def clear_device(self):
+        super().clear_device()
         if getattr(self, "shared_data", None):
             try:
                 self.shared_data.touch_updated.disconnect(self.update_data)
             except RuntimeError:
                 pass
-        self.device = None
+        self.device_info = None
         self.shared_data = None

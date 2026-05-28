@@ -319,6 +319,7 @@ def run_async(coro_fn):
         async def _wrapper():
             return await coro_fn()
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(_wrapper())
         except Exception as e:
@@ -326,6 +327,7 @@ def run_async(coro_fn):
             print(f"[GUI Async Task] Warning/Error: {str(e)}")
         finally:
             loop.close()
+            asyncio.set_event_loop(None)
             
     t = threading.Thread(target=_run_in_thread)
     t.daemon = True
@@ -1260,17 +1262,18 @@ class Revo3MotorControlPanel(QWidget):
 
     def _on_read_diagnostics(self):
         async def fetch_diag():
-            if not self.device:
+            device = self.device
+            if not device:
                 return
             try:
-                hw = await self.device.revo3_get_hardware_version(self.slave_id)
-                online = await self.device.revo3_get_motor_online_status(self.slave_id)
-                temps = await self.device.revo3_get_all_motor_temperatures(self.slave_id)
-                errors = await self.device.revo3_get_all_motor_errors(self.slave_id)
+                hw = await device.revo3_get_hardware_version(self.slave_id)
+                online = await device.revo3_get_motor_online_status(self.slave_id)
+                temps = await device.revo3_get_all_motor_temperatures(self.slave_id)
+                errors = await device.revo3_get_all_motor_errors(self.slave_id)
                 self.sig_diag_fetched.emit(True, hw, online, temps, errors)
                 
                 async def _get(func_name, fallback):
-                    func = getattr(self.device, func_name, None)
+                    func = getattr(device, func_name, None)
                     if not callable(func):
                         return fallback
                     try:

@@ -114,7 +114,10 @@ class SharedDataManager(QObject):
         if not sdk:
             return False
         try:
-            if touch_freq > 0:
+            from common_imports import has_touch
+            is_touch_device = has_touch(self.hw_type)
+
+            if is_touch_device or touch_freq > 0:
                 self.data_collector = sdk.DataCollector.new_revo3_full(
                     self._device,
                     self.revo3_motor_buffer,

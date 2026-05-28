@@ -19,6 +19,11 @@ from .touch_common import (
 )
 from .i18n import tr
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from common_imports import sdk
+
 
 # Summary: 42 values (mapped 4100~4141)
 REVO3_SUMMARY_NAMES = [
@@ -188,6 +193,8 @@ class Revo3TouchSubPanel(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.device = None
+        self.slave_id = 1
         self.detail_charts = [None] * 11
         self.sensor_cards = []
         self.sensor_bars = []
@@ -198,6 +205,35 @@ class Revo3TouchSubPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+
+        # --- Data Type Control Bar ---
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QComboBox, QPushButton
+        ctrl_layout = QHBoxLayout()
+        ctrl_layout.setContentsMargins(8, 4, 8, 4)
+        ctrl_layout.setSpacing(8)
+
+        self.type_label = QLabel("Touch Data Type:")
+        ctrl_layout.addWidget(self.type_label)
+
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(["Pressure Array (点阵)", "Force Summary (合力)"])
+        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
+        self.type_combo.setEnabled(False)
+        ctrl_layout.addWidget(self.type_combo)
+
+        self.read_btn = QPushButton("Read")
+        self.read_btn.clicked.connect(self._read_data_type)
+        self.read_btn.setEnabled(False)
+        ctrl_layout.addWidget(self.read_btn)
+
+        # Touch zero drift calibration button
+        self.zero_calibrate_btn = QPushButton("Zero Calibration")
+        self.zero_calibrate_btn.clicked.connect(self._zero_calibrate)
+        self.zero_calibrate_btn.setEnabled(False)
+        ctrl_layout.addWidget(self.zero_calibrate_btn)
+
+        ctrl_layout.addStretch()
+        layout.addLayout(ctrl_layout)
 
         self.tabs = QTabWidget()
 
@@ -263,6 +299,7 @@ class Revo3TouchSubPanel(QWidget):
                 self.tabs.addTab(finger_widget, f"{icon} {group_name}")
 
         layout.addWidget(self.tabs, 1)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
     def update_data(self, revo3_data):
         """Process Revo3 Touch data.
@@ -310,3 +347,85 @@ class Revo3TouchSubPanel(QWidget):
         
         for i, (tr_key, icon) in enumerate(revo3_finger_groups):
             self.tabs.setTabText(i + 1, f"{icon} {tr(tr_key)}")
+
+        # Update control bar texts dynamically (supporting translation dynamically)
+        self.type_label.setText(tr("touch_data_type") if tr("touch_data_type") != "touch_data_type" else "Touch Data Type:")
+        self.read_btn.setText(tr("btn_read") if tr("btn_read") != "btn_read" else "Read")
+        self.zero_calibrate_btn.setText(
+            tr("btn_touch_zero_calibrate")
+            if tr("btn_touch_zero_calibrate") != "btn_touch_zero_calibrate"
+            else "Zero Calibration"
+        )
+
+    def _on_tab_changed(self, index):
+        if not self.device:
+            return
+        # index: 0 = Summary (Force Summary = 1), >0 = Finger detail (Pressure Array = 0)
+        target_type = 1 if index == 0 else 0
+        if self.type_combo.currentIndex() != target_type:
+            mode_str = "Force Summary" if target_type == 1 else "Pressure Array"
+            tab_name = self.tabs.tabText(index)
+            logger.info(
+                f"Tab changed to {index} ({tab_name}). "
+                f"Automatically switching touch data type to {target_type} ({mode_str})"
+            )
+            self.type_combo.setCurrentIndex(target_type)
+
+    def _on_type_changed(self, index):
+        if not self.device:
+            return
+        # index: 0 = Pressure Array (点阵), 1 = Force Summary (合力)
+        val = int(index)
+        mode_str = "Force Summary" if val == 1 else "Pressure Array"
+        logger.info(f"Setting touch data type to {val} ({mode_str})")
+        try:
+            from common_imports import sdk
+            if sdk is not None and hasattr(sdk, "TouchDataMode"):
+                mode = sdk.TouchDataMode(val)
+            else:
+                mode = val
+            run_async(lambda: self.device.revo3_set_touch_data_type(self.slave_id, mode))
+        except Exception as e:
+            logger.error(f"Failed to set touch data type: {e}")
+
+    def _read_data_type(self):
+        if not self.device:
+            return
+        async def fetch():
+            try:
+                val = await self.device.revo3_get_touch_data_type(self.slave_id)
+                val_int = int(val)
+                mode_str = "Force Summary" if val_int == 1 else "Pressure Array"
+                logger.info(f"Fetched touch data type: {val_int} ({mode_str})")
+                # block signals temporarily to avoid triggering currentIndexChanged
+                self.type_combo.blockSignals(True)
+                self.type_combo.setCurrentIndex(1 if val_int == 1 else 0)
+                self.type_combo.blockSignals(False)
+            except Exception as e:
+                logger.error(f"Failed to read touch data type: {e}")
+        run_async(fetch)
+
+    def _zero_calibrate(self):
+        if not self.device:
+            return
+        logger.info("Calibrating touch sensor zero drift...")
+        try:
+            run_async(lambda: self.device.revo3_calibrate_touch_zero(self.slave_id))
+        except Exception as e:
+            logger.error(f"Failed to calibrate touch zero drift: {e}")
+
+    def set_device(self, device, slave_id, device_info=None, shared_data=None):
+        self.device = device
+        self.slave_id = slave_id
+        # Enable controls
+        self.type_combo.setEnabled(True)
+        self.read_btn.setEnabled(True)
+        self.zero_calibrate_btn.setEnabled(True)
+        # Read current data type asynchronously
+        self._read_data_type()
+
+    def clear_device(self):
+        self.device = None
+        self.type_combo.setEnabled(False)
+        self.read_btn.setEnabled(False)
+        self.zero_calibrate_btn.setEnabled(False)

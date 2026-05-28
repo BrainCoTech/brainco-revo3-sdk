@@ -26,14 +26,14 @@ from PySide6.QtWidgets import (
     QFileDialog, QTextEdit, QProgressBar, QFrame,
     QSizePolicy, QGridLayout
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 
 from .i18n import tr
 from .styles import COLORS
 
 # Add parent directory to path for SDK import
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk
+from common_imports import sdk, run_async
 
 if TYPE_CHECKING:
     from .shared_data import SharedDataManager
@@ -58,22 +58,6 @@ DEFAULT_LOOP_COUNT = 1
 
 def _get_motor_count():
     return REVO3_MOTOR_COUNT
-
-
-def run_async(coro_fn):
-    """Run async coroutine from Qt callbacks (same pattern as motor_control_panel_revo3)."""
-    async def _wrapper():
-        return await coro_fn()
-
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(_wrapper())
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return None
-    finally:
-        loop.close()
 
 
 # =============================================================================
@@ -192,6 +176,10 @@ def exit_teaching_mode(device, slave_id, restore_positions=None):
 class TeachingPanel(QWidget):
     """Teaching mode panel for recording and playing back hand trajectories."""
 
+    sig_playback_progress = Signal(int, str)  # (frame_idx, status_text)
+    sig_playback_log = Signal(str)            # log message
+    sig_playback_state = Signal(str)          # state changes
+
     # States
     STATE_IDLE = "idle"
     STATE_RECORDING = "recording"
@@ -214,10 +202,15 @@ class TeachingPanel(QWidget):
         self._record_start_time = 0.0
 
         # Playback state
-        self._playback_timer: Optional[QTimer] = None
+        self._playback_thread = None
         self._playback_frame_idx = 0
         self._playback_start_time = 0.0
         self._playback_current_loop = 0
+
+        # Connect signals for thread-safe UI updates
+        self.sig_playback_progress.connect(self._update_playback_progress_ui)
+        self.sig_playback_log.connect(self._log)
+        self.sig_playback_state.connect(self._set_state)
 
         self._setup_ui()
         self.update_texts()
@@ -416,6 +409,11 @@ class TeachingPanel(QWidget):
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
+    def _update_playback_progress_ui(self, frame_idx, status_text):
+        """Update progress bar and status label in UI thread."""
+        self.progress_bar.setValue(frame_idx)
+        self.frame_label.setText(status_text)
+
     # =========================================================================
     # Device Management
     # =========================================================================
@@ -479,12 +477,9 @@ class TeachingPanel(QWidget):
 
     def _stop_all(self):
         """Stop any active recording or playback."""
-        if self._record_timer:
+        if hasattr(self, "_record_timer") and self._record_timer:
             self._record_timer.stop()
             self._record_timer = None
-        if self._playback_timer:
-            self._playback_timer.stop()
-            self._playback_timer = None
 
         if self._state == self.STATE_RECORDING and self.device:
             # Exit teaching mode and restore positions
@@ -584,16 +579,12 @@ class TeachingPanel(QWidget):
             # Show summary
             if self._trajectory and self._trajectory.frame_count > 0:
                 self._log(f"⏹ Recording stopped: {self._trajectory.frame_count} frames, "
-                         f"{self._trajectory.duration:.2f}s")
+                          f"{self._trajectory.duration:.2f}s")
                 self._log(self._trajectory.summary_text())
             else:
                 self._log("⏹ Recording stopped (no frames captured)")
 
         elif self._state == self.STATE_PLAYING:
-            # Stop playback timer
-            if self._playback_timer:
-                self._playback_timer.stop()
-                self._playback_timer = None
             self._log(f"⏹ Playback stopped at frame {self._playback_frame_idx}")
 
         self._set_state(self.STATE_IDLE)
@@ -609,7 +600,6 @@ class TeachingPanel(QWidget):
             return
 
         speed = self.speed_spin.value()
-        self._playback_current_loop = 0
         total_loops = self.loop_spin.value()
 
         self._log(f"▶ Playback: {self._trajectory.frame_count} frames, "
@@ -619,8 +609,11 @@ class TeachingPanel(QWidget):
         # Initialize rigidity before playback
         self._prepare_playback()
 
-        # Start playback
-        self._start_playback_loop()
+        # Start playback thread
+        self._set_state(self.STATE_PLAYING)
+        self.progress_bar.setRange(0, self._trajectory.frame_count)
+        self.progress_bar.setValue(0)
+        self._run_playback_thread()
 
     def _prepare_playback(self):
         """Set up motor control mode for playback."""
@@ -630,97 +623,106 @@ class TeachingPanel(QWidget):
         except Exception:
             pass
 
-    def _start_playback_loop(self):
-        """Start one playback loop."""
-        total_loops = self.loop_spin.value()
-        self._playback_current_loop += 1
+    def _run_playback_thread(self):
+        """Start trajectory playback in a dedicated background thread with a single Event Loop."""
+        import asyncio
+        import threading
 
-        if self._playback_current_loop > total_loops:
-            # All loops done
-            self._log("✅ Playback complete!")
-            self._set_state(self.STATE_IDLE)
-            self.frame_label.setText("")
-            return
-
-        if total_loops > 1:
-            self._log(f"  Loop {self._playback_current_loop}/{total_loops}")
-
-        self._playback_frame_idx = 0
-        self._playback_start_time = time.perf_counter()
-
-        # Progress bar
-        self.progress_bar.setRange(0, self._trajectory.frame_count)
-        self.progress_bar.setValue(0)
-
-        # Use a fast timer (1ms) and skip frames by timestamp
-        self._playback_timer = QTimer()
-        self._playback_timer.timeout.connect(self._on_playback_tick)
-        self._playback_timer.start(1)  # 1ms resolution
-
-        self._set_state(self.STATE_PLAYING)
-
-    def _on_playback_tick(self):
-        """Called by timer to send position frames based on elapsed time."""
-        if not self._trajectory or not self.device:
-            self._on_stop()
-            return
-
-        speed = self.speed_spin.value()
-        elapsed = time.perf_counter() - self._playback_start_time
-
-        # Find the latest frame whose timestamp has passed (skip expired frames)
-        send_idx = -1
-        while self._playback_frame_idx < self._trajectory.frame_count:
-            target_t, _ = self._trajectory.frames[self._playback_frame_idx]
-            adjusted_t = target_t / speed
-            if elapsed < adjusted_t:
-                break
-            send_idx = self._playback_frame_idx
-            self._playback_frame_idx += 1
-
-        # Send only the latest due frame (skip intermediate ones)
-        if send_idx >= 0:
-            _, positions = self._trajectory.frames[send_idx]
-            pos = list(positions)[:21]
-
+        def thread_main():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            speed = self.speed_spin.value()
+            total_loops = self.loop_spin.value()
+            
             try:
-                run_async(lambda: self.device.revo3_set_all_motor_positions(self.slave_id, pos))
+                loop.run_until_complete(self._async_playback_loop(speed, total_loops))
             except Exception as e:
-                self._log(f"⚠ Playback error at frame {send_idx}: {e}")
+                self.sig_playback_log.emit(f"⚠ Playback thread error: {e}")
+            finally:
+                loop.close()
+                asyncio.set_event_loop(None)
+                # Thread finished: restore state to IDLE
+                self.sig_playback_state.emit(self.STATE_IDLE)
+                self.sig_playback_progress.emit(0, "")
 
-            # Update progress
-            self.progress_bar.setValue(self._playback_frame_idx)
-            progress_pct = self._playback_frame_idx / self._trajectory.frame_count * 100
-            skipped = self._playback_frame_idx - send_idx - 1
-            skip_str = f" (skipped {skipped})" if skipped > 0 else ""
-            self.frame_label.setText(
-                f"Frame {self._playback_frame_idx}/{self._trajectory.frame_count} "
-                f"({progress_pct:.0f}%) | {elapsed:.1f}s{skip_str}"
-            )
+        self._playback_thread = threading.Thread(target=thread_main)
+        self._playback_thread.daemon = True
+        self._playback_thread.start()
 
-        # Check if playback is done
-        if self._playback_frame_idx >= self._trajectory.frame_count:
-            if self._playback_timer:
-                self._playback_timer.stop()
-                self._playback_timer = None
+    async def _async_playback_loop(self, speed, total_loops):
+        """The main playback async loop running in the background thread."""
+        import asyncio
+        import time
 
-            actual_dur = time.perf_counter() - self._playback_start_time
-            target_dur = self._trajectory.duration / speed
-            self._log(f"  Loop done: {self._trajectory.frame_count} frames in {actual_dur:.2f}s "
-                     f"(target: {target_dur:.2f}s)")
+        device = self.device
+        if not device or not self._trajectory:
+            return
 
-            # Return to initial position
-            if self._initial_positions:
-                try:
-                    run_async(lambda: self.device.revo3_set_all_motor_positions(
-                        self.slave_id, self._initial_positions
-                    ))
-                except Exception:
-                    pass
-            time.sleep(0.3)
+        slave_id = self.slave_id
+        frames = self._trajectory.frames
+        frame_count = len(frames)
+        self._playback_current_loop = 0
 
-            # Start next loop (or finish)
-            self._start_playback_loop()
+        while self._playback_current_loop < total_loops and self._state == self.STATE_PLAYING:
+            self._playback_current_loop += 1
+            if total_loops > 1:
+                self.sig_playback_log.emit(f"  Loop {self._playback_current_loop}/{total_loops}")
+
+            self._playback_frame_idx = 0
+            self._playback_start_time = time.perf_counter()
+
+            while self._playback_frame_idx < frame_count and self._state == self.STATE_PLAYING:
+                elapsed = time.perf_counter() - self._playback_start_time
+
+                # Find the latest frame whose timestamp has passed (skip expired frames)
+                send_idx = -1
+                while self._playback_frame_idx < frame_count:
+                    target_t, _ = frames[self._playback_frame_idx]
+                    adjusted_t = target_t / speed
+                    if elapsed < adjusted_t:
+                        break
+                    send_idx = self._playback_frame_idx
+                    self._playback_frame_idx += 1
+
+                # Send only the latest due frame (skip intermediate ones)
+                if send_idx >= 0:
+                    _, positions = frames[send_idx]
+                    pos = list(positions)[:21]
+                    try:
+                        # Direct async call on the thread's event loop (no loop recreations!)
+                        await device.revo3_set_all_motor_positions(slave_id, pos)
+                    except Exception as e:
+                        self.sig_playback_log.emit(f"⚠ Playback error at frame {send_idx}: {e}")
+
+                    # Update UI progress safely via Qt Signal
+                    progress_pct = self._playback_frame_idx / frame_count * 100
+                    skipped = self._playback_frame_idx - send_idx - 1
+                    skip_str = f" (skipped {skipped})" if skipped > 0 else ""
+                    status_text = f"Frame {self._playback_frame_idx}/{frame_count} ({progress_pct:.0f}%) | {elapsed:.1f}s{skip_str}"
+                    self.sig_playback_progress.emit(self._playback_frame_idx, status_text)
+
+                # Small sleep to yield control and keep CPU usage low
+                await asyncio.sleep(0.001)
+
+            # End of one loop
+            if self._state == self.STATE_PLAYING:
+                actual_dur = time.perf_counter() - self._playback_start_time
+                target_dur = self._trajectory.duration / speed
+                self.sig_playback_log.emit(
+                    f"  Loop done: {frame_count} frames in {actual_dur:.2f}s (target: {target_dur:.2f}s)"
+                )
+
+                # Return to initial positions before next loop or stopping
+                if self._initial_positions:
+                    try:
+                        await device.revo3_set_all_motor_positions(slave_id, self._initial_positions)
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.3)
+
+        if self._state == self.STATE_PLAYING:
+            self.sig_playback_log.emit("✅ Playback complete!")
 
     # =========================================================================
     # File Operations

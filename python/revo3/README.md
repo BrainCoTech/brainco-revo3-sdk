@@ -28,7 +28,7 @@ Revo3 (Revo3) 21-DoF Dexterous Hand — Motor Control & Tactile Sensor API
   - [Summary Data](#summary-data)
   - [Module Data](#module-data)
   - [All Touch Data](#all-touch-data)
-  - [Reset Pressure](#reset-pressure)
+  - [Calibrate Touch Zero](#calibrate-touch-zero)
 - [DataCollector (High-Frequency)](#datacollector-high-frequency)
   - [Revo3 Basic (Motor Only)](#v3-basic-motor-only)
   - [Revo3 Full (Motor + Touch)](#v3-full-motor--touch)
@@ -431,52 +431,32 @@ await ctx.revo3_replay_hand(slave_id, trajectory=trajectory, dt=0.02, kp=3.0, kd
 
 ### Overview
 
-Revo3 has 11 touch modules (388 total sampling points in V1.4):
+Revo3 has 11 touch modules (416 total sampling points:
 
 | Module ID | Name       | Points | Description        |
 |-----------|------------|--------|--------------------|
 | 0         | Palm       | 36     | Palm pad           |
-| 1         | ThumbTip   | 22     | Thumb fingertip    |
-| 2         | ThumbPad   | 51     | Thumb pad          |
+| 1         | ThumbTip   | 31     | Thumb fingertip    |
+| 2         | ThumbPad   | 57     | Thumb pad          |
 | 3         | IndexTip   | 21     | Index fingertip    |
-| 4         | IndexPad   | 49     | Index pad          |
+| 4         | IndexPad   | 52     | Index pad          |
 | 5         | MiddleTip  | 21     | Middle fingertip   |
-| 6         | MiddlePad  | 49     | Middle pad         |
+| 6         | MiddlePad  | 52     | Middle pad         |
 | 7         | RingTip    | 21     | Ring fingertip     |
-| 8         | RingPad    | 49     | Ring pad           |
+| 8         | RingPad    | 52     | Ring pad           |
 | 9         | PinkyTip   | 21     | Pinky fingertip    |
-| 10        | PinkyPad   | 49     | Pinky pad          |
+| 10        | PinkyPad   | 52     | Pinky pad          |
 
-Summary register provides 26 aggregated values:
+Summary register provides 42 aggregated values (indices 0~41) mapping to the complete 42 zones of the Revo3 hand (Palm, Thumb, and 4 non-thumb fingers' tip/middle/lower pad sub-segments):
 
-| Index | Pad                 |
-|-------|---------------------|
-| 0     | Palm                |
-| 1     | Thumb Tip 1         |
-| 2     | Thumb Tip 2         |
-| 3     | Thumb Tip 3         |
-| 4     | Thumb Upper Pad     |
-| 5     | Thumb Lower Pad     |
-| 6     | Index Tip 1         |
-| 7     | Index Tip 2         |
-| 8     | Index Tip 3         |
-| 9     | Index Upper Pad     |
-| 10    | Index Lower Pad     |
-| 11    | Middle Tip 1        |
-| 12    | Middle Tip 2        |
-| 13    | Middle Tip 3        |
-| 14    | Middle Upper Pad    |
-| 15    | Middle Lower Pad    |
-| 16    | Ring Tip 1          |
-| 17    | Ring Tip 2          |
-| 18    | Ring Tip 3          |
-| 19    | Ring Upper Pad      |
-| 20    | Ring Lower Pad      |
-| 21    | Pinky Tip 1         |
-| 22    | Pinky Tip 2         |
-| 23    | Pinky Tip 3         |
-| 24    | Pinky Upper Pad     |
-| 25    | Pinky Lower Pad     |
+| Finger | Zones Range | Segment Description |
+|--------|:-----------:|---------------------|
+| **Palm** | `0` | Palm Aggregate Force |
+| **Thumb** | `1 ~ 9` | Tip / Upper Pad / Lower Pad subdivisions |
+| **Index** | `10 ~ 17` | Tip / Upper Pad / Lower Pad subdivisions |
+| **Middle**| `18 ~ 25` | Tip / Upper Pad / Lower Pad subdivisions |
+| **Ring** | `26 ~ 33` | Tip / Upper Pad / Lower Pad subdivisions |
+| **Pinky** | `34 ~ 41` | Tip / Upper Pad / Lower Pad subdivisions |
 
 ### Module Enable/Disable
 
@@ -504,7 +484,7 @@ is_enabled = await ctx.revo3_get_touch_module_enabled(slave_id, module_id)
 ```python
 # Set data output type
 await ctx.revo3_set_touch_data_type(slave_id, data_type)
-# data_type: 0 = AD Raw, 1 = Calibrated
+# data_type: 0 = Pressure Array, 1 = Force Summary
 
 # Read current data type
 data_type = await ctx.revo3_get_touch_data_type(slave_id)
@@ -514,10 +494,10 @@ data_type = await ctx.revo3_get_touch_data_type(slave_id)
 ### Summary Data
 
 ```python
-# Read summary force values (26 aggregated pad values)
+# Read summary force values (42 aggregated pad values)
 summary = await ctx.revo3_get_touch_summary(slave_id)
-# → List[int] (26 values, in mN)
-# Layout: [palm, thumb_tip, thumb_upad, thumb_lpad, index_tip, ...]
+# → List[int] (42 values, in mN)
+# Layout: [palm, thumb, index, middle, ring, pinky zones]
 ```
 
 ### Module Data
@@ -539,20 +519,20 @@ print(f"Palm: {len(palm_data)} points, total={sum(palm_data)}")
 # Read all data at once (summary + all 11 module arrays)
 touch_data = await ctx.revo3_get_all_touch_data(slave_id)
 # Revo3TouchData fields:
-#   .summary  → List[int] (26 values)
+#   .summary  → List[int] (42 values)
 #   .modules  → List[List[int]] (11 modules, each with variable points)
 
 # Revo3TouchData is also returned by Revo3TouchDataBuffer (DataCollector)
 ```
 
-### Reset Pressure
+### Calibrate Touch Zero
 
 ```python
-# Clear single module pressure data
-await ctx.revo3_reset_touch_pressure(slave_id, module_id)  # module_id: 0~10
+# Calibrate zero drift for a single module
+await ctx.revo3_calibrate_touch_zero_single(slave_id, module_id)  # module_id: 0~10
 
-# Clear all modules
-await ctx.revo3_reset_all_touch_pressure(slave_id)
+# Calibrate zero drift for all modules
+await ctx.revo3_calibrate_touch_zero(slave_id)
 ```
 
 ---
@@ -611,7 +591,7 @@ collector.start()
 # Read touch data
 touch_list = touch_buffer.pop_all()  # → List[Revo3TouchData]
 for td in touch_list:
-    print(f"Summary: {td.summary}")   # 26 values
+    print(f"Summary: {td.summary}")   # 42 values
     print(f"Modules: {len(td.modules)}")  # 11 modules
 ```
 
@@ -639,7 +619,7 @@ collector.update_touch_frequency(0)     # Disable touch collection
 - `.currents` → `List[float]` (21 values, mA)
 
 **Revo3TouchData** fields:
-- `.summary` → `List[int]` (26 values, mN)
+- `.summary` → `List[int]` (42 values, mN)
 - `.modules` → `List[List[int]]` (11 modules)
 
 ---
@@ -686,18 +666,18 @@ Pinky     M03(DIP), M02(PIP), M01(MCP), M00(Abd)   4
 Module  Name        Pts    Location
 ──────  ──────────  ─────  ──────────────
  0      Palm         36    Palm center
- 1      ThumbTip     22    Thumb fingertip
- 2      ThumbPad     51    Thumb pad
+ 1      ThumbTip     31    Thumb fingertip
+ 2      ThumbPad     57    Thumb pad
  3      IndexTip     21    Index fingertip
- 4      IndexPad     49    Index pad
+ 4      IndexPad     52    Index pad
  5      MiddleTip    21    Middle fingertip
- 6      MiddlePad    49    Middle pad
+ 6      MiddlePad    52    Middle pad
  7      RingTip      21    Ring fingertip
- 8      RingPad      49    Ring pad
+ 8      RingPad      52    Ring pad
  9      PinkyTip     21    Pinky fingertip
-10      PinkyPad     49    Pinky pad
+10      PinkyPad     52    Pinky pad
                     ─────
-            Total:   388   sampling points
+            Total:   416   sampling points
 ```
 
 ---
@@ -770,17 +750,14 @@ python gui/main.py --revo3-modbus
 
 ---
 
-## Removed in V1.4
+## Deprecated & Removed Features
 
 | Feature | Notes |
 |---------|-------|
 | LED Switch (register 104) | `set_led_enabled()` removed |
-| RS485 4Mbps baudrate | Use 2Mbps or 5Mbps |
-| Admittance control (mode 3) | Use Impedance (4) or Damping (5) |
-| PositionTime control (mode 6) | Use `revo3_move_hand()` (host-side quintic) |
-| MaxAcceleration (register 115) | `revo3_set_max_acceleration()` raises error |
+| MaxAcceleration (register 115) | `revo3_set_max_acceleration()` removed |
 
-## Motor Status Bitmask (V1.4)
+## Motor Status Bitmask
 
 Each motor status/error is a `u16` bitmask:
 

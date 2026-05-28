@@ -11,24 +11,11 @@ from .styles import COLORS
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk
+from common_imports import sdk, run_async
 
 from .motor_control_panel_revo3 import (
     get_revo3_finger_names, get_revo3_finger_motors, MOTOR_JOINT_LABELS, get_motor_position_range
 )
-
-def run_async(coro_fn):
-    async def _wrapper():
-        return await coro_fn()
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(_wrapper())
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return None
-    finally:
-        loop.close()
 
 # Parameter Type ID
 MODE_JOINT_PROTECT = 1
@@ -600,12 +587,13 @@ class Revo3MotorConfigPanel(QWidget):
                 self.slave_id, motor_id, int(sister_val), int(val)))
 
     def _on_refresh_data(self):
-        if not self.device:
+        device = self.device
+        if not device:
             return
 
         # Refresh global values unconditionally
         globals_data = run_async(lambda: asyncio.gather(
-            self.device.revo3_get_global_protect_current(self.slave_id),
+            device.revo3_get_global_protect_current(self.slave_id),
             # Add read values for calibration and max current once available in rust bindings.
             # Currently API does not provide getter for those. We'll refresh protect current:
             return_exceptions=True
@@ -615,14 +603,14 @@ class Revo3MotorConfigPanel(QWidget):
                 self.global_protect_current_spin.setValue(globals_data[0])
 
         if self.current_mode == MODE_JOINT_PROTECT:
-            vals = run_async(lambda: self.device.revo3_get_all_joint_protect_currents(self.slave_id))
+            vals = run_async(lambda: device.revo3_get_all_joint_protect_currents(self.slave_id))
             if vals and len(vals) >= 21:
                 for i in range(21):
                     if i in self.all_sliders:
                         self.all_sliders[i].set_value_silently(vals[i])
 
         elif self.current_mode == MODE_POS_LIMITS:
-            res = run_async(lambda: self.device.revo3_get_all_joint_position_limits(self.slave_id))
+            res = run_async(lambda: device.revo3_get_all_joint_position_limits(self.slave_id))
             if res and len(res) == 2 and len(res[0]) >= 21:
                 min_pos, max_pos = res
                 for i in range(21):
@@ -630,7 +618,7 @@ class Revo3MotorConfigPanel(QWidget):
                         self.all_sliders[i].set_value_silently(max_pos[i], min_pos[i])
 
         elif self.current_mode == MODE_SPEED_LIMITS:
-            res = run_async(lambda: self.device.revo3_get_all_joint_speed_limits(self.slave_id))
+            res = run_async(lambda: device.revo3_get_all_joint_speed_limits(self.slave_id))
             if res and len(res) == 2 and len(res[0]) >= 21:
                 min_spd, max_spd = res
                 for i in range(21):

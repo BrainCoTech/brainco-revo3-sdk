@@ -153,3 +153,51 @@ def get_hw_type_name(hw_type) -> str:
     }
     value = hw_type if isinstance(hw_type, int) else -1
     return value_names.get(value, str(hw_type))
+
+
+def run_async(coro_or_fn):
+    """Run an async coroutine or coroutine function in a new thread-local event loop.
+
+    [PERFORMANCE REMARK & USAGE WARNING]
+    - This helper is specifically designed for LOW-FREQUENCY UI control events
+      (e.g., human-triggered button clicks, tab switches, configuration parameter changes).
+    - Under low-frequency scenarios, the overhead of creating a new event loop is completely negligible.
+    - DO NOT use this helper for HIGH-FREQUENCY polling/streaming loops (e.g. 50Hz+).
+      Doing so will cause massive CPU/GC overhead due to loop creation/destruction.
+      For high-frequency telemetry, read directly from Rust buffers (see SharedDataManager),
+      or use a persistent background thread with a single, long-lived event loop.
+
+    Supports both:
+    1. A coroutine function/lambda (Recommended): `run_async(lambda: dev.some_async_func())`
+       By using lambda, evaluation is deferred until the event loop is fully bound to the thread-local
+       context, preventing "no running event loop" crashes in PyO3/Rust async calls.
+    2. A direct coroutine object: `run_async(dev.some_async_func())`
+    """
+    import asyncio
+    import traceback
+
+    # 1. Create a new event loop and set it to current thread context.
+    # This is critical for PyO3/Tokio runtime to bind and find the Python event loop on the current thread.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # 2. Wrap if callable (lazy evaluation), otherwise execute directly
+    async def _wrapper():
+        if callable(coro_or_fn):
+            return await coro_or_fn()
+        else:
+            return await coro_or_fn
+
+    try:
+        return loop.run_until_complete(_wrapper())
+    except Exception as e:
+        logger.error(f"Error in run_async execution: {e}")
+        traceback.print_exc()
+        return None
+    finally:
+        try:
+            # 3. Clean up the loop and thread-local references to prevent memory leaks and closed loop exceptions
+            loop.close()
+        except Exception:
+            pass
+        asyncio.set_event_loop(None)

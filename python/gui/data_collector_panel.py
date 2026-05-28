@@ -84,7 +84,7 @@ class CollectorWorker(QObject):
                 for prefix in ("status", "pos", "vel", "cur", "err"):
                     headers.extend(f"{prefix}_{i}" for i in range(REVO3_MOTOR_COUNT))
             if self.collect_touch:
-                headers.extend(f"touch_summary_{i}" for i in range(16))
+                headers.extend(f"touch_summary_{i}" for i in range(42))
             f.write(",".join(headers) + "\n")
 
             for idx, motor in enumerate(motor_data):
@@ -105,7 +105,7 @@ class CollectorWorker(QObject):
                         summary = list(getattr(touch_data[t_idx], "summary", []) or [])
                     else:
                         summary = []
-                    row.extend(str(summary[i] if i < len(summary) else 0) for i in range(16))
+                    row.extend(str(summary[i] if i < len(summary) else 0) for i in range(42))
                 f.write(",".join(row) + "\n")
         self.log_message.emit(f"CSV write completed: {len(motor_data)} rows")
 

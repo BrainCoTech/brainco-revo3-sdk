@@ -77,15 +77,23 @@ class MockRevo3MotorStatusData:
 
 
 class MockRevo3TouchData:
-    def __init__(self, tick: float = 0.0):
-        self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(16)]
+    def __init__(self, tick: float = 0.0, data_type: int = 0):
         module_sizes = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
-        self.modules = []
-        for module_index, size in enumerate(module_sizes):
-            self.modules.append([
-                int(900 + 700 * abs(math.sin(tick * 0.8 + module_index * 0.4 + i * 0.17)))
-                for i in range(size)
-            ])
+        
+        TouchDataMode = _sdk_attr("TouchDataMode", None)
+        force_summary_val = int(TouchDataMode.ForceSummary) if TouchDataMode is not None else 1
+        
+        if int(data_type) == force_summary_val:
+            self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(42)]
+            self.modules = [[0] * size for size in module_sizes]
+        else:
+            self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(42)]
+            self.modules = []
+            for module_index, size in enumerate(module_sizes):
+                self.modules.append([
+                    int(900 + 700 * abs(math.sin(tick * 0.8 + module_index * 0.4 + i * 0.17)))
+                    for i in range(size)
+                ])
 
 
 class MockDeviceContext:
@@ -108,6 +116,7 @@ class MockDeviceContext:
             "teaching_mode": False,
             "software_e_stop": False,
             "use_broadcast_id": False,
+            "touch_data_type": 0,
         }
         self.global_protect_current = 1500
         self.joint_protect_currents = [1200] * REVO3_MOTOR_COUNT
@@ -291,9 +300,20 @@ class MockDeviceContext:
         self.flags["use_broadcast_id"] = bool(enabled)
 
     async def revo3_get_all_touch_data(self, _slave_id):
-        return MockRevo3TouchData(time.time() - self.start_time)
+        data_type = self.flags.get("touch_data_type", 0)
+        return MockRevo3TouchData(time.time() - self.start_time, data_type=data_type)
 
-    async def revo3_reset_all_touch_pressure(self, _slave_id):
+    async def revo3_get_touch_data_type(self, _slave_id):
+        return self.flags.get("touch_data_type", 0)
+
+    async def revo3_set_touch_data_type(self, _slave_id, data_type):
+        self.flags["touch_data_type"] = int(data_type)
+        return True
+
+    async def revo3_calibrate_touch_zero(self, _slave_id):
+        return True
+
+    async def revo3_calibrate_touch_zero_single(self, _slave_id, _module_id):
         return True
 
     async def revo3_reboot(self, _slave_id):

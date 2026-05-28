@@ -28,20 +28,10 @@ from PySide6.QtWidgets import (
 from .i18n import tr
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk
+from common_imports import sdk, run_async
 
 if TYPE_CHECKING:
     from .shared_data import SharedDataManager
-
-
-def run_async(coro):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
 
 
 class SystemConfigPanel(QWidget):
@@ -443,7 +433,7 @@ class SystemConfigPanel(QWidget):
             self.software_estop_check.setChecked(bool(self._call_bool("revo3_get_software_e_stop", False)))
             self.broadcast_id_check.setChecked(bool(self._call_bool("revo3_get_use_broadcast_id", False)))
             if hasattr(self.device, "revo3_get_global_protect_current"):
-                current = run_async(self.device.revo3_get_global_protect_current(self.slave_id))
+                current = run_async(lambda: self.device.revo3_get_global_protect_current(self.slave_id))
                 if current is not None:
                     self.global_current_spin.setValue(int(float(current)))
             self._log("Revo3 runtime settings loaded")
@@ -467,11 +457,14 @@ class SystemConfigPanel(QWidget):
     def _load_revo3_status(self):
         if not self.device:
             return
-        run_async(self._async_load_revo3_status())
+        run_async(self._async_load_revo3_status)
 
     async def _async_load_revo3_status(self):
+        device = self.device
+        if not device:
+            return
         try:
-            status = await self.device.revo3_get_system_status(self.slave_id)
+            status = await device.revo3_get_system_status(self.slave_id)
             self.sys_state_label.setText(str(getattr(status, "system_state", "--")))
             self.sys_error_label.setText(str(getattr(status, "error_code", "--")))
             self.sys_current_label.setText(str(getattr(status, "current_ma", "--")))
@@ -488,7 +481,7 @@ class SystemConfigPanel(QWidget):
             ("revo3_get_all_motor_errors", self.motor_error_labels),
         ]:
             try:
-                values = await getattr(self.device, method_name)(self.slave_id)
+                values = await getattr(device, method_name)(self.slave_id)
                 for i, value in enumerate(list(values)[:21]):
                     labels[i].setText(str(value))
             except Exception as e:
@@ -504,7 +497,7 @@ class SystemConfigPanel(QWidget):
         if not self.device:
             return
         if hasattr(self.device, "revo3_reboot"):
-            run_async(self.device.revo3_reboot(self.slave_id))
+            run_async(lambda: self.device.revo3_reboot(self.slave_id))
         self._log("Reboot requested")
 
     def _factory_reset(self):
@@ -519,14 +512,14 @@ class SystemConfigPanel(QWidget):
         )
         if reply == QMessageBox.Yes:
             if hasattr(self.device, "revo3_reset_finger_defaults"):
-                run_async(self.device.revo3_reset_finger_defaults(self.slave_id))
+                run_async(lambda: self.device.revo3_reset_finger_defaults(self.slave_id))
             self._log("Factory defaults requested")
 
     def _manual_calibrate(self):
         if not self.device:
             return
         if hasattr(self.device, "revo3_manual_calibration"):
-            run_async(self.device.revo3_manual_calibration(self.slave_id))
+            run_async(lambda: self.device.revo3_manual_calibration(self.slave_id))
         self._log("Manual calibration requested")
 
     def _on_auto_calib_changed(self, state):
@@ -548,7 +541,7 @@ class SystemConfigPanel(QWidget):
         if self._loading_settings or not self.device or not hasattr(self.device, method_name):
             return
         try:
-            run_async(getattr(self.device, method_name)(self.slave_id, enabled))
+            run_async(lambda: getattr(self.device, method_name)(self.slave_id, enabled))
             self._log(f"{label}: {enabled}")
         except Exception as e:
             self._log(f"Failed to set {label}: {e}")
@@ -558,7 +551,7 @@ class SystemConfigPanel(QWidget):
             return
         value = self.global_current_spin.value()
         try:
-            run_async(self.device.revo3_set_global_protect_current(self.slave_id, value))
+            run_async(lambda: self.device.revo3_set_global_protect_current(self.slave_id, value))
             self._log(f"Global protect current set to {value} mA")
         except Exception as e:
             self._log(f"Failed to set global protect current: {e}")
@@ -572,7 +565,7 @@ class SystemConfigPanel(QWidget):
     def _call_bool(self, method_name: str, default: bool):
         if not hasattr(self.device, method_name):
             return default
-        return run_async(getattr(self.device, method_name)(self.slave_id))
+        return run_async(lambda: getattr(self.device, method_name)(self.slave_id))
 
     def _enum_name(self, value):
         if hasattr(value, "name"):

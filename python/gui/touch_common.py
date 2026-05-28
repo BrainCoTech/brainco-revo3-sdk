@@ -17,16 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 from .styles import COLORS
-from common_imports import logger
-
-
-def run_async(coro):
-    """Run async coroutine in a new event loop (for Qt callbacks)"""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+from common_imports import logger, run_async
 
 
 try:
