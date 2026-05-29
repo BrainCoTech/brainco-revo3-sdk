@@ -51,13 +51,13 @@ int main(int argc, char **argv) {
 
   std::printf("Thumb: Move CMC Flex & CMC Abd to 30 deg over 2.0 s...\n");
   float thumb_targets[] = {30.0f, 30.0f, 0.0f, 0.0f, 0.0f};
-  revo3_move_thumb_wait(ctx.handle, ctx.slave_id, thumb_targets, 2.0f, 0.01f);
+  revo3_move_thumb(ctx.handle, ctx.slave_id, thumb_targets, 2.0f, 0.01f);
 
   std::printf("Resetting Index and Thumb back to 0 deg...\n");
   float zero_finger[] = {0.0f, 0.0f, 0.0f, 0.0f};
   float zero_thumb[] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   revo3_move_finger_wait(ctx.handle, ctx.slave_id, 1, zero_finger, 2.0f, 0.01f);
-  revo3_move_thumb_wait(ctx.handle, ctx.slave_id, zero_thumb, 2.0f, 0.01f);
+  revo3_move_thumb(ctx.handle, ctx.slave_id, zero_thumb, 2.0f, 0.01f);
 
   std::printf("Finger with joint-specific gains: F1 -> 45 deg over 2.0 s...\n");
   float finger_targets_gains[] = {0.0f, 45.0f, 45.0f, 0.0f};
@@ -69,11 +69,11 @@ int main(int argc, char **argv) {
   float thumb_targets_gains[] = {10.0f, 10.0f, 30.0f, 30.0f, 0.0f};
   float thumb_kp[] = {5.0f, 5.0f, 3.0f, 2.0f, 2.0f};
   float thumb_kd[] = {0.5f, 0.5f, 0.3f, 0.2f, 0.2f};
-  revo3_move_thumb_with_joint_gains_wait(ctx.handle, ctx.slave_id, thumb_targets_gains, 2.0f, 0.01f, thumb_kp, thumb_kd);
+  revo3_move_thumb_with_joint_gains(ctx.handle, ctx.slave_id, thumb_targets_gains, 2.0f, 0.01f, thumb_kp, thumb_kd);
 
   std::printf("Resetting Index and Thumb back to 0 deg with joint-specific gains...\n");
   revo3_move_finger_with_joint_gains_wait(ctx.handle, ctx.slave_id, 1, zero_finger, 2.0f, 0.01f, finger_kp, finger_kd);
-  revo3_move_thumb_with_joint_gains_wait(ctx.handle, ctx.slave_id, zero_thumb, 2.0f, 0.01f, thumb_kp, thumb_kd);
+  revo3_move_thumb_with_joint_gains(ctx.handle, ctx.slave_id, zero_thumb, 2.0f, 0.01f, thumb_kp, thumb_kd);
 
   revo3_close(ctx);
   return 0;

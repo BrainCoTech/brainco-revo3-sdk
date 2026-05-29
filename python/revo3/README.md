@@ -112,7 +112,6 @@ Trajectory & Teaching APIs:
 | `revo3_move_finger(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints (4 joints, Non-blocking) |
 | `revo3_move_finger_wait(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints and block |
 | `revo3_move_finger_with_gains(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move with custom gains (Non-blocking) |
-| `revo3_move_finger_with_gains_wait(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move and block with custom gains |
 | `revo3_move_thumb(slave_id, targets, T, dt)` | Move thumb joints simultaneously (5 joints, Non-blocking) |
 | `revo3_move_thumb_wait(slave_id, targets, T, dt)` | Move thumb joints and block until completion (Blocking/Await) |
 | `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom gains (Non-blocking) |
