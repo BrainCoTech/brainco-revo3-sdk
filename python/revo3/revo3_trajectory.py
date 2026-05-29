@@ -141,14 +141,14 @@ async def demo_finger_and_thumb_move(client, slave_id):
     # Bend MCP to 30°, IP to 30°, others at 0°
     thumb_targets = [0.0, 30.0, 30.0, 0.0, 0.0]
     logger.info(f"  Moving Thumb to {thumb_targets} over {duration}s...")
-    await client.revo3_move_thumb(slave_id, thumb_targets, duration, dt)
+    await client.revo3_move_thumb_wait(slave_id, thumb_targets, duration, dt)
     await asyncio.sleep(0.2)
 
     # Demo: Move thumb back using joint-specific gains
     thumb_kp = [1.5, 1.5, 4.0, 2.0, 1.0]
     thumb_kd = [0.15, 0.15, 0.4, 0.2, 0.1]
     logger.info(f"  Moving Thumb back to 0° with joint-specific gains: Kp={thumb_kp}, Kd={thumb_kd}...")
-    await client.revo3_move_thumb_with_joint_gains(slave_id, [0.0, 0.0, 0.0, 0.0, 0.0], duration, dt, thumb_kp, thumb_kd)
+    await client.revo3_move_thumb_with_joint_gains_wait(slave_id, [0.0, 0.0, 0.0, 0.0, 0.0], duration, dt, thumb_kp, thumb_kd)
     await asyncio.sleep(0.5)
 
 

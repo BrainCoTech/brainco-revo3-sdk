@@ -221,10 +221,12 @@ Moves joints smoothly over a specified duration with automatic support for **Qui
 | `revo3_move_finger_with_gains(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints with custom gains (Non-blocking) | Custom |
 | `revo3_move_finger_with_gains_wait(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints and block with custom gains | Custom |
 | `revo3_move_finger_with_joint_gains(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints with joint-gains (Non-blocking, array size 4) | Custom |
-| `revo3_move_finger_with_joint_gains_wait(..., finger_id, target_positions, duration, dt, kp, kd)` | Move non-thumb finger joints and block with joint-gains (array size 4) | Custom |
-| `revo3_move_thumb(slave_id, target_positions, duration, dt)` | Move thumb joints simultaneously (5 joints, Blocking/Await) | Kp=1.0, Kd=0.1 |
-| `revo3_move_thumb_with_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with custom gains (Blocking/Await) | Custom |
-| `revo3_move_thumb_with_joint_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with joint-specific gains (5 joints, Blocking/Await) | Custom |
+| `revo3_move_thumb(slave_id, target_positions, duration, dt)` | Move thumb joints simultaneously (5 joints, Non-blocking) | Kp=1.0, Kd=0.1 |
+| `revo3_move_thumb_wait(slave_id, target_positions, duration, dt)` | Move thumb joints and block until completion (Blocking/Await) | Kp=1.0, Kd=0.1 |
+| `revo3_move_thumb_with_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with custom gains (Non-blocking) | Custom |
+| `revo3_move_thumb_with_gains_wait(..., target_positions, duration, dt, kp, kd)` | Move thumb joints and block with custom gains (Blocking/Await) | Custom |
+| `revo3_move_thumb_with_joint_gains(..., target_positions, duration, dt, kp, kd)` | Move thumb joints with joint-specific gains (5 joints, Non-blocking) | Custom |
+| `revo3_move_thumb_with_joint_gains_wait(..., target_positions, duration, dt, kp, kd)` | Move thumb joints and block with joint-specific gains (5 joints, Blocking/Await) | Custom |
 
 > **Note on Hand Array Lengths:** For `move_hand` APIs, `target_positions` must be a list/sequence of physical float angles (in degrees) whose length matches the device's actual motor count (21 for Revo3 hands).
 > 
