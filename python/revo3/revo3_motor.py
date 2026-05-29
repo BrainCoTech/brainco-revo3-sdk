@@ -201,7 +201,7 @@ async def demo_multi_joint(client, slave_id):
 async def demo_mit_control(client, slave_id):
     """MIT impedance control for single joint"""
     logger.info("=== [New] MIT Joint Control ===")
-    logger.info("  τ = Kp*(pos_ref − pos) + Kd*(vel_ref − vel) + τ_ff")
+    logger.info("  τ = Kp*(pos_ref - pos) + Kd*(vel_ref - vel) + τ_ff")
 
     logger.info("  Joint 0: Kp=5.0, Kd=0.5, pos=45°, vel=0, τ_ff=200mA")
     await client.revo3_joint_mit_control(slave_id, 0, 5.0, 0.5, 45.0, 0.0, 200.0)

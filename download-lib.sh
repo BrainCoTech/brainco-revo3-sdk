@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 VERSION_FILE="${SCRIPT_DIR}/VERSION"
 
 # Configuration
-LIB_VERSION="v1.1.4"
+LIB_VERSION="v1.1.5"
 BASE_URL="https://app.brainco.cn/universal/bc-revo3-sdk/libs/${LIB_VERSION}"
 
 # Colorful echo functions
@@ -113,7 +113,7 @@ rm -rf "${SCRIPT_DIR}/__MACOSX"
 rm -rf "${DIST_DIR}/__MACOSX"
 find dist/include \
   -type f \
-  ! -name 'stark-sdk.h' \
+  ! -name 'revo3-sdk.h' \
   ! -path 'dist/include/zlgcan/*' \
   -exec rm -f {} \;
 

@@ -59,6 +59,11 @@
 | Target velocity | `vel_ref` | Desired angular velocity | ±32767 rpm |
 | Feedforward torque | `τ_ff` | Direct force (gravity compensation, etc.) | ±1024 mA |
 
+**Recommended MIT Usage:**
+- Speed control: set `Kp=0`, use `Kd` with target `vel_ref`, and keep `τ_ff=0`.
+- Position control: use `Kp` and `Kd`, set `vel_ref=0`, and keep `τ_ff=0`.
+- Current control: set `Kp=0` and `Kd=0`, then use `τ_ff` as target current.
+
 **Relationship to Control Modes:**
 - Mode 4 (Impedance) ≈ MIT with only Kp active
 - Mode 5 (Damping) ≈ MIT with only Kd active
@@ -100,7 +105,7 @@
 | API | Description | Registers |
 |-----|-------------|-----------|
 | `revo3_finger_control(slave_id, finger_id, mode, params[4])` | Non-thumb finger (4 joints: Abd, MCP, PIP, DIP) | 1500~1505 |
-| `revo3_thumb_control(slave_id, mode, params[5])` | Thumb (5 joints: CMC_flex, CMC_abd, MCP, IP, DIP) | 1510~1515 |
+| `revo3_thumb_control(slave_id, mode, params[5])` | Thumb (5 joints: CMC_rotation, MCP, IP, CMC_abd, CMC_flex) | 1510~1515 |
 | `revo3_finger_mit_control(slave_id, finger_id, params[20])` | Finger MIT (4 joints × 5 params) | 1520~1540 |
 | `revo3_thumb_mit_control(slave_id, params[25])` | Thumb MIT (5 joints × 5 params) | 1550~1574 |
 
@@ -142,8 +147,31 @@ The SDK introduces a dedicated **Servo Control Suite** that features:
 | `revo3_servo_joint_with_gains(..., kp, kd)` | Servos single joint using custom gains. Automatically preempts any active background trajectories. | Interactive compliance tuning. |
 | `revo3_servo_hand(slave_id, positions[21], velocities[21])` | Servos all 21 joints simultaneously using default gains. Automatically preempts active background trajectories. | Full-hand VR glove tracking. |
 | `revo3_servo_hand_with_gains(..., kp, kd)` | Servos all 21 joints simultaneously using custom gains. Automatically preempts active background trajectories. | Dynamic impedance/admittance loops. |
+| `revo3_servo_finger(slave_id, finger_id, pos[4], vel[4])` | Servos non-thumb finger using default gains. Automatically preempts background trajectories. | High-frequency teleoperation of individual fingers. |
+| `revo3_servo_finger_with_gains(..., kp[4], kd[4])` | Servos non-thumb finger using custom gains. Automatically preempts background trajectories. | High-frequency compliant single finger tasks. |
+| `revo3_servo_thumb(slave_id, pos[5], vel[5])` | Servos thumb using default gains (5 joints). Automatically preempts background trajectories. | High-frequency thumb tracking. |
+| `revo3_servo_thumb_with_gains(..., kp[5], kd[5])` | Servos thumb using custom gains. Automatically preempts background trajectories. | Advanced compliant thumb tasks. |
+
+
+### Core Differences: Servo (MIT) Mode vs. Pure Position Control
+
+Understanding the physics and control loops is essential when choosing between raw positional writes and the high-frequency Servo suite.
+
+| Metric | Pure Position Control (Mode 0) | Servo Control (MIT Mode / Mode 4 & 5) |
+|---|---|---|
+| **Underlying Formula** | `Torque = PID(Target_Pos - Actual_Pos)` executed inside motor driver firmware. | `Torque = Kp * (pos_ref - pos_actual) + Kd * (vel_ref - vel_actual) + torque_ff` |
+| **Stiffness Control** | **Rigid/Solid:** Controller gains (PID) are pre-configured in firmware and cannot be dynamically adjusted. | **Compliant/Adjustable:** Positional stiffness `Kp` and damping `Kd` can be dynamically altered on every single packet. |
+| **Obstacle Interaction** | **Rigid Resistance:** Hand outputs maximum current to overpower obstacles, risking motor overheating or crushing fragile items. | **Compliance & Safety:** Lowering `Kp` behaves like an elastic torsion spring. Hands deform gently around obstacles and spring back when released. |
+| **Noise Filtering** | **Vulnerable:** High-frequency noise from sensors (e.g. data gloves) translates directly to harsh motor jitter and current spikes. | **Robust:** Local host-side LPF and Second-Order Mass-Spring-Damper simulation ensure double-continuous trajectories. |
+| **Communication Jitter** | **High:** Under default robust writes, occasional packet drops trigger blocking retries, causing mechanical stutter. | **Zero:** Built on **Zero-Retry, Single-Write** topology. High frequency (e.g. 100Hz+) naturally resolves transient loss. |
+
+#### Guidance for Selecting Control Primitives
+
+1. **Use Pure Position Control** when performing low-frequency, static posture changes in environments completely free of obstacles (e.g. hand calibration, opening hand to maximum limits).
+2. **Use Servo (MIT) Control** for real-time tracking loops, physical compliance, haptic teleoperation, and active force-impedance tasks. By reducing `Kp` to a lower range (e.g., `0.5 ~ 1.5`), you can implement passive compliance that grips complex, delicate geometries without crushing them, providing exceptional safety and mechanical longevity.
 
 ## High-Level Motion Control (Trajectory & Teaching)
+
 
 The SDK provides high-level motion primitives that perform smooth trajectory interpolation and manual guidance (drag-teaching) on the host side. These APIs do not directly map to single hardware registers but internally manage high-frequency control loops using the underlying MIT protocol.
 
@@ -200,7 +228,7 @@ Moves joints smoothly over a specified duration with automatic support for **Qui
 
 > **Note on Hand Array Lengths:** For `move_hand` APIs, `target_positions` must be a list/sequence of physical float angles (in degrees) whose length matches the device's actual motor count (21 for Revo3 hands).
 > 
-> **Note on Finger/Thumb Array Lengths:** For `move_finger` APIs, `target_positions` must be a sequence of exactly 4 floats (Abd, MCP, PIP, DIP). For `move_thumb` APIs, `target_positions` must be a sequence of exactly 5 floats (CMC_flex, CMC_abd, MCP, IP, DIP).
+> **Note on Finger/Thumb Array Lengths:** For `move_finger` APIs, `target_positions` must be a sequence of exactly 4 floats (Abd, MCP, PIP, DIP). For `move_thumb` APIs, `target_positions` must be a sequence of exactly 5 floats (CMC_rotation, MCP, IP, CMC_abd, CMC_flex), matching motor IDs J16~J20.
 > 
 > **Note on Control Period (dt):** The `dt` parameter represents the control cycle period in seconds. Common values are: `0.01` for 100Hz, `0.005` for 200Hz, or `0.002` for 500Hz.
 

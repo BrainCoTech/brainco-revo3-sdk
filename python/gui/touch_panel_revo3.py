@@ -10,7 +10,7 @@ Tabs:
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QGridLayout, QTabWidget
+    QWidget, QVBoxLayout, QGridLayout, QTabWidget, QGroupBox, QCheckBox
 )
 
 from .touch_common import (
@@ -199,6 +199,21 @@ class Revo3TouchSubPanel(QWidget):
         self.sensor_cards = []
         self.sensor_bars = []
         self.sensor_labels = []
+        self.module_checks = []
+        self.module_info = [
+            # (module_id, name_en, name_zh, row, col)
+            (0, "Palm", "手掌", 0, 0),
+            (1, "Thumb Tip", "大拇指尖", 0, 1),
+            (2, "Thumb Pad", "大拇指指腹", 1, 1),
+            (3, "Index Tip", "食指尖", 0, 2),
+            (4, "Index Pad", "食指指腹", 1, 2),
+            (5, "Middle Tip", "中指尖", 0, 3),
+            (6, "Middle Pad", "中指指腹", 1, 3),
+            (7, "Ring Tip", "无名指尖", 0, 4),
+            (8, "Ring Pad", "无名指指腹", 1, 4),
+            (9, "Pinky Tip", "小指尖", 0, 5),
+            (10, "Pinky Pad", "小指指腹", 1, 5)
+        ]
         self._setup_ui()
 
     def _setup_ui(self):
@@ -222,7 +237,7 @@ class Revo3TouchSubPanel(QWidget):
         ctrl_layout.addWidget(self.type_combo)
 
         self.read_btn = QPushButton("Read")
-        self.read_btn.clicked.connect(self._read_data_type)
+        self.read_btn.clicked.connect(self._read_all_settings)
         self.read_btn.setEnabled(False)
         ctrl_layout.addWidget(self.read_btn)
 
@@ -234,6 +249,66 @@ class Revo3TouchSubPanel(QWidget):
 
         ctrl_layout.addStretch()
         layout.addLayout(ctrl_layout)
+
+        # --- Active Touch Modules Group ---
+        modules_group = QGroupBox("Active Touch Modules (激活触觉模块)")
+        modules_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #444444;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding-top: 8px;
+                font-weight: bold;
+                color: #00FF66;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+        """)
+        modules_layout = QGridLayout(modules_group)
+        modules_layout.setContentsMargins(8, 8, 8, 8)
+        modules_layout.setSpacing(8)
+
+        for item in self.module_info:
+            mod_id, name_en, name_zh, row, col = item
+            cb = QCheckBox(f"{name_zh} ({name_en})")
+            cb.setEnabled(False)
+            cb.setStyleSheet("""
+                QCheckBox {
+                    spacing: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    color: #CCCCCC;
+                }
+                QCheckBox::indicator {
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 7px;
+                    border: 2px solid #555555;
+                    background-color: #2D2D2D;
+                }
+                QCheckBox::indicator:checked {
+                    border: 2px solid #00FF66;
+                    background-color: #008833;
+                }
+                QCheckBox::indicator:disabled {
+                    border: 2px solid #333333;
+                    background-color: #1F1F1F;
+                }
+            """)
+            # Connect clicked signal to handler
+            cb.clicked.connect(lambda checked, mid=mod_id: self._on_module_toggle(mid, checked))
+            
+            # Palm module spans 2 rows for layout balance
+            if mod_id == 0:
+                modules_layout.addWidget(cb, 0, 0, 2, 1)
+            else:
+                modules_layout.addWidget(cb, row, col)
+            self.module_checks.append(cb)
+            
+        layout.addWidget(modules_group)
 
         self.tabs = QTabWidget()
 
@@ -414,6 +489,40 @@ class Revo3TouchSubPanel(QWidget):
         except Exception as e:
             logger.error(f"Failed to calibrate touch zero drift: {e}")
 
+    def _read_modules_enabled(self):
+        if not self.device:
+            return
+        async def fetch():
+            try:
+                # Fetch enabled mask
+                bits = await self.device.revo3_get_all_touch_modules_enabled(self.slave_id)
+                logger.info(f"Fetched touch modules enabled bitmask: {bin(bits)}")
+                # Update checkboxes without triggering signals
+                for cb, item in zip(self.module_checks, self.module_info):
+                    mod_id = item[0]
+                    is_on = bool((bits >> mod_id) & 1)
+                    cb.blockSignals(True)
+                    cb.setChecked(is_on)
+                    cb.blockSignals(False)
+            except Exception as e:
+                logger.error(f"Failed to read touch modules enabled status: {e}")
+        run_async(fetch)
+
+    def _on_module_toggle(self, module_id, enabled):
+        if not self.device:
+            return
+        logger.info(f"Toggling touch module {module_id} -> {enabled}")
+        try:
+            run_async(lambda: self.device.revo3_set_touch_module_enabled(self.slave_id, module_id, enabled))
+        except Exception as e:
+            logger.error(f"Failed to set touch module {module_id} enabled: {e}")
+            # Re-read to sync back on error
+            self._read_modules_enabled()
+
+    def _read_all_settings(self):
+        self._read_data_type()
+        self._read_modules_enabled()
+
     def set_device(self, device, slave_id, device_info=None, shared_data=None):
         self.device = device
         self.slave_id = slave_id
@@ -421,11 +530,16 @@ class Revo3TouchSubPanel(QWidget):
         self.type_combo.setEnabled(True)
         self.read_btn.setEnabled(True)
         self.zero_calibrate_btn.setEnabled(True)
-        # Read current data type asynchronously
-        self._read_data_type()
+        for cb in self.module_checks:
+            cb.setEnabled(True)
+        # Read current data type and active modules asynchronously
+        self._read_all_settings()
 
     def clear_device(self):
         self.device = None
         self.type_combo.setEnabled(False)
         self.read_btn.setEnabled(False)
         self.zero_calibrate_btn.setEnabled(False)
+        for cb in self.module_checks:
+            cb.setEnabled(False)
+            cb.setChecked(False)
