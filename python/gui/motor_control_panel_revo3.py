@@ -96,38 +96,38 @@ MODE_MIT = 4
 MODE_TRAJECTORY = 5
 
 # Per-motor position ranges (degrees) based on joint specs
-# Pinky  (M0~M3):  Abd [-15,15], MCP [0,90], PIP [0,90], DIP [0,90]
-# Ring   (M4~M7):  Abd [-15,15], MCP [0,90], PIP [0,90], DIP [0,90]
-# Middle (M8~M11): Abd [-15,15], MCP [0,90], PIP [0,90], DIP [0,90]
-# Index  (M12~M15):Abd [-15,15], MCP [0,90], PIP [0,90], DIP [0,90]
-# Thumb  (M16~M20):CMC-Rot [0,50], MCP [0,90], IP [0,90], CMC-Abd [0,105], CMC-Flex [0,120]
+# Pinky  (M0~M3):  Abd [-15,15], MCP [0,85], PIP [0,85], DIP [0,85]
+# Ring   (M4~M7):  Abd [-15,15], MCP [0,85], PIP [0,85], DIP [0,85]
+# Middle (M8~M11): Abd [-15,15], MCP [0,85], PIP [0,85], DIP [0,85]
+# Index  (M12~M15):Abd [-15,15], MCP [0,85], PIP [0,85], DIP [0,85]
+# Thumb  (M16~M20):CMC-Rot [0,50], MCP [0,85], IP [0,85], CMC-Abd [0,110], CMC-Flex [0,115]
 MOTOR_POSITION_RANGES = {
     # Pinky: [0]=Abd, [1]=MCP, [2]=PIP, [3]=DIP
-    0:  (-14.0, 15.0),   # Pinky Abduction
-    1:  (-5.0, 90.0),    # Pinky MCP
-    2:  (-12.0, 90.0),   # Pinky PIP
-    3:  (-20.0, 90.0),   # Pinky DIP
+    0:  (-15.0, 15.0),   # Pinky Abduction
+    1:  (0.0, 85.0),     # Pinky MCP
+    2:  (0.0, 85.0),     # Pinky PIP
+    3:  (0.0, 85.0),     # Pinky DIP
     # Ring: [4]=Abd, [5]=MCP, [6]=PIP, [7]=DIP
     4:  (-15.0, 15.0),   # Ring Abduction
-    5:  (-5.0, 90.0),    # Ring MCP
-    6:  (-12.0, 90.0),   # Ring PIP
-    7:  (-20.0, 90.0),   # Ring DIP
+    5:  (0.0, 85.0),     # Ring MCP
+    6:  (0.0, 85.0),     # Ring PIP
+    7:  (0.0, 85.0),     # Ring DIP
     # Middle: [8]=Abd, [9]=MCP, [10]=PIP, [11]=DIP
     8:  (-15.0, 15.0),   # Middle Abduction
-    9:  (-5.0, 90.0),    # Middle MCP
-    10: (-12.0, 90.0),   # Middle PIP
-    11: (-20.0, 90.0),   # Middle DIP
+    9:  (0.0, 85.0),     # Middle MCP
+    10: (0.0, 85.0),     # Middle PIP
+    11: (0.0, 85.0),     # Middle DIP
     # Index: [12]=Abd, [13]=MCP, [14]=PIP, [15]=DIP
     12: (-15.0, 15.0),   # Index Abduction
-    13: (-5.0, 90.0),    # Index MCP
-    14: (-12.0, 90.0),   # Index PIP
-    15: (-20.0, 90.0),   # Index DIP
+    13: (0.0, 85.0),     # Index MCP
+    14: (0.0, 85.0),     # Index PIP
+    15: (0.0, 85.0),     # Index DIP
     # Thumb: [16]=CMC-Rot, [17]=MCP, [18]=IP, [19]=CMC-Abd(diff), [20]=CMC-Flex(diff)
-    16: (-30.0, 90.0),   # Thumb CMC Rotation
-    17: (-10.0, 90.0),   # Thumb MCP
-    18: (-10.0, 103.0),  # Thumb IP
+    16: (0.0, 50.0),     # Thumb CMC Rotation
+    17: (0.0, 85.0),     # Thumb MCP
+    18: (0.0, 85.0),     # Thumb IP
     19: (0.0, 110.0),    # Thumb CMC Abduction (differential)
-    20: (0.0, 75.0),     # Thumb CMC Flexion (differential)
+    20: (0.0, 115.0),    # Thumb CMC Flexion (differential)
 }
 
 # Joint labels for display (motor_id -> label)
