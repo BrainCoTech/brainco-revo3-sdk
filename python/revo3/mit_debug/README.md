@@ -49,7 +49,7 @@ python revo3/mit_debug/plot_log.py
 ## MIT Control Law
 
 ```
-τ = Kp × (P_ref − P_act) + Kd × (V_ref − V_act) + τ_ff
+tau = Kp × (P_ref − P_act) + Kd × (V_ref − V_act) + tau_ff
 ```
 
 - **Position** is in degrees (°)

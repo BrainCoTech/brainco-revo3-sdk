@@ -549,7 +549,7 @@ class TimingTestRevo3Worker(QObject):
                                          kp: float, kd: float) -> float:
         """Measure response time using MIT impedance control (per-joint targets).
 
-        τ = kp*(p_des - p_act) + kd*(v_des - v_act) + t_ff
+        tau = kp*(p_des - p_act) + kd*(v_des - v_act) + t_ff
         v_des = 0 (step command), t_ff = 0.
 
         ref_point emits (p_des_array, zeros, zeros) so the Position chart shows

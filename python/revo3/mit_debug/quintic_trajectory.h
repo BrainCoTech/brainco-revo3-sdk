@@ -159,7 +159,7 @@ static const float JOINT_CLOSE_POS[21] = {
  *         quintic_get(&traj, t, &pos, &vel_dps);
  *         float vel_rpm = vel_dps * DPS_TO_RPM;
  *
- *         // τ = Kp*(pos - act_pos) + Kd*(vel_rpm - act_vel) + 0
+ *         // tau = Kp*(pos - act_pos) + Kd*(vel_rpm - act_vel) + 0
  *         mit_set(joint_id, DEFAULT_KP, DEFAULT_KD, pos, vel_rpm, 0.0f);
  *
  *         delay_ms(DEFAULT_DT_MS);

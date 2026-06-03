@@ -4,7 +4,7 @@ Revo3 (Revo3) Motor Control Example - 21 DoF Dexterous Hand
 Demonstrates Revo3-specific motor control APIs:
   - Control modes: position, current, MIT impedance
   - Single motor and batch motor control
-  - MIT mode: τ = Kp*(P_des - P_act) + Kd*(V_des - V_act) + T_ff
+  - MIT mode: tau = Kp*(P_des - P_act) + Kd*(V_des - V_act) + T_ff
   - Motor status monitoring
   - Single/multi joint control with ControlMode
   - MIT joint control (single, multi-joint, batch)
@@ -201,9 +201,9 @@ async def demo_multi_joint(client, slave_id):
 async def demo_mit_control(client, slave_id):
     """MIT impedance control for single joint"""
     logger.info("=== [New] MIT Joint Control ===")
-    logger.info("  τ = Kp*(pos_ref - pos) + Kd*(vel_ref - vel) + τ_ff")
+    logger.info("  tau = Kp*(pos_ref - pos) + Kd*(vel_ref - vel) + tau_ff")
 
-    logger.info("  Joint 0: Kp=5.0, Kd=0.5, pos=45°, vel=0, τ_ff=200mA")
+    logger.info("  Joint 0: Kp=5.0, Kd=0.5, pos=45°, vel=0, tau_ff=200mA")
     await client.revo3_joint_mit_control(slave_id, 0, 5.0, 0.5, 45.0, 0.0, 200.0)
     await asyncio.sleep(1.0)
 
@@ -213,7 +213,7 @@ async def demo_hand_mit(client, slave_id):
     logger.info("=== [New] Full-Hand MIT Control ===")
 
     # Set one joint via the interleaved MIT params block.
-    logger.info("  Joint 0 MIT params: Kp=3.0, Kd=0.3, pos=30°, vel=0, τ_ff=100mA")
+    logger.info("  Joint 0 MIT params: Kp=3.0, Kd=0.3, pos=30°, vel=0, tau_ff=100mA")
     await client.revo3_set_joint_mit_params(slave_id, 0, 3.0, 0.3, 30.0, 0.0, 100.0)
     await asyncio.sleep(0.5)
 
@@ -265,9 +265,9 @@ async def demo_finger_control(client, slave_id):
     await client.revo3_finger_control(slave_id, 1, mode, params)
     await asyncio.sleep(0.5)
 
-    # Thumb control (20.0°)
-    logger.info(f"  Thumb: mode=Position, params=[20.0, 20.0, 20.0, 20.0, 20.0]°")
-    params = [20.0, 20.0, 20.0, 20.0, 20.0]
+    # Thumb control (varying angles per joint to demonstrate correct mapping)
+    logger.info(f"  Thumb: mode=Position, params=[10.0, 15.0, 20.0, 25.0, 30.0]°")
+    params = [10.0, 15.0, 20.0, 25.0, 30.0]
     await client.revo3_thumb_control(slave_id, mode, params)
     await asyncio.sleep(0.5)
 
@@ -277,8 +277,8 @@ async def demo_finger_mit(client, slave_id):
     logger.info("=== [New] Finger/Thumb MIT Control ===")
 
     # Finger MIT: Index finger (finger_id=1), 4 joints × 5 params
-    logger.info("  Index finger MIT: Kp=2.0, Kd=0.2, pos=30°, vel=0, τ_ff=100mA")
-    # 4 joints: [kp, kd, pos, vel, τ_ff] × 4
+    logger.info("  Index finger MIT: Kp=2.0, Kd=0.2, pos=30°, vel=0, tau_ff=100mA")
+    # 4 joints: [kp, kd, pos, vel, tau_ff] × 4
     finger_params = []
     for _ in range(4):
         finger_params.extend([2.0, 0.2, 30.0, 0.0, 100.0])
@@ -286,7 +286,7 @@ async def demo_finger_mit(client, slave_id):
     await asyncio.sleep(0.5)
 
     # Thumb MIT: 5 joints × 5 params
-    logger.info("  Thumb MIT: Kp=1.5, Kd=0.15, pos=20°, vel=0, τ_ff=50mA")
+    logger.info("  Thumb MIT: Kp=1.5, Kd=0.15, pos=20°, vel=0, tau_ff=50mA")
     thumb_params = []
     for _ in range(5):
         thumb_params.extend([1.5, 0.15, 20.0, 0.0, 50.0])

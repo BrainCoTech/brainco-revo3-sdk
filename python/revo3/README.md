@@ -280,7 +280,7 @@ await ctx.revo3_set_motor_current(slave_id, 0, 0.0)
 MIT (Mini Cheetah) impedance control formula:
 
 ```
-τ = Kp × (P_des - P_act) + Kd × (V_des - V_act) + T_ff
+tau = Kp × (P_des - P_act) + Kd × (V_des - V_act) + T_ff
 ```
 
 | Parameter | Symbol | Range              | Unit    |
@@ -717,6 +717,8 @@ python revo3/revo3_motor.py --port /dev/ttyUSB0
 # High-frequency Real-time Servo control (100Hz)
 python revo3/revo3_servo.py
 python revo3/revo3_servo.py --port /dev/ttyUSB0
+
+# Damping overshoot test (0° -> 80° on J6)
 
 # Teaching mode (record hand movements, then replay)
 python revo3/revo3_teaching.py                                    # Interactive record + playback

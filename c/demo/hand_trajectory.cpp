@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
   revo3_move_finger_wait(ctx.handle, ctx.slave_id, 1, finger_targets, 2.0f, 0.01f);
 
   std::printf("Thumb: Move CMC Flex & CMC Abd to 30 deg over 2.0 s...\n");
-  float thumb_targets[] = {30.0f, 30.0f, 0.0f, 0.0f, 0.0f};
+  float thumb_targets[] = {0.0f, 0.0f, 0.0f, 30.0f, 30.0f};
   revo3_move_thumb(ctx.handle, ctx.slave_id, thumb_targets, 2.0f, 0.01f);
 
   std::printf("Resetting Index and Thumb back to 0 deg...\n");

@@ -101,14 +101,14 @@ async def enter_teaching_mode(client, slave_id):
 ```
 
 > [!IMPORTANT]
-> **MIT 公式**: `τ = Kp×(P_des - P_act) + Kd×(V_des - V_act) + T_ff`
+> **MIT 公式**: `tau = Kp×(P_des - P_act) + Kd×(V_des - V_act) + T_ff`
 >
 > 当 **Kp=0, Kd=0, T_ff=0** 时：
 > - `Kp×(0 - P_act) = 0`（无位置恢复力）
 > - `Kd×(0 - V_act) = 0`（无速度阻尼）
 > - `T_ff = 0`（无前馈力矩）
 >
-> → 电机输出力矩 τ ≈ 0，**手变成完全柔顺状态**，可以自由拨动
+> → 电机输出力矩 tau ≈ 0，**手变成完全柔顺状态**，可以自由拨动
 
 这一条命令写入 **115 个 Modbus 寄存器**（23×5 参数），一次性让所有电机失力。
 
