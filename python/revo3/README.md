@@ -19,6 +19,7 @@ Revo3 (Revo3) 21-DoF Dexterous Hand — Motor Control & Tactile Sensor API
   - [Current Control](#current-control)
   - [MIT Impedance Control](#mit-impedance-control)
   - [Fingertip Cartesian Control](#fingertip-cartesian-control)
+  - [Servo Control](#servo-control)
   - [Trajectory Control](#trajectory-control)
   - [Teaching Mode](#teaching-mode)
   - [Motor Settings](#motor-settings)
@@ -116,6 +117,9 @@ Trajectory & Teaching APIs:
 | `revo3_move_thumb_wait(slave_id, targets, T, dt)` | Move thumb joints and block until completion (Blocking/Await) |
 | `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom gains (Non-blocking) |
 | `revo3_move_thumb_with_gains_wait(slave_id, targets, T, dt, kp, kd)` | Thumb move and block with custom gains (Blocking/Await) |
+| `revo3_start_servo_drag(slave_id, joint_id, target, kp, kd, vel_cap_rpm, interval_ms, idle_timeout_ms, filter_mode, omega)` | Start SDK-managed GUI/joystick drag stream |
+| `revo3_update_servo_drag(slave_id, joint_id, target)` | Update latest target for active drag stream |
+| `revo3_stop_servo_drag(slave_id, joint_id, final_target)` | Stop drag stream and hold final target |
 | `revo3_teach_joint(slave_id, joint_id, dt, T)` | Record single joint (backdrive mode) |
 | `revo3_teach_hand(slave_id, dt, T)` | Record full hand (backdrive mode) |
 | `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Replay recorded single joint |
@@ -327,6 +331,49 @@ Fingertip Cartesian control is not exported in the current Python API.
 Use joint-level Revo3 APIs (`revo3_finger_control`, `revo3_thumb_control`,
 `revo3_finger_mit_control`, `revo3_thumb_mit_control`) for now.
 
+### Servo Control
+
+Use servo APIs for real-time MIT-style tracking. Speed and velocity parameters
+are in rpm. The lower-level `revo3_servo_joint_with_gains` API sends one command
+per call, so the caller owns loop timing.
+
+For GUI sliders, joysticks, or VR targets that update only when the target
+changes, prefer `revo3_start_servo_drag` / `revo3_update_servo_drag` /
+`revo3_stop_servo_drag`. The SDK runs one background stream, keeps only the
+latest target, and sends position-mode MIT commands with zero target velocity.
+The stream stays active until `revo3_stop_servo_drag` is called, even if the
+slider is held still for a while.
+
+```python
+# Slider press / drag start
+await ctx.revo3_start_servo_drag(
+    slave_id,
+    joint_id=5,
+    target_pos=0.0,
+    kp=2.0,
+    kd=0.25,
+    vel_cap_rpm=60.0,    # reserved; position-mode drag keeps target velocity at zero
+    interval_ms=15,
+    idle_timeout_ms=300, # unchanged-target refresh interval, not a stop timeout
+    filter_mode=0,  # 0=None, 1=FirstOrderLpf, 2=SecondOrderCriticallyDamped
+    omega=35.0,     # used only when filter_mode=2
+)
+
+# Slider valueChanged events
+await ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=35.0)
+await ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=50.0)
+
+# Slider release / leaving position mode
+await ctx.revo3_stop_servo_drag(slave_id, joint_id=5, final_pos=50.0)
+```
+
+When DataCollector is also running on Modbus, start with `interval_ms=15`.
+On macOS, keep motor collection around 50 Hz to 60 Hz for ordinary monitoring,
+and reduce it to 5 Hz to 10 Hz while a slider or joystick drag is active. Use
+`move_*` APIs for one-shot targets with planned trajectories, and use raw
+`revo3_servo_*_with_gains` APIs only when your application already owns a
+deterministic servo loop.
+
 ### Motor Settings
 
 ```python
@@ -416,6 +463,14 @@ await ctx.revo3_move_thumb_wait(slave_id, target_positions=[30.0, 30.0, 0.0, 0.0
 
 Backdrive recording: joints become compliant (zero torque), positions are
 sampled at `dt` interval for `T` seconds, then replayed with MIT control.
+For GUI recording, it is also valid to enable teaching mode and record motor
+positions from DataCollector. Collector samples are state observations, not
+control-loop ticks, so record a monotonic timestamp with each frame. On macOS
+Modbus, 50 Hz to 60 Hz is a good default for demonstration recording; use around
+100 Hz only when the bus is stable and other high-rate reads are disabled.
+During playback, interpolate or skip late frames by timestamp. Use full-hand MIT
+or servo commands for trajectory replay, and use `move_*` for low-frequency
+A-to-B moves such as returning to the pre-teach posture.
 
 ```python
 # Record single joint for 5 seconds at 50Hz
@@ -559,7 +614,7 @@ collector = sdk.DataCollector.new_revo3_basic(
     ctx=ctx,                       # DeviceContext
     motor_buffer=motor_buffer,     # Revo3MotorStatusBuffer
     slave_id=slave_id,             # int
-    motor_frequency=200,           # Hz (macOS: 200, Linux: 2000)
+    motor_frequency=60,            # Hz (macOS GUI-safe starting point)
     enable_stats=False             # bool, print stats to console
 )
 collector.start()
@@ -589,7 +644,7 @@ collector = sdk.DataCollector.new_revo3_full(
     motor_buffer=motor_buffer,
     touch_buffer=touch_buffer,
     slave_id=slave_id,
-    motor_frequency=200,           # Hz (motor polling rate)
+    motor_frequency=60,            # Hz (motor polling rate)
     touch_frequency=5,             # Hz (touch is heavy: ~180ms per read)
     enable_stats=False
 )
@@ -609,9 +664,13 @@ for td in touch_list:
 collector.update_motor_frequency(0)     # Disable motor collection
 collector.update_touch_frequency(20)    # 20Hz touch
 
-collector.update_motor_frequency(200)   # Re-enable motor at 200Hz
+collector.update_motor_frequency(60)    # Re-enable motor at 60Hz
 collector.update_touch_frequency(0)     # Disable touch collection
 ```
+
+Control commands should have priority over idle status reads. The SDK collector
+skips a poll when the shared device context is busy, and GUI applications should
+lower collector frequency during interactive control streams.
 
 ### Buffers
 

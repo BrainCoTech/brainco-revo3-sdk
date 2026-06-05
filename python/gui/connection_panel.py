@@ -88,7 +88,7 @@ def list_serial_ports():
 
 
 class AutoDetectWorker(QObject):
-    finished = Signal(object, int, object, str, str)
+    finished = Signal(object)
     error = Signal(str)
     progress = Signal(str)
 
@@ -132,23 +132,7 @@ class AutoDetectWorker(QObject):
         if not devices:
             raise RuntimeError("No Revo3 device found")
 
-        device = devices[0]
-        ctx = await sdk.init_from_detected(device)
-        try:
-            device_info = await ctx.revo3_get_device_info(device.slave_id)
-        except Exception:
-            device_info = sdk.DeviceInfo(
-                sku_type=device.sku_type or sdk.SkuType.MediumRight,
-                hand_type=sdk.HandType.Right,
-                hardware_type=device.hardware_type or sdk.StarkHardwareType.Revo3Ultra,
-                serial_number=device.serial_number or "",
-                firmware_version=device.firmware_version or "",
-                hardware_version="",
-            )
-
-        protocol_key = sdk_protocol_to_key(device.protocol_type)
-        protocol_label = get_protocol_display_name(device.protocol_type)
-        return ctx, device.slave_id, device_info, protocol_key, protocol_label
+        return devices[0]
 
 
 class ManualConnectWorker(QObject):
@@ -406,7 +390,6 @@ class ConnectionPanel(QWidget):
             self.status_label.setText("SDK not installed")
             return
         self._set_connecting_state()
-        self._thread = QThread()
         protocol_key = self.protocol_combo.currentData()
         protocol = None
         if protocol_key == PROTO_MODBUS:
@@ -420,15 +403,56 @@ class ConnectionPanel(QWidget):
             port = self.port_combo.currentData() or self.port_combo.currentText() or None
             if port == "No ports found":
                 port = None
-        self.worker = AutoDetectWorker(protocol=protocol, port=port)
-        self.worker.moveToThread(self._thread)
-        self._thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self._on_connect_success)
-        self.worker.error.connect(self._on_connect_error)
-        self.worker.progress.connect(self._on_progress)
-        self.worker.finished.connect(self._thread.quit)
-        self.worker.error.connect(self._thread.quit)
-        self._thread.start()
+        try:
+            self._on_progress("Scanning Revo3 devices...")
+            device = run_in_new_loop(lambda: self._auto_detect_device(protocol, port))
+            self._on_detect_success(device)
+        except Exception as e:
+            self._on_connect_error(str(e))
+
+    async def _auto_detect_device(self, protocol, port):
+        devices = []
+        for attempt in range(3):
+            devices = await sdk.revo3_auto_detect(
+                scan_all=False,
+                port=port,
+                protocol=protocol,
+            )
+            if devices:
+                break
+            if attempt < 2:
+                await asyncio.sleep(1.5)
+
+        if not devices:
+            raise RuntimeError("No Revo3 device found")
+        return devices[0]
+
+    def _on_detect_success(self, device):
+        try:
+            ctx, slave_id, device_info, protocol_key, protocol_label = run_in_new_loop(
+                lambda: self._init_detected_device(device)
+            )
+            self._on_connect_success(ctx, slave_id, device_info, protocol_key, protocol_label)
+        except Exception as e:
+            self._on_connect_error(str(e))
+
+    async def _init_detected_device(self, device):
+        ctx = await sdk.init_from_detected(device)
+        try:
+            device_info = await ctx.revo3_get_device_info(device.slave_id)
+        except Exception:
+            device_info = sdk.DeviceInfo(
+                sku_type=device.sku_type or sdk.SkuType.MediumRight,
+                hand_type=sdk.HandType.Right,
+                hardware_type=device.hardware_type or sdk.StarkHardwareType.Revo3Ultra,
+                serial_number=device.serial_number or "",
+                firmware_version=device.firmware_version or "",
+                hardware_version="",
+            )
+
+        protocol_key = sdk_protocol_to_key(device.protocol_type)
+        protocol_label = get_protocol_display_name(device.protocol_type)
+        return ctx, device.slave_id, device_info, protocol_key, protocol_label
 
     def _on_connect(self):
         if self.mock_type:

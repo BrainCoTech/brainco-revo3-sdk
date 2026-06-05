@@ -54,6 +54,21 @@ from .constants import REVO3_MOTOR_COUNT
 DEFAULT_RECORD_FREQ = 100    # Hz
 DEFAULT_PLAYBACK_SPEED = 1.0
 DEFAULT_LOOP_COUNT = 1
+PLAYBACK_KP = 1.0
+PLAYBACK_KD = 0.1
+PLAYBACK_PREPOSITION_MIN_DURATION = 1.0
+PLAYBACK_PREPOSITION_MAX_DURATION = 2.0
+PLAYBACK_PREPOSITION_SPEED_DEG_S = 30.0
+PLAYBACK_PREPOSITION_DT = 0.01
+DEG_S_TO_RPM = 1.0 / 6.0
+
+
+async def _send_all_mit_params(device, slave_id, kp, kd, positions, velocities, torques, without_retry=False):
+    """Send one full-hand MIT frame, preferring no-retry writes in frame-rate loops."""
+    if without_retry and hasattr(device, "revo3_set_all_mit_params_without_retry"):
+        await device.revo3_set_all_mit_params_without_retry(slave_id, kp, kd, positions, velocities, torques)
+    else:
+        await device.revo3_set_all_mit_params(slave_id, kp, kd, positions, velocities, torques)
 
 
 def _get_motor_count():
@@ -152,19 +167,22 @@ def enter_teaching_mode(device, slave_id):
         print(f"[Teaching] Enter mode failed: {e}")
 
 
-def exit_teaching_mode(device, slave_id, restore_positions=None):
-    """Exit teaching mode and restore motor control."""
-    try:
-        run_async(lambda: device.revo3_set_teaching_mode(slave_id, False))
-        time.sleep(0.1)
-    except Exception as e:
-        print(f"[Teaching] Restore position mode skipped: {e}")
+def exit_teaching_mode(device, slave_id, hold_positions=None):
+    """Exit teaching mode and hold the requested posture."""
+    async def _exit_and_hold():
+        try:
+            await device.revo3_set_teaching_mode(slave_id, False)
+        except Exception as e:
+            print(f"[Teaching] Restore position mode skipped: {e}")
 
-    if restore_positions is not None:
-        run_async(lambda: device.revo3_set_all_motor_positions(slave_id, restore_positions))
-    else:
-        target = [0.0] * _get_motor_count()
-        run_async(lambda: device.revo3_set_all_motor_positions(slave_id, target))
+        if hold_positions is not None:
+            positions = list(hold_positions)[:_get_motor_count()]
+            kp = [PLAYBACK_KP] * len(positions)
+            kd = [PLAYBACK_KD] * len(positions)
+            zeros = [0.0] * len(positions)
+            await _send_all_mit_params(device, slave_id, kp, kd, positions, zeros, zeros)
+
+    run_async(_exit_and_hold)
 
     time.sleep(0.3)
 
@@ -206,6 +224,7 @@ class TeachingPanel(QWidget):
         self._playback_frame_idx = 0
         self._playback_start_time = 0.0
         self._playback_current_loop = 0
+        self._collector_paused_for_playback = False
 
         # Connect signals for thread-safe UI updates
         self.sig_playback_progress.connect(self._update_playback_progress_ui)
@@ -482,9 +501,9 @@ class TeachingPanel(QWidget):
             self._record_timer = None
 
         if self._state == self.STATE_RECORDING and self.device:
-            # Exit teaching mode and restore positions
+            # Exit teaching mode and hold the last recorded posture.
             try:
-                exit_teaching_mode(self.device, self.slave_id, self._initial_positions)
+                exit_teaching_mode(self.device, self.slave_id, self._get_last_recorded_positions())
             except Exception as e:
                 print(f"[Teaching] Error exiting teaching mode: {e}")
 
@@ -542,8 +561,12 @@ class TeachingPanel(QWidget):
 
     def _on_record_tick(self):
         """Called by timer to capture one frame."""
+        self._capture_latest_record_frame()
+
+    def _capture_latest_record_frame(self):
+        """Capture the latest collector sample into the current trajectory."""
         if not self.shared_data or not self.shared_data.revo3_motor_buffer:
-            return
+            return None
 
         latest = self.shared_data.revo3_motor_buffer.peek_latest()
         if latest and hasattr(latest, 'positions'):
@@ -559,6 +582,26 @@ class TeachingPanel(QWidget):
                 self.frame_label.setText(
                     f"{self._record_frame_count} frames | {elapsed:.1f}s | {actual_freq:.0f}Hz | M0-4: {pos_preview}"
                 )
+            return positions
+        return None
+
+    def _get_last_recorded_positions(self):
+        """Return the latest recorded posture, falling back to the live buffer."""
+        if self.shared_data and self.shared_data.revo3_motor_buffer:
+            latest = self.shared_data.revo3_motor_buffer.peek_latest()
+            if latest and hasattr(latest, "positions"):
+                return list(latest.positions)
+        if self._trajectory and self._trajectory.frames:
+            return list(self._trajectory.frames[-1][1])
+        return None
+
+    def _get_latest_motor_positions(self):
+        """Return the latest live posture from the shared motor buffer."""
+        if self.shared_data and self.shared_data.revo3_motor_buffer:
+            latest = self.shared_data.revo3_motor_buffer.peek_latest()
+            if latest and hasattr(latest, "positions"):
+                return list(latest.positions)
+        return None
 
     def _on_stop(self):
         """Stop recording or playback."""
@@ -567,12 +610,13 @@ class TeachingPanel(QWidget):
             if self._record_timer:
                 self._record_timer.stop()
                 self._record_timer = None
+            self._capture_latest_record_frame()
 
             # Exit teaching mode
             self._log("Exiting teaching mode...")
             try:
-                exit_teaching_mode(self.device, self.slave_id, self._initial_positions)
-                self._log("✅ Motor control restored")
+                exit_teaching_mode(self.device, self.slave_id, self._get_last_recorded_positions())
+                self._log("✅ Motor control restored at final recorded posture")
             except Exception as e:
                 self._log(f"⚠ Error restoring control: {e}")
 
@@ -618,10 +662,35 @@ class TeachingPanel(QWidget):
     def _prepare_playback(self):
         """Set up motor control mode for playback."""
         try:
+            self._pause_collector_for_playback()
             run_async(lambda: self.device.revo3_set_teaching_mode(self.slave_id, False))
             time.sleep(0.1)
         except Exception:
             pass
+
+    def _pause_collector_for_playback(self):
+        if not self.shared_data or not self.shared_data.data_collector:
+            return
+        if self._collector_paused_for_playback:
+            return
+        try:
+            self.shared_data.data_collector.stop()
+            self._collector_paused_for_playback = True
+            self._log("DataCollector paused for playback")
+        except Exception as e:
+            self._log(f"DataCollector pause skipped: {e}")
+
+    def _resume_collector_after_playback(self):
+        if not self.shared_data or not self._collector_paused_for_playback:
+            return
+        try:
+            if self.shared_data.data_collector:
+                self.shared_data.data_collector.start()
+            self.sig_playback_log.emit("DataCollector resumed")
+        except Exception as e:
+            self.sig_playback_log.emit(f"DataCollector resume skipped: {e}")
+        finally:
+            self._collector_paused_for_playback = False
 
     def _run_playback_thread(self):
         """Start trajectory playback in a dedicated background thread with a single Event Loop."""
@@ -642,6 +711,7 @@ class TeachingPanel(QWidget):
             finally:
                 loop.close()
                 asyncio.set_event_loop(None)
+                self._resume_collector_after_playback()
                 # Thread finished: restore state to IDLE
                 self.sig_playback_state.emit(self.STATE_IDLE)
                 self.sig_playback_progress.emit(0, "")
@@ -663,11 +733,31 @@ class TeachingPanel(QWidget):
         frames = self._trajectory.frames
         frame_count = len(frames)
         self._playback_current_loop = 0
+        first_pos = list(frames[0][1])[:21]
 
         while self._playback_current_loop < total_loops and self._state == self.STATE_PLAYING:
             self._playback_current_loop += 1
             if total_loops > 1:
                 self.sig_playback_log.emit(f"  Loop {self._playback_current_loop}/{total_loops}")
+
+            try:
+                current_pos = (self._get_latest_motor_positions() or first_pos)[:len(first_pos)]
+                max_delta = max(
+                    (abs(first_pos[i] - current_pos[i]) for i in range(min(len(first_pos), len(current_pos)))),
+                    default=0.0,
+                )
+                duration = max(
+                    PLAYBACK_PREPOSITION_MIN_DURATION,
+                    min(PLAYBACK_PREPOSITION_MAX_DURATION, max_delta / PLAYBACK_PREPOSITION_SPEED_DEG_S),
+                )
+                self.sig_playback_log.emit(
+                    f"  Moving to playback start posture ({duration:.1f}s)..."
+                )
+                await device.revo3_move_hand_wait(
+                    slave_id, first_pos, duration, PLAYBACK_PREPOSITION_DT
+                )
+            except Exception as e:
+                self.sig_playback_log.emit(f"⚠ Move to playback start skipped: {e}")
 
             self._playback_frame_idx = 0
             self._playback_start_time = time.perf_counter()
@@ -687,11 +777,24 @@ class TeachingPanel(QWidget):
 
                 # Send only the latest due frame (skip intermediate ones)
                 if send_idx >= 0:
-                    _, positions = frames[send_idx]
+                    target_t, positions = frames[send_idx]
                     pos = list(positions)[:21]
                     try:
-                        # Direct async call on the thread's event loop (no loop recreations!)
-                        await device.revo3_set_all_motor_positions(slave_id, pos)
+                        velocities = [0.0] * len(pos)
+                        if send_idx + 1 < frame_count:
+                            next_t, next_positions = frames[send_idx + 1]
+                            dt = max((next_t - target_t) / speed, 0.001)
+                            next_pos = list(next_positions)[:len(pos)]
+                            velocities = [
+                                (next_pos[i] - pos[i]) / dt * DEG_S_TO_RPM
+                                for i in range(len(pos))
+                            ]
+                        kp = [PLAYBACK_KP] * len(pos)
+                        kd = [PLAYBACK_KD] * len(pos)
+                        torques = [0.0] * len(pos)
+                        await _send_all_mit_params(
+                            device, slave_id, kp, kd, pos, velocities, torques, without_retry=True
+                        )
                     except Exception as e:
                         self.sig_playback_log.emit(f"⚠ Playback error at frame {send_idx}: {e}")
 
@@ -713,13 +816,7 @@ class TeachingPanel(QWidget):
                     f"  Loop done: {frame_count} frames in {actual_dur:.2f}s (target: {target_dur:.2f}s)"
                 )
 
-                # Return to initial positions before next loop or stopping
-                if self._initial_positions:
-                    try:
-                        await device.revo3_set_all_motor_positions(slave_id, self._initial_positions)
-                    except Exception:
-                        pass
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
 
         if self._state == self.STATE_PLAYING:
             self.sig_playback_log.emit("✅ Playback complete!")

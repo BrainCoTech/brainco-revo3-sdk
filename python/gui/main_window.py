@@ -25,6 +25,7 @@ from .i18n import get_i18n, tr
 from .motor_config_panel_revo3 import Revo3MotorConfigPanel
 from .motor_control_panel_revo3 import Revo3MotorControlPanel
 from .shared_data import SharedDataManager
+from .shared_data import DEFAULT_MOTOR_FREQ
 from .system_config_panel import SystemConfigPanel
 from .teaching_panel import TeachingPanel
 from .timing_test_panel import TimingTestPanel
@@ -220,11 +221,9 @@ class MainWindow(QMainWindow):
         current_widget = self.tabs.widget(index)
         if self.shared_data and self.shared_data.data_collector:
             if current_widget == self.touch_panel:
-                self.shared_data.data_collector.update_motor_frequency(0)
-                self.shared_data.data_collector.update_touch_frequency(20)
+                self.shared_data.update_frequencies(0, 20)
             else:
-                self.shared_data.data_collector.update_motor_frequency(200)
-                self.shared_data.data_collector.update_touch_frequency(0)
+                self.shared_data.update_frequencies(DEFAULT_MOTOR_FREQ, 0)
 
     def _toggle_language(self):
         if self.i18n.current_language == "en":

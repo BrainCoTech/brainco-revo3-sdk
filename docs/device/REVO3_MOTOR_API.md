@@ -151,7 +151,38 @@ The SDK introduces a dedicated **Servo Control Suite** that features:
 | `revo3_servo_finger_with_gains(..., kp[4], kd[4])` | Servos non-thumb finger using custom gains. Automatically preempts background trajectories. | High-frequency compliant single finger tasks. |
 | `revo3_servo_thumb(slave_id, pos[5], vel[5])` | Servos thumb using default gains (5 joints). Automatically preempts background trajectories. | High-frequency thumb tracking. |
 | `revo3_servo_thumb_with_gains(..., kp[5], kd[5])` | Servos thumb using custom gains. Automatically preempts background trajectories. | Advanced compliant thumb tasks. |
+| `revo3_start_servo_drag(slave_id, joint_id, target_pos, kp, kd, vel_cap_rpm, interval_ms, idle_timeout_ms, filter_mode, omega)` | Starts one SDK-managed background stream for GUI-style target dragging. | Slider press, joystick engage, VR target stream start. |
+| `revo3_update_servo_drag(slave_id, joint_id, target_pos)` | Updates the latest target for an active servo-drag stream. Does not direct-read actual position. | Slider valueChanged / joystick target refresh. |
+| `revo3_stop_servo_drag(slave_id, joint_id, final_pos)` | Stops servo-drag and sends one zero-velocity hold at `final_pos`. | Slider release, leaving position mode, cleanup. |
 
+### Servo Drag Helper
+
+`servo_drag` is a convenience layer over `servo_joint_with_gains` for event-driven UI control. Instead of making Python/C++ maintain its own 10 ms loop, the SDK runs one background worker, keeps only the latest target, and writes position-mode MIT commands at `interval_ms`. The MIT velocity term is kept at zero; position tracking is controlled by `kp`, `kd`, and the latest target.
+
+Recommended Modbus GUI starting values:
+
+| Parameter | Typical Value | Notes |
+|-----------|---------------|-------|
+| `kp` | `2.0` | Position stiffness. Lower values feel more compliant; higher values track harder. |
+| `kd` | `0.25` | Damping. Increase slightly if actual position overshoots or oscillates. |
+| `vel_cap_rpm` | `40.0 ~ 60.0` | Reserved for future velocity feed-forward experiments. Current position-mode drag keeps target velocity at zero. |
+| `interval_ms` | `15` | A conservative GUI value when DataCollector is also running on Modbus. Use smaller values only when bus load is acceptable. |
+| `idle_timeout_ms` | `300` | Refresh interval for an unchanged target. It does not stop the stream while the slider/joystick is still held. Use `revo3_stop_servo_drag` to end the stream. |
+| `filter_mode` | `0` | No SDK-side smoothing. This is the preferred GUI default when slider updates are already rate-limited. Use `2` only if the input target is noisy. |
+| `omega` | `35.0` | Used only when `filter_mode=2`. Higher means faster tracking but less smoothing. |
+
+`servo_drag` can coexist with DataCollector because both use the shared SDK context lock, but they still share the same physical serial/CAN bus. On macOS Modbus, start with motor collection around 50 Hz to 60 Hz, and reduce it to 5 Hz to 10 Hz while a slider/joystick drag is active. Control writes should have priority over idle status reads; the SDK collector skips a poll when the device context is busy instead of queuing behind control commands. If actual tracking still lags, increase `interval_ms` or tune `kp`/`kd`.
+
+### Which Control API Should I Use?
+
+| Scenario | Recommended API | Why |
+|----------|-----------------|-----|
+| One-shot posture change, scripted sequence, vision/RL command at 10 Hz - 30 Hz | `revo3_move_*` | SDK plans a smooth quintic trajectory and handles mid-course blending. |
+| GUI slider, joystick, VR controller target that changes only on user input | `revo3_start_servo_drag` + `revo3_update_servo_drag` + `revo3_stop_servo_drag` | SDK owns the background stream and avoids Python/C++ loop jitter. |
+| Custom real-time controller that already runs its own deterministic loop | `revo3_servo_joint_with_gains`, `revo3_servo_hand_with_gains`, finger/thumb servo APIs | Caller owns timing, filtering, and target generation. |
+| Low-level register-style position/speed/current command | `revo3_single_joint_control`, `revo3_multi_joint_control` | Direct control-mode writes for simple static commands. |
+
+Use `move_*` when you know the target and want the SDK to generate the path. Use `servo_drag` when the target itself is being dragged interactively. Use single-call servo APIs when another controller already produces every servo tick.
 
 ### Core Differences: Servo (MIT) Mode vs. Pure Position Control
 
@@ -202,6 +233,8 @@ graph TD
 
 Moves joints smoothly over a specified duration with automatic support for **Quintic Blending**. Under the hood, the trajectory solver calculates a 5th-order polynomial trajectory supporting arbitrary non-zero initial boundary conditions (initial velocity v0 and initial acceleration a0) and smoothly decelerates to zero velocity and acceleration at the target. This ensures perfectly smooth transitions during dynamic mid-course re-planning or target interruptions without physical shocks.
 
+Planner diagnostics may report internal velocity in degrees per second, for example `blend would violate limits (v0=-377.5°/s)`. Public SDK speed parameters and firmware speed limits remain rpm; the SDK converts between `°/s` and rpm using `1 rpm = 6 °/s` before writing to firmware.
+
 | API | Description | Default Gains |
 |-----|-------------|---------------|
 | `revo3_move_joint(slave_id, joint_id, target_pos, duration, dt)` | Move a single joint to target position (Non-blocking in Rust/Python) | Kp=1.0, Kd=0.1 |
@@ -246,6 +279,10 @@ Enables manual joint guidance by entering a zero-impedance state, recording phys
 | `revo3_replay_hand(slave_id, trajectory, dt, kp, kd)` | Playback a recorded full-hand trajectory | Tracks via Kp/Kd loops |
 
 > **Note on Backdrive Stabilization:** After the teaching duration expires, the SDK automatically transitions the affected joints to a gentle stabilization hold state (`Kp=1.0`, `Kd=0.2`) at the final recorded position to prevent the fingers from dropping due to gravity.
+
+For GUI teaching workflows, use teaching/backdrive mode plus DataCollector to record timestamped motor positions. DataCollector is appropriate for recording because it observes state; it is not part of the control loop. On macOS Modbus, record at 50 Hz to 60 Hz for ordinary demonstrations, or around 100 Hz only if the bus is stable and no other high-rate reads are active. Store a monotonic timestamp with each recorded frame and let playback interpolate or skip late frames instead of assuming every collector sample arrives exactly on schedule.
+
+For playback, use full-hand MIT/servo commands when replaying a recorded trajectory at frame rate. Use `move_*` for low-frequency A-to-B motions, such as returning from the final teaching posture to the pre-teach posture.
 
 ---
 

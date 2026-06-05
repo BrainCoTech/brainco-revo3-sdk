@@ -9,6 +9,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_imports import sdk
 
 from .constants import MOTOR_BUFFER_SIZE, TOUCH_BUFFER_SIZE
+
+DEFAULT_MOTOR_FREQ = 60
+DEFAULT_TOUCH_FREQ = 0
+DRAG_MOTOR_FREQ = 10
 from .mock_device import MockRevo3MotorStatusData, MockRevo3TouchData
 
 
@@ -49,6 +53,10 @@ class SharedDataManager(QObject):
         self.revo3_touch_buffer = None
         self.data_collector = None
         self.is_running = False
+        self.motor_frequency = DEFAULT_MOTOR_FREQ
+        self.touch_frequency = DEFAULT_TOUCH_FREQ
+        self._control_priority_depth = 0
+        self._saved_frequencies = None
         self._mock_tick = 0
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._emit_updates)
@@ -102,10 +110,13 @@ class SharedDataManager(QObject):
         if was_running:
             self.start()
 
-    def start(self, motor_freq=200, touch_freq=0):
+    def start(self, motor_freq=DEFAULT_MOTOR_FREQ, touch_freq=DEFAULT_TOUCH_FREQ):
         if not self._device:
             return False
+        self.motor_frequency = motor_freq
+        self.touch_frequency = touch_freq
         if self.is_running:
+            self.update_frequencies(motor_freq, touch_freq)
             return True
         if getattr(self._device, "is_mock", False):
             self.is_running = True
@@ -144,6 +155,32 @@ class SharedDataManager(QObject):
             print(f"[SharedDataManager] Failed to start DataCollector: {e}")
             return False
 
+    def update_frequencies(self, motor_freq=None, touch_freq=None):
+        if motor_freq is not None:
+            self.motor_frequency = motor_freq
+        if touch_freq is not None:
+            self.touch_frequency = touch_freq
+        if self.data_collector:
+            if motor_freq is not None:
+                self.data_collector.update_motor_frequency(motor_freq)
+            if touch_freq is not None:
+                self.data_collector.update_touch_frequency(touch_freq)
+
+    def begin_control_priority(self, motor_freq=DRAG_MOTOR_FREQ):
+        if self._control_priority_depth == 0:
+            self._saved_frequencies = (self.motor_frequency, self.touch_frequency)
+            self.update_frequencies(motor_freq, self.touch_frequency)
+        self._control_priority_depth += 1
+
+    def end_control_priority(self):
+        if self._control_priority_depth <= 0:
+            return
+        self._control_priority_depth -= 1
+        if self._control_priority_depth == 0:
+            motor_freq, touch_freq = self._saved_frequencies or (DEFAULT_MOTOR_FREQ, DEFAULT_TOUCH_FREQ)
+            self._saved_frequencies = None
+            self.update_frequencies(motor_freq, touch_freq)
+
     def stop(self):
         self._update_timer.stop()
         if self.data_collector:
@@ -154,6 +191,8 @@ class SharedDataManager(QObject):
                 print(f"[SharedDataManager] Stop error: {e}")
         self.data_collector = None
         self.is_running = False
+        self._control_priority_depth = 0
+        self._saved_frequencies = None
 
     def get_latest_revo3_motor(self):
         if self.revo3_motor_buffer:
