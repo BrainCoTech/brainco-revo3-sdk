@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 class SystemConfigPanel(QWidget):
     slave_id_changed = Signal(int)
+    request_reconnect = Signal()
 
     def __init__(self):
         super().__init__()
@@ -157,7 +158,7 @@ class SystemConfigPanel(QWidget):
         calib_layout.addLayout(row)
         layout.addWidget(self.calib_group)
 
-        self.runtime_group = QGroupBox("Revo3 Runtime Flags")
+        self.runtime_group = QGroupBox("Runtime Flags")
         runtime_layout = QGridLayout(self.runtime_group)
         self.touch_screen_check = QCheckBox()
         self.touch_screen_check.stateChanged.connect(self._on_touch_screen_changed)
@@ -174,7 +175,7 @@ class SystemConfigPanel(QWidget):
         runtime_layout.setColumnStretch(2, 1)
         layout.addWidget(self.runtime_group)
 
-        self.protection_group = QGroupBox("Revo3 Protection")
+        self.protection_group = QGroupBox("Protection")
         protection_layout = QHBoxLayout(self.protection_group)
         protection_layout.addWidget(QLabel("Global Protect Current (mA):"))
         self.global_current_spin = QSpinBox()
@@ -204,22 +205,22 @@ class SystemConfigPanel(QWidget):
         layout.setSpacing(12)
 
         self.current_baud_group = QGroupBox("Current Connection")
-        current_layout = QFormLayout(self.current_baud_group)
+        self.current_layout = QFormLayout(self.current_baud_group)
         self.current_protocol_label = QLabel("--")
-        current_layout.addRow("Protocol:", self.current_protocol_label)
+        self.current_layout.addRow("Protocol:", self.current_protocol_label)
         self.current_modbus_label = QLabel("--")
-        current_layout.addRow("Modbus Baudrate:", self.current_modbus_label)
+        self.current_layout.addRow("Modbus Baudrate:", self.current_modbus_label)
         self.current_can_arb_label = QLabel("--")
-        current_layout.addRow("CAN Arbitration:", self.current_can_arb_label)
+        self.current_layout.addRow("CAN Arbitration:", self.current_can_arb_label)
         self.current_can_data_label = QLabel("--")
-        current_layout.addRow("CANFD Data:", self.current_can_data_label)
+        self.current_layout.addRow("CANFD Data:", self.current_can_data_label)
         layout.addWidget(self.current_baud_group)
 
         self.modbus_group = QGroupBox("Modbus/RS485 Baudrate")
         modbus_layout = QHBoxLayout(self.modbus_group)
         modbus_layout.addWidget(QLabel("Baudrate:"))
         self.modbus_baud_combo = QComboBox()
-        self.modbus_baud_combo.addItems(["115200", "460800", "1 Mbps", "2 Mbps", "3 Mbps", "5 Mbps"])
+        self.modbus_baud_combo.addItems(["1 Mbps", "2 Mbps", "3 Mbps", "5 Mbps"])
         modbus_layout.addWidget(self.modbus_baud_combo)
         self.modbus_baud_btn = QPushButton("Set")
         self.modbus_baud_btn.clicked.connect(self._set_modbus_baudrate)
@@ -399,10 +400,12 @@ class SystemConfigPanel(QWidget):
         self.manual_calib_btn.setText(tr("manual_calibration"))
         self.touch_screen_check.setText(tr("v3_touch_screen"))
         self.teaching_mode_check.setText(tr("v3_teaching_mode"))
+        self.runtime_group.setTitle(tr("runtime_flags"))
+        self.protection_group.setTitle(tr("protection"))
         self.apply_global_current_btn.setText(tr("apply"))
-        self.refresh_runtime_btn.setText("Refresh Settings")
-        self.refresh_comm_btn.setText("Refresh Settings")
-        self.refresh_revo3_btn.setText("Refresh Status & Info")
+        self.refresh_runtime_btn.setText(tr("refresh_settings"))
+        self.refresh_comm_btn.setText(tr("refresh_settings"))
+        self.refresh_revo3_btn.setText(tr("refresh_status_info"))
         self.log_group.setTitle(tr("operation_log"))
         self.revo3_sys_group.setTitle(tr("revo3_status"))
         self.revo3_motor_group.setTitle(tr("motor_info"))
@@ -418,7 +421,7 @@ class SystemConfigPanel(QWidget):
         for i, label in enumerate(self.motor_row_labels):
             label.setText(f"Motor {i}")
         self.tabs.setTabText(0, "📋 " + tr("device_info"))
-        self.tabs.setTabText(1, "⚙ Revo3 Runtime")
+        self.tabs.setTabText(1, "⚙ " + tr("revo3_runtime"))
         self.tabs.setTabText(2, "📡 " + tr("communication"))
         self.tabs.setTabText(3, "📊 " + tr("revo3_status"))
 
@@ -436,7 +439,7 @@ class SystemConfigPanel(QWidget):
                 current = run_async(lambda: self.device.revo3_get_global_protect_current(self.slave_id))
                 if current is not None:
                     self.global_current_spin.setValue(int(float(current)))
-            self._log("Revo3 runtime settings loaded")
+            self._log("Runtime settings loaded")
         except Exception as e:
             self._log(f"Failed to load runtime settings: {e}")
         finally:
@@ -445,13 +448,89 @@ class SystemConfigPanel(QWidget):
     def _load_comm_settings(self):
         if not self.device:
             return
+        run_async(self._async_load_comm_settings)
+
+    async def _async_load_comm_settings(self):
         protocol = self.protocol or ""
         self.current_protocol_label.setText(protocol or "--")
-        self.current_modbus_label.setText("Active" if "Modbus" in protocol or "Mock" in protocol else "N/A")
+        self.current_modbus_label.setText("N/A")
         self.current_can_arb_label.setText("N/A")
         self.current_can_data_label.setText("N/A")
-        self.modbus_group.setEnabled("Modbus" in protocol or "Mock" in protocol)
-        self.canfd_group.setEnabled("CANFD" in protocol)
+
+        is_modbus = "Modbus" in protocol or "Mock" in protocol
+        is_canfd = "CANFD" in protocol
+
+        if hasattr(self, "current_layout"):
+            label_modbus = self.current_layout.labelForField(self.current_modbus_label)
+            if label_modbus:
+                label_modbus.setVisible(is_modbus)
+            self.current_modbus_label.setVisible(is_modbus)
+
+            label_can_arb = self.current_layout.labelForField(self.current_can_arb_label)
+            if label_can_arb:
+                label_can_arb.setVisible(is_canfd)
+            self.current_can_arb_label.setVisible(is_canfd)
+
+            label_can_data = self.current_layout.labelForField(self.current_can_data_label)
+            if label_can_data:
+                label_can_data.setVisible(is_canfd)
+            self.current_can_data_label.setVisible(is_canfd)
+
+        self.modbus_group.setEnabled(is_modbus)
+        self.canfd_group.setEnabled(is_canfd)
+        try:
+            if "Modbus" in protocol or "Mock" in protocol:
+                if hasattr(self.device, "revo3_get_rs485_baudrate"):
+                    baud = await self.device.revo3_get_rs485_baudrate(self.slave_id)
+                    self.current_modbus_label.setText(self._enum_name(baud))
+
+                    # Update ComboBox default selection
+                    baud_val = getattr(baud, "value", None)
+                    if baud_val is None:
+                        baud_map = {
+                            "Baud1Mbps": 0,
+                            "Baud2Mbps": 1,
+                            "Baud3Mbps": 2,
+                            "Baud5Mbps": 3
+                        }
+                    else:
+                        baud_map = {
+                            1: 0,
+                            2: 1,
+                            3: 2,
+                            5: 3
+                        }
+                    idx = baud_map.get(baud_val if baud_val is not None else self._enum_name(baud))
+                    if idx is not None:
+                        self.modbus_baud_combo.setCurrentIndex(idx)
+
+            elif "CANFD" in protocol:
+                if hasattr(self.device, "revo3_get_canfd_baudrate"):
+                    baud = await self.device.revo3_get_canfd_baudrate(self.slave_id)
+                    self.current_can_data_label.setText(self._enum_name(baud))
+                    
+                    # Update ComboBox default selection
+                    baud_val = getattr(baud, "value", None)
+                    if baud_val is None:
+                        baud_map = {
+                            "Baud1Mbps": 0,
+                            "Baud2Mbps": 1,
+                            "Baud4Mbps": 2,
+                            "Baud5Mbps": 3
+                        }
+                    else:
+                        baud_map = {
+                            1: 0,
+                            2: 1,
+                            4: 2,
+                            5: 3
+                        }
+                    idx = baud_map.get(baud_val if baud_val is not None else self._enum_name(baud))
+                    if idx is not None:
+                        self.canfd_baud_combo.setCurrentIndex(idx)
+
+        except Exception as e:
+            self._log(f"Failed to load communication settings: {e}")
         self._log("Communication settings refreshed")
 
     def _load_revo3_status(self):
@@ -486,7 +565,7 @@ class SystemConfigPanel(QWidget):
                     labels[i].setText(str(value))
             except Exception as e:
                 self._log(f"{method_name} failed: {e}")
-        self._log("Revo3 status refreshed")
+        self._log("Status refreshed")
 
     def _set_slave_id(self):
         new_id = self.new_slave_id_spin.value()
@@ -496,9 +575,50 @@ class SystemConfigPanel(QWidget):
     def _reboot(self):
         if not self.device:
             return
-        if hasattr(self.device, "revo3_reboot"):
-            run_async(lambda: self.device.revo3_reboot(self.slave_id))
-        self._log("Reboot requested")
+        
+        reply = QMessageBox.question(
+            self,
+            tr("confirm"),
+            tr("confirm_reboot"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.No:
+            return
+
+        if self.shared_data:
+            self.shared_data.stop()
+
+        try:
+            if hasattr(self.device, "revo3_reboot"):
+                run_async(lambda: self.device.revo3_reboot(self.slave_id), raise_exception=True)
+            self._log("Reboot requested")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if any(x in err_msg for x in ["timeout", "closed", "connection", "broken pipe", "invalid crc", "io error"]):
+                # Hand will reboot and disconnect immediately. Catching timeouts or port closed exceptions is expected.
+                self._log(f"Reboot command sent, connection closed (expected): {e}")
+            else:
+                self._log(f"Failed to reboot: {e}")
+                QMessageBox.critical(
+                    self,
+                    tr("btn_reboot"),
+                    f"Reboot command failed:\n{e}"
+                )
+                if self.shared_data:
+                    self.shared_data.start()
+                return
+
+        # Actively disconnect and reset panel states
+        if self.shared_data:
+            self.shared_data.connection_lost.emit()
+
+        QMessageBox.information(
+            self,
+            tr("btn_reboot"),
+            tr("reboot_info_msg")
+        )
+        self.request_reconnect.emit()
 
     def _factory_reset(self):
         if not self.device:
@@ -557,10 +677,131 @@ class SystemConfigPanel(QWidget):
             self._log(f"Failed to set global protect current: {e}")
 
     def _set_modbus_baudrate(self):
-        self._log("Modbus baudrate change is not exported in the Revo3 Python API yet")
+        if not self.device or not hasattr(self.device, "revo3_set_rs485_baudrate"):
+            return
+        idx = self.modbus_baud_combo.currentIndex()
+        # Options: ["1 Mbps", "2 Mbps", "3 Mbps", "5 Mbps"]
+        baud_map = {
+            0: sdk.Baudrate.Baud1Mbps,
+            1: sdk.Baudrate.Baud2Mbps,
+            2: sdk.Baudrate.Baud3Mbps,
+            3: sdk.Baudrate.Baud5Mbps,
+        }
+        baud_enum = baud_map.get(idx)
+        if baud_enum is None:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Baudrate Change",
+            f"Are you sure you want to change the RS485 baudrate to {self._enum_name(baud_enum)}?\n\n"
+            "Warning: This will interrupt the current connection. The system will automatically reconnect using the new baudrate.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
+
+        if self.shared_data:
+            self.shared_data.stop()
+
+        try:
+            run_async(lambda: self.device.revo3_set_rs485_baudrate(self.slave_id, baud_enum), raise_exception=True)
+            self._log(f"RS485 baudrate set to {self._enum_name(baud_enum)}")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if any(x in err_msg for x in ["timeout", "closed", "connection", "broken pipe", "invalid crc", "io error"]):
+                # Connection breaks immediately after baudrate change command. Catching timeouts or CRC errors is expected.
+                self._log(f"Baudrate command sent, port closed or timed out (expected): {e}")
+            else:
+                self._log(f"Failed to set RS485 baudrate: {e}")
+                QMessageBox.critical(
+                    self,
+                    "Baudrate Change Failed",
+                    f"Failed to change RS485 baudrate:\n{e}"
+                )
+                if self.shared_data:
+                    self.shared_data.start()
+                return
+
+        # Wait a short period for the hardware port rate switch to stabilize
+        import time
+        time.sleep(0.5)
+
+        # Actively disconnect and reset panel states
+        if self.shared_data:
+            self.shared_data.connection_lost.emit()
+
+        QMessageBox.information(
+            self,
+            "Baudrate Change Sent",
+            "Baudrate change command has been sent. The system will now automatically scan and reconnect to verify the connection at the new baudrate."
+        )
+        self._load_comm_settings()
+        self.request_reconnect.emit()
 
     def _set_canfd_baudrate(self):
-        self._log("CANFD baudrate change is not exported in the Revo3 Python API yet")
+        if not self.device or not hasattr(self.device, "revo3_set_canfd_baudrate"):
+            return
+        idx = self.canfd_baud_combo.currentIndex()
+        # Options: ["1 Mbps", "2 Mbps", "4 Mbps", "5 Mbps"]
+        baud_map = {
+            0: sdk.BaudrateCAN.Baud1Mbps,
+            1: sdk.BaudrateCAN.Baud2Mbps,
+            2: sdk.BaudrateCAN.Baud4Mbps,
+            3: sdk.BaudrateCAN.Baud5Mbps,
+        }
+        baud_enum = baud_map.get(idx)
+        if baud_enum is None:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm CANFD Baudrate Change",
+            f"Are you sure you want to change the CANFD data baudrate to {self._enum_name(baud_enum)}?\n\n"
+            "Warning: This will interrupt the current connection. The system will automatically reconnect using the new baudrate.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
+
+        if self.shared_data:
+            self.shared_data.stop()
+
+        try:
+            run_async(lambda: self.device.revo3_set_canfd_baudrate(self.slave_id, baud_enum), raise_exception=True)
+            self._log(f"CANFD baudrate set to {self._enum_name(baud_enum)}")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if any(x in err_msg for x in ["timeout", "closed", "connection", "broken pipe", "invalid crc", "io error"]):
+                self._log(f"CANFD baudrate command sent, timed out or closed (expected): {e}")
+            else:
+                self._log(f"Failed to set CANFD baudrate: {e}")
+                QMessageBox.critical(
+                    self,
+                    "Baudrate Change Failed",
+                    f"Failed to change CANFD data baudrate:\n{e}"
+                )
+                if self.shared_data:
+                    self.shared_data.start()
+                return
+
+        # Wait a short period for the hardware port rate switch to stabilize
+        import time
+        time.sleep(0.5)
+
+        # Actively disconnect and reset panel states
+        if self.shared_data:
+            self.shared_data.connection_lost.emit()
+
+        QMessageBox.information(
+            self,
+            "Baudrate Change Sent",
+            "Baudrate change command has been sent. The system will now automatically scan and reconnect to verify the connection at the new data baudrate."
+        )
+        self._load_comm_settings()
+        self.request_reconnect.emit()
 
     def _call_bool(self, method_name: str, default: bool):
         if not hasattr(self.device, method_name):

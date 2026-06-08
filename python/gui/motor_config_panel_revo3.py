@@ -11,7 +11,7 @@ from .styles import COLORS
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk, run_async
+from common_imports import sdk, run_async, logger
 
 from .motor_control_panel_revo3 import (
     get_revo3_finger_names, get_revo3_finger_motors, MOTOR_JOINT_LABELS, get_motor_position_range
@@ -328,6 +328,7 @@ class Revo3MotorConfigPanel(QWidget):
         self.device = None
         self.slave_id = 1
         self.shared_data = None
+        self.consecutive_failures = 0
 
         self.current_mode = MODE_JOINT_PROTECT
         self.finger_groups = {}
@@ -342,12 +343,15 @@ class Revo3MotorConfigPanel(QWidget):
     def set_device(self, device, slave_id, device_info, protocol, shared_data=None):
         self.device = device
         self.slave_id = slave_id
+        self.shared_data = shared_data
+        self.consecutive_failures = 0
         if self.auto_refresh_cb.isChecked():
             self.auto_refresh_timer.start()
         self._on_refresh_data()
 
     def clear_device(self):
         self.device = None
+        self.consecutive_failures = 0
         self.auto_refresh_timer.stop()
 
     def update_texts(self):
@@ -598,9 +602,23 @@ class Revo3MotorConfigPanel(QWidget):
             # Currently API does not provide getter for those. We'll refresh protect current:
             return_exceptions=True
         ))
-        if globals_data and not isinstance(globals_data[0], Exception):
-            if globals_data[0] is not None:
+
+        success = False
+        if globals_data is not None and len(globals_data) > 0:
+            if not isinstance(globals_data[0], Exception) and globals_data[0] is not None:
+                success = True
                 self.global_protect_current_spin.setValue(globals_data[0])
+
+        if not success:
+            self.consecutive_failures += 1
+            if self.consecutive_failures >= 3:
+                logger.warning("[MotorConfig] Refresh failed 3 times. Connection might be lost.")
+                self.auto_refresh_timer.stop()
+                if self.shared_data:
+                    self.shared_data.connection_lost.emit()
+            return
+        
+        self.consecutive_failures = 0
 
         if self.current_mode == MODE_JOINT_PROTECT:
             vals = run_async(lambda: device.revo3_get_all_joint_protect_currents(self.slave_id))

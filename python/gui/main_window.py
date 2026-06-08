@@ -157,6 +157,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.dfu_panel, "🔄 " + tr("dfu_upgrade"))
 
         self.config_panel = SystemConfigPanel()
+        if hasattr(self.config_panel, "request_reconnect"):
+            self.config_panel.request_reconnect.connect(self._on_request_reconnect)
         self.tabs.addTab(self.config_panel, "\u2699 " + tr("system_config"))
 
         self.collector_panel = DataCollectorPanel()
@@ -348,6 +350,11 @@ class MainWindow(QMainWindow):
     def _on_connection_lost(self):
         self.statusbar.showMessage(tr("status_connection_lost"))
         self.connection_panel._on_disconnect()
+
+    def _on_request_reconnect(self):
+        self.statusbar.showMessage("Baudrate changed. Automatically scanning and reconnecting in 2 seconds...")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(2000, self.connection_panel.reconnect_last_device)
 
     def _on_slave_id_changed(self, new_id):
         self.slave_id = new_id

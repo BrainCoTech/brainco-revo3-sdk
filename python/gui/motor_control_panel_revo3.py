@@ -975,6 +975,7 @@ class Revo3MotorControlPanel(QWidget):
         self.diag_timer = QTimer()
         self.diag_timer.timeout.connect(self._on_read_diagnostics)
         self.diag_timer.setInterval(5000)  # 5 seconds
+        self.diag_consecutive_failures = 0
 
     @property
     def device(self):
@@ -1448,6 +1449,7 @@ class Revo3MotorControlPanel(QWidget):
     def _update_diag_ui(self, success, hw, online, temps, errors):
         if True:
             if success:
+                self.diag_consecutive_failures = 0
                 total = 21
                 online_count = bin(online).count('1')
 
@@ -1524,6 +1526,12 @@ class Revo3MotorControlPanel(QWidget):
             else:
                 msg = hw  # error message is in hw
                 self.lbl_diag_result.setStyleSheet("color: red; font-weight: bold;")
+                self.diag_consecutive_failures += 1
+                if self.diag_consecutive_failures >= 3:
+                    logger.warning("[MotorControl] Diagnostic refresh failed 3 times. Connection might be lost.")
+                    self.diag_timer.stop()
+                    if self.shared_data:
+                        self.shared_data.connection_lost.emit()
 
             self.lbl_diag_result.setText(msg)
 
@@ -1985,6 +1993,7 @@ class Revo3MotorControlPanel(QWidget):
         self._device = device
         self._slave_id = slave_id
         self._device_info = device_info
+        self.diag_consecutive_failures = 0
         if device and shared_data:
             self.update_timer.start()
             # Populate FW/SN from device_info into info panels
@@ -2032,6 +2041,7 @@ class Revo3MotorControlPanel(QWidget):
         self._stop_all_servo_drags()
         self.update_timer.stop()
         self.diag_timer.stop()
+        self.diag_consecutive_failures = 0
         self.shared_data = None
         self._device = None
         # Clear all info panels

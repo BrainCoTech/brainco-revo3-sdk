@@ -136,7 +136,7 @@ from bc_revo3_sdk import bc_revo3_sdk as sdk
 sdk.init_logging()
 
 async def main():
-    # Auto-detect Revo3 device
+    # Auto-detect Revo3 device (returns Baudrate enum as the 3rd element)
     (protocol, port, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()
     ctx = await sdk.modbus_open(port, baudrate)
 
@@ -165,8 +165,8 @@ asyncio.run(main())
 ```python
 # Auto-detect Revo3 device (scans all serial ports at 5Mbps)
 (protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()
-# Returns: (str, str, int, int)
-# e.g., ("modbus", "/dev/ttyUSB0", 5000000, 1)
+# Returns: (StarkProtocolType, str, Baudrate, int)
+# e.g., (sdk.StarkProtocolType.Modbus, "/dev/ttyUSB0", sdk.Baudrate.Baud5Mbps, 1)
 
 # With specific port hint
 (protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus("/dev/ttyUSB0")
@@ -175,8 +175,10 @@ asyncio.run(main())
 ### Manual Connection
 
 ```python
-# Open Modbus connection (Revo3 default: 5Mbps)
-ctx = await sdk.modbus_open("/dev/ttyUSB0", 5000000)
+# Open Modbus connection using Baudrate enum (Revo3 default: 5Mbps)
+ctx = await sdk.modbus_open("/dev/ttyUSB0", sdk.Baudrate.Baud5Mbps)
+# Note: sdk.modbus_open requires sdk.Baudrate enum. To connect with an integer baudrate,
+# use modbus_open wrapper from examples/python/common_imports.py or convert via sdk.Baudrate(val).
 slave_id = 1  # default slave ID
 
 # Close connection

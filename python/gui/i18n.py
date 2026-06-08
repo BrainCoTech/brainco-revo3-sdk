@@ -101,8 +101,8 @@ TRANSLATIONS_EN = {
 
     # Motor control panel
     "motor_control": "Motor Control",
-    "motor_control_v3": "Motor Control (Revo3)",
-    "v3_motor_config": "Motor Config (Revo3)",
+    "motor_control_v3": "Motor Control",
+    "v3_motor_config": "Motor Config",
     "control_mode": "Control Mode",
     "mode": "Mode",
     "mode_position": "Position",
@@ -197,6 +197,8 @@ TRANSLATIONS_EN = {
     "operation_log": "Operation Log",
     "confirm": "Confirm",
     "confirm_factory_reset": "Are you sure to factory reset? This cannot be undone!",
+    "confirm_reboot": "Are you sure you want to reboot the device?\n\nThis will temporarily disconnect the current connection.",
+    "reboot_info_msg": "The device is rebooting.\n\nThe system will automatically attempt to reconnect once it is ready.",
     "log_setting_slave_id": "Setting slave ID to {id}...",
     "log_slave_id_set": "Slave ID set to {id}",
     "log_slave_id_failed": "Failed to set slave ID: {error}",
@@ -400,6 +402,10 @@ TRANSLATIONS_EN = {
     "finger_thumb_aux": "Thumb Aux",
 
     # Revo3 Motor Settings
+    "revo3_runtime": "Runtime",
+    "runtime_flags": "Runtime Flags",
+    "protection": "Protection",
+    "refresh_status_info": "Refresh Status & Info",
     "v3_settings": "⚙ Settings",
 
     "v3_position_limits": "Position Limits",
@@ -439,7 +445,7 @@ TRANSLATIONS_EN = {
     "mode_mit": "MIT",
     "mode_trajectory": "Trajectory Planning",
     "communication": "Communication",
-    "revo3_status": "Revo3 Status",
+    "revo3_status": "Status",
 
     "system_state": "System State",
     "error_code": "Error Code",
@@ -471,7 +477,7 @@ TRANSLATIONS_EN = {
 
     # System Config
     "config_modbus": "Modbus",
-    "config_revo3_status": "Revo3 Status",
+    "config_revo3_status": "Status",
 
     "v3_reset_finger_defaults": "↩ Reset Finger Defaults",
     "v3_touch_screen": "Touch Screen",
@@ -557,8 +563,8 @@ TRANSLATIONS_ZH = {
 
     # Motor Control Panel
     "motor_control": "电机控制",
-    "motor_control_v3": "电机控制 (Revo3)",
-    "v3_motor_config": "关节参数配置 (Revo3)",
+    "motor_control_v3": "电机控制",
+    "v3_motor_config": "关节参数配置",
     "control_mode": "控制模式",
     "mode": "模式",
     "mode_position": "位置",
@@ -653,6 +659,8 @@ TRANSLATIONS_ZH = {
     "operation_log": "操作日志",
     "confirm": "确认",
     "confirm_factory_reset": "确定要恢复出厂设置吗？此操作不可撤销！",
+    "confirm_reboot": "确定要重启设备吗？\n\n这将暂时断开当前的连接。",
+    "reboot_info_msg": "设备正在重启。\n\n系统将在设备就绪后自动尝试重新连接。",
     "log_setting_slave_id": "设置从站ID为 {id}...",
     "log_slave_id_set": "从站ID已设置为 {id}",
     "log_slave_id_failed": "设置从站ID失败: {error}",
@@ -856,6 +864,10 @@ TRANSLATIONS_ZH = {
     "finger_thumb_aux": "拇指辅助",
 
     # Revo3 Motor Settings
+    "revo3_runtime": "运行参数",
+    "runtime_flags": "运行参数标识",
+    "protection": "安全保护",
+    "refresh_status_info": "刷新状态与信息",
     "v3_settings": "⚙ 设置",
 
     "v3_position_limits": "位置限制",
@@ -895,7 +907,7 @@ TRANSLATIONS_ZH = {
     "mode_mit": "MIT",
     "mode_trajectory": "轨迹规划",
     "communication": "通信设置",
-    "revo3_status": "Revo3 状态",
+    "revo3_status": "状态",
 
     "system_state": "系统状态",
     "error_code": "错误码",
@@ -927,7 +939,7 @@ TRANSLATIONS_ZH = {
 
     # System Config
     "config_modbus": "Modbus",
-    "config_revo3_status": "Revo3状态",
+    "config_revo3_status": "状态",
 
     "v3_reset_finger_defaults": "↩ 恢复参数默认值",
     "v3_touch_screen": "触屏功能",

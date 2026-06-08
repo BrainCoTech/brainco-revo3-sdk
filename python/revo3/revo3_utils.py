@@ -8,6 +8,7 @@ This module provides common utility functions for Revo3 (21 DoF) dexterous hand,
 
 import sys
 import os
+from enum import IntEnum
 
 # Import from common_imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,10 +16,17 @@ from common_imports import logger, libstark, int_to_baudrate, modbus_open
 
 libstark.init_logging()
 
+class Revo3Finger(IntEnum):
+    INDEX = 1
+    MIDDLE = 2
+    RING = 3
+    PINKY = 4
+
 __all__ = [
     'logger', 'libstark', 'int_to_baudrate', 'modbus_open',
     'open_modbus_revo3',
     'REVO3_MOTOR_COUNT', 'REVO3_FINGER_COUNT', 'FINGER_NAMES',
+    'Revo3Finger',
 ]
 
 REVO3_MOTOR_COUNT = 21

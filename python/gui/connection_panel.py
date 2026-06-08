@@ -259,7 +259,7 @@ class ConnectionPanel(QWidget):
         self.modbus_baud_label = QLabel(tr("baud") + ":")
         modbus_layout.addWidget(self.modbus_baud_label)
         self.baudrate_combo = QComboBox()
-        for baud in ["5000000", "3000000", "2000000", "1000000", "460800", "115200"]:
+        for baud in ["5000000", "3000000", "2000000", "1000000"]:
             self.baudrate_combo.addItem(baud)
         modbus_layout.addWidget(self.baudrate_combo)
         self.modbus_id_label = QLabel(tr("id") + ":")

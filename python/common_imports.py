@@ -34,35 +34,37 @@ def int_to_baudrate(value: int):
     """Convert an integer baudrate to the SDK Baudrate enum."""
     if sdk is None:
         return None
-    if hasattr(sdk.Baudrate, "from_int"):
-        return sdk.Baudrate.from_int(value)
 
     baudrate_map = {
-        115200: sdk.Baudrate.Baud115200,
-        57600: sdk.Baudrate.Baud57600,
-        19200: sdk.Baudrate.Baud19200,
-        460800: sdk.Baudrate.Baud460800,
         1000000: sdk.Baudrate.Baud1Mbps,
         2000000: sdk.Baudrate.Baud2Mbps,
         3000000: sdk.Baudrate.Baud3Mbps,
         5000000: sdk.Baudrate.Baud5Mbps,
     }
-    return baudrate_map.get(value, sdk.Baudrate.Baud5Mbps)
+    if value in baudrate_map:
+        return baudrate_map[value]
+
+    if hasattr(sdk.Baudrate, "from_int"):
+        try:
+            return sdk.Baudrate.from_int(value)
+        except Exception:
+            pass
+
+    try:
+        return sdk.Baudrate(value)
+    except Exception:
+        pass
+
+    raise ValueError(
+        f"Invalid RS485 baudrate: {value} bps. Supported values: [1000000, 2000000, 3000000, 5000000]"
+    )
 
 
 def baudrate_to_int(baudrate) -> int:
     """Convert a Baudrate enum to the actual bps value."""
     if sdk is None:
         return 0
-    if baudrate == sdk.Baudrate.Baud115200:
-        return 115200
-    elif baudrate == sdk.Baudrate.Baud57600:
-        return 57600
-    elif baudrate == sdk.Baudrate.Baud19200:
-        return 19200
-    elif baudrate == sdk.Baudrate.Baud460800:
-        return 460800
-    elif baudrate == sdk.Baudrate.Baud1Mbps:
+    if baudrate == sdk.Baudrate.Baud1Mbps:
         return 1000000
     elif baudrate == sdk.Baudrate.Baud2Mbps:
         return 2000000
@@ -155,7 +157,7 @@ def get_hw_type_name(hw_type) -> str:
     return value_names.get(value, str(hw_type))
 
 
-def run_async(coro_or_fn):
+def run_async(coro_or_fn, raise_exception: bool = False):
     """Run an async coroutine or coroutine function in a new thread-local event loop.
 
     [PERFORMANCE REMARK & USAGE WARNING]
@@ -191,6 +193,8 @@ def run_async(coro_or_fn):
     try:
         return loop.run_until_complete(_wrapper())
     except Exception as e:
+        if raise_exception:
+            raise e
         logger.error(f"Error in run_async execution: {e}")
         traceback.print_exc()
         return None
