@@ -11,16 +11,16 @@ The hand has 11 physical tactile modules. The Modbus protocol maps these to 42 "
 | Module Index | Location | Array Address | Register Points |
 |:---:|----------|:---:|:---:|
 | 0 | Palm | `4200` | 36 |
-| 1 | Thumb Tip | `4250` | 22 |
-| 2 | Thumb Pad | `4290` | 51 |
+| 1 | Thumb Tip | `4250` | 31 |
+| 2 | Thumb Pad | `4290` | 57 |
 | 3 | Index Tip | `4350` | 21 |
-| 4 | Index Pad | `4400` | 49 |
+| 4 | Index Pad | `4400` | 52 |
 | 5 | Middle Tip | `4460` | 21 |
-| 6 | Middle Pad | `4500` | 49 |
+| 6 | Middle Pad | `4500` | 52 |
 | 7 | Ring Tip | `4560` | 21 |
-| 8 | Ring Pad | `4600` | 49 |
+| 8 | Ring Pad | `4600` | 52 |
 | 9 | Pinky Tip | `4660` | 21 |
-| 10| Pinky Pad | `4700` | 49 |
+| 10| Pinky Pad | `4700` | 52 |
 
 ## Control Registers (Holding, R/W)
 

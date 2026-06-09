@@ -57,7 +57,7 @@ async def auto_detect_and_init(select_device: bool = True, scan_all: bool = Fals
     """Auto-detect Revo3 devices and initialize the selected device."""
     check_sdk()
     try:
-        devices = await sdk.revo3_auto_detect(scan_all)
+        devices = await sdk.revo3_auto_detect(scan_all=scan_all)
         devices = [device for device in devices if revo3_uses_motor_api(device.hardware_type)]
         if not devices:
             logger.error("No Revo3 devices found")

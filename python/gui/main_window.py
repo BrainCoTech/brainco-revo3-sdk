@@ -33,7 +33,7 @@ from .touch_panel_revo3 import Revo3TouchSubPanel
 from .touch_common import run_async
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import get_hw_type_name, has_touch, sdk, uses_revo3_motor_api, logger
+from common_imports import get_hw_type_name, has_touch, sdk, uses_revo3_motor_api, logger, baudrate_to_int
 
 
 class DfuOverlay(QWidget):
@@ -204,13 +204,6 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
-        
-        sdk_version = "Unknown"
-        if sdk is not None:
-            sdk_version = getattr(sdk, "__version__", "1.1.1")
-        self.sdk_version_label = QLabel(f"SDK: v{sdk_version} ")
-        self.sdk_version_label.setStyleSheet("color: #7f8c8d; font-weight: bold; margin-right: 10px;")
-        self.statusbar.addPermanentWidget(self.sdk_version_label)
 
         self.device_info_label = QLabel("")
         self.statusbar.addPermanentWidget(self.device_info_label)
@@ -311,12 +304,36 @@ class MainWindow(QMainWindow):
         if hasattr(self.config_panel, "slave_id_changed"):
             self.config_panel.slave_id_changed.connect(self._on_slave_id_changed)
 
+        self._update_device_info_statusbar()
+        sn = getattr(device_info, "serial_number", "") if device_info else ""
+        self.statusbar.showMessage(f"Connected: {sn}")
+        self.tabs.setCurrentIndex(self.tabs.indexOf(self.motor_panel_revo3))
+
+    def _update_device_info_statusbar(self):
+        if self.device is None:
+            self.device_info_label.setText("")
+            return
+        device_info = self.shared_data.device_info
+        hw_type = getattr(device_info, "hardware_type", None) if device_info else None
         hw_str = get_hw_type_name(hw_type) if hw_type else ""
         fw_ver = getattr(device_info, "firmware_version", "") if device_info else ""
-        sn = getattr(device_info, "serial_number", "") if device_info else ""
-        self.device_info_label.setText(" | ".join(p for p in [hw_str, f"ID:{slave_id}", fw_ver] if p))
-        self.statusbar.showMessage(f"Connected: {sn} | {protocol} | FW: {fw_ver}")
-        self.tabs.setCurrentIndex(self.tabs.indexOf(self.motor_panel_revo3))
+
+        protocol_key = self.connection_panel.protocol_key
+        protocol = self.connection_panel.protocol
+        baud_str = ""
+        if protocol_key == "modbus":
+            last_baud = self.connection_panel.last_modbus_baudrate
+            if last_baud is not None:
+                baud_val = baudrate_to_int(last_baud)
+                if baud_val > 0:
+                    if baud_val >= 1000000:
+                        baud_str = f" ({baud_val // 1000000}M)"
+                    else:
+                        baud_str = f" ({baud_val // 100}K)"
+        elif protocol_key == "canfd":
+            baud_str = " (1M/5M)"
+
+        self.device_info_label.setText(" | ".join(p for p in [hw_str, f"ID: {self.slave_id}", f"{protocol}{baud_str}", f"FW: {fw_ver}"] if p))
 
     def _on_disconnected(self):
         try:
@@ -351,8 +368,11 @@ class MainWindow(QMainWindow):
         self.statusbar.showMessage(tr("status_connection_lost"))
         self.connection_panel._on_disconnect()
 
-    def _on_request_reconnect(self):
+    def _on_request_reconnect(self, modbus_baudrate=None):
+        if modbus_baudrate is not None:
+            self.connection_panel.last_modbus_baudrate = modbus_baudrate
         self.statusbar.showMessage("Baudrate changed. Automatically scanning and reconnecting in 2 seconds...")
+        self.connection_panel._on_disconnect()
         from PySide6.QtCore import QTimer
         QTimer.singleShot(2000, self.connection_panel.reconnect_last_device)
 

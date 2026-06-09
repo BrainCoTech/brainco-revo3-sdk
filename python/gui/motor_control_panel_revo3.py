@@ -1441,6 +1441,8 @@ class Revo3MotorControlPanel(QWidget):
                 ub = await _get("revo3_get_use_broadcast_id", self.use_broadcast_id_cb.isChecked())
                 self.sig_toggles_fetched.emit(ac, ts, bz, vib, tm, es, ub)
             except Exception as e:
+                if self.shared_data and not self.shared_data.is_running:
+                    return
                 print(f"[Diag] Error fetching diagnostics: {e}")
                 self.sig_diag_fetched.emit(False, str(e), 0, [], [])
 

@@ -22,7 +22,7 @@ from .i18n import tr
 from .styles import COLORS, CONNECTION_STATUS_STYLES
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import get_protocol_display_name, modbus_open, sdk
+from common_imports import get_protocol_display_name, int_to_baudrate, modbus_open, sdk, baudrate_to_int
 
 PROTO_AUTO = "auto"
 PROTO_MODBUS = "modbus"
@@ -92,11 +92,13 @@ class AutoDetectWorker(QObject):
     error = Signal(str)
     progress = Signal(str)
 
-    def __init__(self, protocol=None, port=None, scan_all=False):
+    def __init__(self, protocol=None, port=None, scan_all=False, slave_id=None, modbus_baudrate=None):
         super().__init__()
         self.protocol = protocol
         self.port = port
         self.scan_all = scan_all
+        self.slave_id = slave_id
+        self.modbus_baudrate = modbus_baudrate
 
     def run(self):
         loop = None
@@ -104,7 +106,7 @@ class AutoDetectWorker(QObject):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             result = loop.run_until_complete(self._auto_detect())
-            self.finished.emit(*result)
+            self.finished.emit(result)
         except Exception as e:
             import traceback
 
@@ -122,6 +124,8 @@ class AutoDetectWorker(QObject):
                 scan_all=self.scan_all,
                 port=self.port,
                 protocol=self.protocol,
+                slave_id=self.slave_id,
+                modbus_baudrate=self.modbus_baudrate,
             )
             if devices:
                 break
@@ -218,6 +222,9 @@ class ConnectionPanel(QWidget):
         self.protocol_key = None
         self.last_protocol_key = None
         self.last_slave_id = None
+        self.last_reconnect_port = None
+        self.last_reconnect_protocol = None
+        self.last_modbus_baudrate = None
         self.revo3_modbus = revo3_modbus
         self.mock_type = mock_type
         self._thread = None
@@ -405,18 +412,23 @@ class ConnectionPanel(QWidget):
                 port = None
         try:
             self._on_progress("Scanning Revo3 devices...")
-            device = run_in_new_loop(lambda: self._auto_detect_device(protocol, port))
+            modbus_baudrate = None
+            if protocol_key == PROTO_MODBUS:
+                modbus_baudrate = int_to_baudrate(int(self.baudrate_combo.currentText()))
+            device = run_in_new_loop(lambda: self._auto_detect_device(protocol, port, modbus_baudrate=modbus_baudrate))
             self._on_detect_success(device)
         except Exception as e:
             self._on_connect_error(str(e))
 
-    async def _auto_detect_device(self, protocol, port):
+    async def _auto_detect_device(self, protocol, port, slave_id=None, modbus_baudrate=None):
         devices = []
         for attempt in range(3):
             devices = await sdk.revo3_auto_detect(
                 scan_all=False,
                 port=port,
                 protocol=protocol,
+                slave_id=slave_id,
+                modbus_baudrate=modbus_baudrate,
             )
             if devices:
                 break
@@ -432,7 +444,14 @@ class ConnectionPanel(QWidget):
             ctx, slave_id, device_info, protocol_key, protocol_label = run_in_new_loop(
                 lambda: self._init_detected_device(device)
             )
-            self._on_connect_success(ctx, slave_id, device_info, protocol_key, protocol_label)
+            self._on_connect_success(
+                ctx,
+                slave_id,
+                device_info,
+                protocol_key,
+                protocol_label,
+                detected_device=device,
+            )
         except Exception as e:
             self._on_connect_error(str(e))
 
@@ -503,11 +522,28 @@ class ConnectionPanel(QWidget):
         if self.mock_type:
             self._connect_mock()
             return
-        
+
         # Disconnect old context to free up serial port for auto-detect
         if self.ctx is not None:
             self._on_disconnect()
-            
+
+        if self.last_reconnect_protocol is not None and self.last_reconnect_port and self.last_slave_id:
+            self._set_connecting_state()
+            try:
+                self._on_progress("Reconnecting last Revo3 device...")
+                device = run_in_new_loop(
+                    lambda: self._auto_detect_device(
+                        self.last_reconnect_protocol,
+                        self.last_reconnect_port,
+                        self.last_slave_id,
+                        self.last_modbus_baudrate,
+                    )
+                )
+                self._on_detect_success(device)
+                return
+            except Exception as e:
+                print(f"Fast reconnect failed, falling back to full scan: {e}")
+
         self._on_auto_detect()
 
     def _connect_mock(self):
@@ -530,13 +566,98 @@ class ConnectionPanel(QWidget):
     def _on_progress(self, message):
         self.status_label.setText(message)
 
-    def _on_connect_success(self, ctx, slave_id, device_info, protocol_key, protocol_label):
+    def _on_connect_success(
+        self,
+        ctx,
+        slave_id,
+        device_info,
+        protocol_key,
+        protocol_label,
+        detected_device=None,
+    ):
         self.ctx = ctx
         self.slave_id = slave_id
         self.protocol_key = protocol_key
         self.protocol = protocol_label
         self.last_protocol_key = protocol_key
         self.last_slave_id = slave_id
+        if detected_device is not None:
+            self.last_reconnect_port = detected_device.port_name
+            self.last_reconnect_protocol = detected_device.protocol_type
+            self.last_modbus_baudrate = (
+                detected_device.baudrate
+                if detected_device.protocol_type == sdk.ProtocolType.Modbus
+                else None
+            )
+        elif protocol_key == PROTO_MODBUS:
+            self.last_reconnect_port = self.port_combo.currentData() or self.port_combo.currentText()
+            self.last_reconnect_protocol = sdk.ProtocolType.Modbus
+            self.last_modbus_baudrate = int_to_baudrate(int(self.baudrate_combo.currentText()))
+        elif protocol_key == PROTO_CANFD:
+            idx = self.canfd_port_combo.currentIndex()
+            self.last_reconnect_port = self.canfd_port_combo.itemData(idx) if idx >= 0 else None
+            self.last_reconnect_protocol = sdk.ProtocolType.CanFd
+            self.last_modbus_baudrate = None
+        elif protocol_key == PROTO_ETHERCAT:
+            self.last_reconnect_port = None
+            self.last_reconnect_protocol = sdk.ProtocolType.EtherCAT
+            self.last_modbus_baudrate = None
+
+        # Automatically switch protocol dropdown to the actually detected protocol
+        self.protocol_combo.blockSignals(True)
+        idx = self.protocol_combo.findData(protocol_key)
+        if idx >= 0:
+            self.protocol_combo.setCurrentIndex(idx)
+        self.protocol_combo.blockSignals(False)
+
+        # Update and show config frames corresponding to the actual connected protocol
+        if protocol_key == PROTO_MODBUS:
+            self.modbus_frame.setVisible(True)
+            self.canfd_frame.setVisible(False)
+            self.ethercat_frame.setVisible(False)
+            self.connect_btn.setVisible(True)
+            self.auto_detect_btn.setVisible(False)
+            if detected_device is not None:
+                port_idx = self.port_combo.findData(detected_device.port_name)
+                if port_idx >= 0:
+                    self.port_combo.setCurrentIndex(port_idx)
+                else:
+                    self.port_combo.setEditText(detected_device.port_name)
+                baud_val = baudrate_to_int(detected_device.baudrate)
+                baud_idx = self.baudrate_combo.findText(str(baud_val))
+                if baud_idx >= 0:
+                    self.baudrate_combo.setCurrentIndex(baud_idx)
+                self.slave_id_spin.setValue(detected_device.slave_id)
+        elif protocol_key == PROTO_CANFD:
+            self.modbus_frame.setVisible(False)
+            self.canfd_frame.setVisible(True)
+            self.ethercat_frame.setVisible(False)
+            self.connect_btn.setVisible(True)
+            self.auto_detect_btn.setVisible(False)
+            if detected_device is not None:
+                port_idx = self.canfd_port_combo.findData(detected_device.port_name)
+                if port_idx >= 0:
+                    self.canfd_port_combo.setCurrentIndex(port_idx)
+                self.canfd_slave_spin.setValue(detected_device.slave_id)
+        elif protocol_key == PROTO_ETHERCAT:
+            self.modbus_frame.setVisible(False)
+            self.canfd_frame.setVisible(False)
+            self.ethercat_frame.setVisible(True)
+            self.connect_btn.setVisible(True)
+            self.auto_detect_btn.setVisible(False)
+            if detected_device is not None:
+                self.ec_slave_spin.setValue(detected_device.slave_id)
+
+        # Lock inputs in connected state
+        self.protocol_combo.setEnabled(False)
+        self.port_combo.setEnabled(False)
+        self.baudrate_combo.setEnabled(False)
+        self.slave_id_spin.setEnabled(False)
+        self.canfd_port_combo.setEnabled(False)
+        self.canfd_slave_spin.setEnabled(False)
+        self.ec_master_spin.setEnabled(False)
+        self.ec_slave_spin.setEnabled(False)
+
         self.auto_detect_btn.setEnabled(False)
         self.connect_btn.setEnabled(False)
         self.disconnect_btn.setEnabled(True)
@@ -573,6 +694,22 @@ class ConnectionPanel(QWidget):
         self.slave_id = None
         self.protocol = None
         self.protocol_key = None
+
+        # Restore widgets state
+        self.protocol_combo.setEnabled(True)
+        self.port_combo.setEnabled(True)
+        self.baudrate_combo.setEnabled(True)
+        self.slave_id_spin.setEnabled(True)
+        self.canfd_port_combo.setEnabled(True)
+        self.canfd_slave_spin.setEnabled(True)
+        self.ec_master_spin.setEnabled(True)
+        self.ec_slave_spin.setEnabled(True)
+
+        # Update button visibilities based on current protocol dropdown selection
+        current_proto = self.protocol_combo.currentData()
+        self.connect_btn.setVisible(current_proto != PROTO_AUTO)
+        self.auto_detect_btn.setVisible(current_proto == PROTO_AUTO)
+
         self.auto_detect_btn.setEnabled(True)
         self.connect_btn.setEnabled(True)
         self.disconnect_btn.setEnabled(False)

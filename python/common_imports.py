@@ -60,6 +60,13 @@ def int_to_baudrate(value: int):
     )
 
 
+def parse_modbus_baudrate(value):
+    """Parse an optional CLI Modbus baudrate into the SDK Baudrate enum."""
+    if value is None:
+        return None
+    return int_to_baudrate(int(value, 0))
+
+
 def baudrate_to_int(baudrate) -> int:
     """Convert a Baudrate enum to the actual bps value."""
     if sdk is None:

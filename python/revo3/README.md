@@ -163,7 +163,7 @@ asyncio.run(main())
 ### Auto-Detect
 
 ```python
-# Auto-detect Revo3 device (scans all serial ports at 5Mbps)
+# Auto-detect Revo3 Modbus device (tries default Revo3 IDs and baudrates)
 (protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()
 # Returns: (StarkProtocolType, str, Baudrate, int)
 # e.g., (sdk.StarkProtocolType.Modbus, "/dev/ttyUSB0", sdk.Baudrate.Baud5Mbps, 1)
@@ -171,6 +171,46 @@ asyncio.run(main())
 # With specific port hint
 (protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus("/dev/ttyUSB0")
 ```
+
+For Modbus, CANFD, and future protocol-aware connection flows, use the
+Revo3 device list API:
+
+```python
+devices = await sdk.revo3_auto_detect(scan_all=False, protocol=sdk.ProtocolType.Auto)
+ctx = await sdk.init_from_detected(devices[0])
+```
+
+Reconnect faster when you already know the previous device:
+
+```python
+devices = await sdk.revo3_auto_detect(
+    scan_all=False,
+    port="/dev/ttyUSB0",
+    protocol=sdk.ProtocolType.Modbus,
+    slave_id=0x7E,
+    modbus_baudrate=sdk.Baudrate.Baud5Mbps,
+)
+```
+
+For GUI or selection workflows, stream devices as they are found:
+
+```python
+scanner = sdk.Revo3AutoDetector(
+    stop_on_first=False,
+    protocol=sdk.ProtocolType.Auto,
+    modbus_baudrate=None,
+)
+async for device in scanner:
+    print(device)
+    if user_selected(device):
+        await scanner.stop()
+        ctx = await sdk.init_from_detected(device)
+        break
+```
+
+The `revo3/auto_detect.py` example keeps SDK scan logs quiet by default. Pass
+`--verbose` if you need adapter-level scan diagnostics. Pass
+`--modbus-baudrate 5000000` when reconnecting to a known Modbus baudrate.
 
 ### Manual Connection
 

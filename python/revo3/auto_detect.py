@@ -8,16 +8,23 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common_imports import check_sdk, get_hw_type_name, get_protocol_display_name, revo3_uses_motor_api, sdk
+from common_imports import (
+    check_sdk,
+    get_hw_type_name,
+    get_protocol_display_name,
+    parse_modbus_baudrate,
+    revo3_uses_motor_api,
+    sdk,
+)
 
 
 def parse_protocol(value):
     if value is None or value == "auto":
-        return None
+        return sdk.ProtocolType.Auto
     return {
-        "modbus": sdk.StarkProtocolType.Modbus,
-        "canfd": sdk.StarkProtocolType.CanFd,
-        "ethercat": sdk.StarkProtocolType.EtherCAT,
+        "modbus": sdk.ProtocolType.Modbus,
+        "canfd": sdk.ProtocolType.CanFd,
+        "ethercat": sdk.ProtocolType.EtherCAT,
     }[value]
 
 
@@ -25,15 +32,44 @@ async def main():
     check_sdk()
     parser = argparse.ArgumentParser(description="Revo3 auto-detection")
     parser.add_argument("--scan-all", action="store_true", help="Return every detected Revo3 device")
+    parser.add_argument("--stream", action="store_true", help="Print each device as soon as it is detected")
+    parser.add_argument("--stop-on-first", action="store_true", help="Stop streaming after the first device")
+    parser.add_argument("--verbose", action="store_true", help="Enable SDK info logs while scanning")
     parser.add_argument("--port", help="Limit detection to a serial port or CANFD adapter/interface")
+    parser.add_argument("--slave-id", type=lambda value: int(value, 0), help="Probe only one slave ID, e.g. 0x7E")
+    parser.add_argument(
+        "--modbus-baudrate",
+        help="Probe only one Modbus baudrate in bps, e.g. 5000000",
+    )
     parser.add_argument("--protocol", choices=("auto", "modbus", "canfd", "ethercat"), default="auto")
     args = parser.parse_args()
 
-    devices = await sdk.revo3_auto_detect(
-        scan_all=args.scan_all,
-        port=args.port,
-        protocol=parse_protocol(args.protocol),
-    )
+    sdk.init_logging(sdk.LogLevel.Info if args.verbose else sdk.LogLevel.Warn)
+
+    devices = []
+    if args.stream:
+        scanner = sdk.Revo3AutoDetector(
+            stop_on_first=args.stop_on_first,
+            port=args.port,
+            protocol=parse_protocol(args.protocol),
+            slave_id=args.slave_id,
+            modbus_baudrate=parse_modbus_baudrate(args.modbus_baudrate),
+        )
+        async for device in scanner:
+            # print(f"Detected: {device}")
+            devices.append(device)
+            if args.stop_on_first:
+                await scanner.stop()
+                break
+    else:
+        devices = await sdk.revo3_auto_detect(
+            scan_all=args.scan_all,
+            port=args.port,
+            protocol=parse_protocol(args.protocol),
+            slave_id=args.slave_id,
+            modbus_baudrate=parse_modbus_baudrate(args.modbus_baudrate),
+        )
+
     devices = [device for device in devices if revo3_uses_motor_api(device.hardware_type)]
 
     if not devices:

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 class SystemConfigPanel(QWidget):
     slave_id_changed = Signal(int)
-    request_reconnect = Signal()
+    request_reconnect = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -609,16 +609,12 @@ class SystemConfigPanel(QWidget):
                     self.shared_data.start()
                 return
 
-        # Actively disconnect and reset panel states
-        if self.shared_data:
-            self.shared_data.connection_lost.emit()
-
         QMessageBox.information(
             self,
             tr("btn_reboot"),
             tr("reboot_info_msg")
         )
-        self.request_reconnect.emit()
+        self.request_reconnect.emit(None)
 
     def _factory_reset(self):
         if not self.device:
@@ -691,6 +687,12 @@ class SystemConfigPanel(QWidget):
         if baud_enum is None:
             return
 
+        current_baud = self._read_current_modbus_baudrate()
+        if current_baud == baud_enum:
+            self._log(f"RS485 baudrate already {self._enum_name(baud_enum)}; no change needed")
+            self.current_modbus_label.setText(self._enum_name(baud_enum))
+            return
+
         reply = QMessageBox.question(
             self,
             "Confirm Baudrate Change",
@@ -709,26 +711,17 @@ class SystemConfigPanel(QWidget):
             run_async(lambda: self.device.revo3_set_rs485_baudrate(self.slave_id, baud_enum), raise_exception=True)
             self._log(f"RS485 baudrate set to {self._enum_name(baud_enum)}")
         except Exception as e:
-            err_msg = str(e).lower()
-            if any(x in err_msg for x in ["timeout", "closed", "connection", "broken pipe", "invalid crc", "io error"]):
-                # Connection breaks immediately after baudrate change command. Catching timeouts or CRC errors is expected.
-                self._log(f"Baudrate command sent, port closed or timed out (expected): {e}")
-            else:
-                self._log(f"Failed to set RS485 baudrate: {e}")
-                QMessageBox.critical(
-                    self,
-                    "Baudrate Change Failed",
-                    f"Failed to change RS485 baudrate:\n{e}"
-                )
-                if self.shared_data:
-                    self.shared_data.start()
-                return
+            # Under Modbus RTU, switching the baudrate immediately cuts off the connection,
+            # which naturally produces a timeout, CRC, or write failure. We treat this as expected.
+            self._log(f"Baudrate command sent; connection closed as expected during rate switch: {e}")
 
-        # Wait a short period for the hardware port rate switch to stabilize
+        # Wait for the hardware port rate switch to stabilize
         import time
         time.sleep(0.5)
 
-        # Actively disconnect and reset panel states
+        # Actively disconnect and reset panel states before showing the blocking dialog.
+        # This releases the serial port and avoids residual timer ticks from polluting
+        # the port with junk frames while the QMessageBox blocks the main UI thread.
         if self.shared_data:
             self.shared_data.connection_lost.emit()
 
@@ -738,7 +731,16 @@ class SystemConfigPanel(QWidget):
             "Baudrate change command has been sent. The system will now automatically scan and reconnect to verify the connection at the new baudrate."
         )
         self._load_comm_settings()
-        self.request_reconnect.emit()
+        self.request_reconnect.emit(baud_enum)
+
+    def _read_current_modbus_baudrate(self):
+        if not self.device or not hasattr(self.device, "revo3_get_rs485_baudrate"):
+            return None
+        try:
+            return run_async(lambda: self.device.revo3_get_rs485_baudrate(self.slave_id), raise_exception=True)
+        except Exception as e:
+            self._log(f"Could not read current RS485 baudrate before setting: {e}")
+            return None
 
     def _set_canfd_baudrate(self):
         if not self.device or not hasattr(self.device, "revo3_set_canfd_baudrate"):
@@ -791,17 +793,13 @@ class SystemConfigPanel(QWidget):
         import time
         time.sleep(0.5)
 
-        # Actively disconnect and reset panel states
-        if self.shared_data:
-            self.shared_data.connection_lost.emit()
-
         QMessageBox.information(
             self,
             "Baudrate Change Sent",
             "Baudrate change command has been sent. The system will now automatically scan and reconnect to verify the connection at the new data baudrate."
         )
         self._load_comm_settings()
-        self.request_reconnect.emit()
+        self.request_reconnect.emit(None)
 
     def _call_bool(self, method_name: str, default: bool):
         if not hasattr(self.device, method_name):

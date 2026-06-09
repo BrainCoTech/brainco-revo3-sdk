@@ -594,6 +594,8 @@ class Revo3MotorConfigPanel(QWidget):
         device = self.device
         if not device:
             return
+        if self.shared_data and not self.shared_data.is_running:
+            return
 
         # Refresh global values unconditionally
         globals_data = run_async(lambda: asyncio.gather(
