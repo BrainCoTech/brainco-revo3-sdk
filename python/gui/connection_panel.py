@@ -118,25 +118,27 @@ class AutoDetectWorker(QObject):
 
     async def _auto_detect(self):
         self.progress.emit("Scanning Revo3 devices...")
-        devices = []
         for attempt in range(3):
-            devices = await sdk.revo3_auto_detect(
-                scan_all=self.scan_all,
+            scanner = sdk.Revo3AutoDetector(
+                stop_on_first=True,
                 port=self.port,
                 protocol=self.protocol,
                 slave_id=self.slave_id,
                 modbus_baudrate=self.modbus_baudrate,
             )
-            if devices:
-                break
+            try:
+                async for device in scanner:
+                    await scanner.stop()
+                    return device
+            except Exception as e:
+                await scanner.stop()
+                if attempt == 2:
+                    raise e
             if attempt < 2:
                 import asyncio
                 await asyncio.sleep(1.5)
 
-        if not devices:
-            raise RuntimeError("No Revo3 device found")
-
-        return devices[0]
+        raise RuntimeError("No Revo3 device found")
 
 
 class ManualConnectWorker(QObject):
@@ -421,23 +423,26 @@ class ConnectionPanel(QWidget):
             self._on_connect_error(str(e))
 
     async def _auto_detect_device(self, protocol, port, slave_id=None, modbus_baudrate=None):
-        devices = []
         for attempt in range(3):
-            devices = await sdk.revo3_auto_detect(
-                scan_all=False,
+            scanner = sdk.Revo3AutoDetector(
+                stop_on_first=True,
                 port=port,
                 protocol=protocol,
                 slave_id=slave_id,
                 modbus_baudrate=modbus_baudrate,
             )
-            if devices:
-                break
+            try:
+                async for device in scanner:
+                    await scanner.stop()
+                    return device
+            except Exception as e:
+                await scanner.stop()
+                if attempt == 2:
+                    raise e
             if attempt < 2:
                 await asyncio.sleep(1.5)
 
-        if not devices:
-            raise RuntimeError("No Revo3 device found")
-        return devices[0]
+        raise RuntimeError("No Revo3 device found")
 
     def _on_detect_success(self, device):
         try:

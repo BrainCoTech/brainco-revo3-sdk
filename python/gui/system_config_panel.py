@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from .i18n import tr
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk, run_async
+from common_imports import sdk, run_async, logger
 
 if TYPE_CHECKING:
     from .shared_data import SharedDataManager
@@ -704,6 +704,8 @@ class SystemConfigPanel(QWidget):
         if reply == QMessageBox.No:
             return
 
+        current_baud_str = self._enum_name(current_baud) if current_baud is not None else "unknown"
+        logger.info(f"User confirmed to change RS485 baudrate: {current_baud_str} -> {self._enum_name(baud_enum)}")
         if self.shared_data:
             self.shared_data.stop()
 
@@ -742,6 +744,15 @@ class SystemConfigPanel(QWidget):
             self._log(f"Could not read current RS485 baudrate before setting: {e}")
             return None
 
+    def _read_current_canfd_baudrate(self):
+        if not self.device or not hasattr(self.device, "revo3_get_canfd_baudrate"):
+            return None
+        try:
+            return run_async(lambda: self.device.revo3_get_canfd_baudrate(self.slave_id), raise_exception=True)
+        except Exception as e:
+            self._log(f"Could not read current CANFD baudrate before setting: {e}")
+            return None
+
     def _set_canfd_baudrate(self):
         if not self.device or not hasattr(self.device, "revo3_set_canfd_baudrate"):
             return
@@ -768,6 +779,9 @@ class SystemConfigPanel(QWidget):
         if reply == QMessageBox.No:
             return
 
+        current_baud = self._read_current_canfd_baudrate()
+        current_baud_str = self._enum_name(current_baud) if current_baud is not None else "unknown"
+        logger.info(f"User confirmed to change CANFD baudrate: {current_baud_str} -> {self._enum_name(baud_enum)}")
         if self.shared_data:
             self.shared_data.stop()
 

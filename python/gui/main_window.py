@@ -2,6 +2,7 @@
 
 import sys
 import time
+import warnings
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -282,6 +283,15 @@ class MainWindow(QMainWindow):
         self.shared_data.set_device(device, slave_id, device_info)
         self.shared_data.connection_lost.connect(self._on_connection_lost)
 
+        port_name = self.connection_panel.last_reconnect_port or "unknown"
+        baud_str = ""
+        if protocol_key == "modbus":
+            last_baud = self.connection_panel.last_modbus_baudrate
+            if last_baud is not None:
+                baud_val = baudrate_to_int(last_baud)
+                baud_str = f" @ {baud_val / 1000000:.1f}M bps"
+        logger.info(f"Connected to Revo3 device: ID={slave_id}, Protocol={protocol}{baud_str}, Port={port_name}")
+
         if has_touch(hw_type):
             logger.info("Touch-enabled device detected. Automatically enabling touch sensor modules...")
             try:
@@ -336,14 +346,16 @@ class MainWindow(QMainWindow):
         self.device_info_label.setText(" | ".join(p for p in [hw_str, f"ID: {self.slave_id}", f"{protocol}{baud_str}", f"FW: {fw_ver}"] if p))
 
     def _on_disconnected(self):
-        try:
-            self.shared_data.connection_lost.disconnect(self._on_connection_lost)
-        except RuntimeError:
-            pass
-        try:
-            self.config_panel.slave_id_changed.disconnect(self._on_slave_id_changed)
-        except Exception:
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                self.shared_data.connection_lost.disconnect(self._on_connection_lost)
+            except Exception:
+                pass
+            try:
+                self.config_panel.slave_id_changed.disconnect(self._on_slave_id_changed)
+            except Exception:
+                pass
         self.shared_data.stop()
         self.shared_data.clear_device()
         self.device = None
@@ -371,6 +383,10 @@ class MainWindow(QMainWindow):
     def _on_request_reconnect(self, modbus_baudrate=None):
         if modbus_baudrate is not None:
             self.connection_panel.last_modbus_baudrate = modbus_baudrate
+            baud_val = baudrate_to_int(modbus_baudrate)
+            logger.info(f"Baudrate changed to {baud_val}. Reconnecting...")
+        else:
+            logger.info("Reconnection requested...")
         self.statusbar.showMessage("Baudrate changed. Automatically scanning and reconnecting in 2 seconds...")
         self.connection_panel._on_disconnect()
         from PySide6.QtCore import QTimer
@@ -505,9 +521,11 @@ class Revo3TouchPanel(Revo3TouchSubPanel):
     def clear_device(self):
         super().clear_device()
         if getattr(self, "shared_data", None):
-            try:
-                self.shared_data.touch_updated.disconnect(self.update_data)
-            except RuntimeError:
-                pass
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                try:
+                    self.shared_data.touch_updated.disconnect(self.update_data)
+                except Exception:
+                    pass
         self.device_info = None
         self.shared_data = None
