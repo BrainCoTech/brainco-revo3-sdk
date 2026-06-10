@@ -4,9 +4,18 @@ Python examples in this repository are scoped to Revo3.
 
 ## Install
 
+### 1. Install Dependencies
+
 ```bash
-pip install -r requirements.txt
-pip install bc-revo3-sdk
+# If using uv (recommended):
+uv sync
+
+```
+
+### 2. Install SDK (from OSS)
+
+```bash
+bash install_whl.sh
 ```
 
 For a local development build:

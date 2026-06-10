@@ -25,19 +25,12 @@ import asyncio
 import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common_imports import modbus_open
-from revo3.revo3_utils import libstark, logger
+from revo3.revo3_utils import libstark, logger, open_revo3
 
 async def main(port=None, mode="both"):
-    logger.info("Auto-detecting Revo3 on Modbus...")
+    logger.info("Connecting to Revo3...")
     try:
-        if port:
-            client = await modbus_open(port, 5000000)
-            slave_id = 1
-        else:
-            (protocol, detected_port, baud, slave_id) = await libstark.revo3_auto_detect_modbus(None)
-            logger.info(f"Detected Revo3 on port={detected_port}, slave_id={slave_id}")
-            client = await modbus_open(detected_port, baud)
+        client, slave_id = await open_revo3(port)
     except Exception as e:
         logger.error(f"Connection failed. Check USB serial or hand power. Error: {e}")
         return
@@ -141,8 +134,13 @@ async def main(port=None, mode="both"):
         logger.info(f"🏁 Benchmark Finished: {total_time:.2f}s")
         logger.info(f"Total Loops executed: {total_loops}")
         logger.info(f"Overall Average Freq: {overall_hz:.1f} Hz")
-        logger.info("="*50)
-        libstark.modbus_close(client)
+        try:
+            if hasattr(libstark, "close_device_handler"):
+                await libstark.close_device_handler(client)
+            else:
+                await libstark.modbus_close(client)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -487,17 +487,8 @@ async def main(port_name=None, record_freq=DEFAULT_RECORD_FREQ,
     client = None
 
     try:
-        # Connect to Revo3
-        if port_name:
-            client = await modbus_open(port_name, 5000000)
-            slave_id = 1
-        else:
-            (protocol, detected_port, detected_baud, detected_slave) = (
-                await libstark.revo3_auto_detect_modbus(None)
-            )
-            client = await modbus_open(detected_port, detected_baud)
-            slave_id = detected_slave
-            logger.info(f"Auto-detected: port={detected_port}, baudrate={detected_baud}, slave_id={slave_id}")
+        # Connect to Revo3 (supports both Modbus and CANFD)
+        client, slave_id = await open_revo3(port_name)
 
         # Create DataCollector for high-frequency position monitoring
         is_linux = platform.system() == "Linux"
@@ -550,7 +541,10 @@ async def main(port_name=None, record_freq=DEFAULT_RECORD_FREQ,
             except Exception:
                 pass
             try:
-                libstark.modbus_close(client)
+                if hasattr(libstark, "close_device_handler"):
+                    await libstark.close_device_handler(client)
+                else:
+                    await libstark.modbus_close(client)
             except Exception:
                 pass
         logger.info("Done. Closed.")

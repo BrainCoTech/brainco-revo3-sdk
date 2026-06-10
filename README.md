@@ -31,19 +31,20 @@ make -C c
 
 *For internal testing (download from OSS):*
 ```bash
-bash ../scripts/install_whl.sh 1.3.2
+bash python/install_whl.sh 1.3.3
 ```
 
 *For stable release (download from PyPI):*
 ```bash
-pip install bc-revo3-sdk==1.3.2
+pip install bc-revo3-sdk==1.3.3
 ```
 
 **2. Run examples**
 
-```bash
 cd python
-pip install -r requirements.txt
+# Install dependencies via uv (recommended):
+uv sync
+
 
 # Run CLI examples (requires a real Revo3 device)
 python revo3/auto_detect.py

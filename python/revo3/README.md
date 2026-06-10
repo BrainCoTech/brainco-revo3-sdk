@@ -162,6 +162,9 @@ asyncio.run(main())
 
 ### Auto-Detect
 
+> [!NOTE]
+> `revo3_auto_detect_modbus` is a Modbus (RS485) specific discovery interface. If you need to scan and connect to both Modbus and CANFD (e.g. via ZQWL adapters) devices, please use the recommended general `revo3_auto_detect` API below.
+
 ```python
 # Auto-detect Revo3 Modbus device (tries default Revo3 IDs and baudrates)
 (protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()

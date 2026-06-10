@@ -20,3 +20,10 @@ c/demo/*
 !c/demo/**/*.hpp
 !c/demo/**/*.c
 !c/demo/**/*.md
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python lock files
+uv.lock

@@ -18,8 +18,7 @@
 ## 安装
 
 ```bash
-pip install -r examples/python/gui/requirements.txt
-pip install bc-revo3-sdk
+uv sync --project examples/python
 ```
 
 ## 运行

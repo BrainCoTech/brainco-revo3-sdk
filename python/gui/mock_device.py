@@ -117,6 +117,7 @@ class MockDeviceContext:
             "software_e_stop": False,
             "use_broadcast_id": False,
             "touch_data_type": 0,
+            "touch_modules_enabled": 0x7FF,
         }
         self.global_protect_current = 1500
         self.joint_protect_currents = [1200] * REVO3_MOTOR_COUNT
@@ -320,6 +321,13 @@ class MockDeviceContext:
 
     async def revo3_set_touch_data_type(self, _slave_id, data_type):
         self.flags["touch_data_type"] = int(data_type)
+        return True
+
+    async def revo3_get_all_touch_modules_enabled(self, _slave_id):
+        return self.flags.get("touch_modules_enabled", 0x7FF)
+
+    async def revo3_set_all_touch_modules_enabled(self, _slave_id, enabled_mask):
+        self.flags["touch_modules_enabled"] = int(enabled_mask)
         return True
 
     async def revo3_calibrate_touch_zero(self, _slave_id):
