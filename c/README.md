@@ -54,6 +54,7 @@ Revo3AutoDetectHandle *scan = revo3_auto_detect_start(
     STARK_PROTOCOL_TYPE_AUTO,
     0,
     0,
+    true, // broadcast
     on_device_found,
     &state);
 
@@ -79,6 +80,7 @@ Revo3AutoDetectHandle *scan = revo3_auto_detect_start(
     STARK_PROTOCOL_TYPE_AUTO,
     0,
     0,
+    true, // broadcast
     on_device_found,
     &state);
 

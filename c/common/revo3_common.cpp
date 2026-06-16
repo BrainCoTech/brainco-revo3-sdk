@@ -74,7 +74,7 @@ bool revo3_init_from_args(Revo3Context &ctx, int argc, char **argv) {
     return false;
   }
 
-  CDetectedDeviceList *list = stark_auto_detect(false, nullptr, STARK_PROTOCOL_TYPE_AUTO, 0, 0);
+  CDetectedDeviceList *list = stark_auto_detect(false, nullptr, STARK_PROTOCOL_TYPE_AUTO, 0, 0, false);
   if (!list || list->count == 0) {
     std::fprintf(stderr, "[ERROR] No Revo3 device detected.\n");
     if (list) {

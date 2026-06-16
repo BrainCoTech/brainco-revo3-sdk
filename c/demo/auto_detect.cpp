@@ -39,7 +39,7 @@ const char *protocol_name(StarkProtocolType protocol) {
 
 void print_usage(const char *program) {
   std::printf("Usage:\n");
-  std::printf("  %s [--scan-all] [--stream] [--stop-on-first] [--verbose] [--port <name>] [--slave-id <id>] [--modbus-baudrate <bps>] [--protocol auto|modbus|canfd|ethercat]\n", program);
+  std::printf("  %s [--scan-all] [--stream] [--stop-on-first] [--verbose] [--broadcast] [--port <name>] [--slave-id <id>] [--modbus-baudrate <bps>] [--protocol auto|modbus|canfd|ethercat]\n", program);
 }
 
 void print_device(size_t index, const CDetectedDevice &device) {
@@ -116,6 +116,7 @@ int main(int argc, char **argv) {
   bool stream = false;
   bool stop_on_first = false;
   bool verbose = false;
+  bool broadcast = false;
   uint8_t slave_id_filter = 0;
   uint32_t modbus_baudrate_filter = 0;
   const char *port = nullptr;
@@ -140,6 +141,10 @@ int main(int argc, char **argv) {
     }
     if (std::strcmp(argv[i], "--verbose") == 0) {
       verbose = true;
+      continue;
+    }
+    if (std::strcmp(argv[i], "--broadcast") == 0) {
+      broadcast = true;
       continue;
     }
     if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
@@ -174,6 +179,7 @@ int main(int argc, char **argv) {
         protocol,
         slave_id_filter,
         modbus_baudrate_filter,
+        broadcast,
         on_device_found,
         &state);
     if (!scan) {
@@ -210,7 +216,8 @@ int main(int argc, char **argv) {
       port,
       protocol,
       slave_id_filter,
-      modbus_baudrate_filter);
+      modbus_baudrate_filter,
+      broadcast);
   if (!list || list->count == 0) {
     std::printf("No Revo3 device detected.\n");
     if (list) {
