@@ -1,11 +1,11 @@
 [project]
 name = "revo3-examples"
-version = "1.3.4"
+version = "1.3.7"
 description = "BrainCo Revo3 SDK Python Examples"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "bc-revo3-sdk>=1.3.4",
+    "bc-revo3-sdk>=1.3.7",
     "colorlog>=6.9.0",
     "numpy<2.0.0",
     "PySide6>=6.5.0",
