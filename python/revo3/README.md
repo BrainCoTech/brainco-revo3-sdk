@@ -596,6 +596,14 @@ await ctx.revo3_set_touch_data_type(slave_id, data_type)
 # Read current data type
 data_type = await ctx.revo3_get_touch_data_type(slave_id)
 # → int (0 or 1)
+
+# Set module data value type
+await ctx.revo3_set_touch_module_value_type(slave_id, module_value_type)
+# module_value_type: 0 = AD Value, 1 = Raw Pressure, 2 = Force
+
+# Read current module data value type
+module_value_type = await ctx.revo3_get_touch_module_value_type(slave_id)
+# → int (0, 1, or 2)
 ```
 
 ### Summary Data
@@ -801,6 +809,7 @@ Module  Name        Pts    Location
 | `revo3/revo3_trajectory.py` | Trajectory control & teaching mode demo |
 | `revo3/revo3_teaching.py` | Interactive teaching: record & playback hand movements |
 | `revo3/revo3_dfu.py`      | Firmware upgrade (OTA via Modbus) |
+| `revo3/revo3_touch.py`    | Touch module enable, value type, summary, and module data demo |
 | `revo3/revo3_servo.py`    | High-frequency (100Hz) real-time servo control |
 | `revo3/auto_detect.py` | Revo3 auto-detection |
 | `revo3/hand_demo.py` | Revo3 hand-level info/status/touch/movement demo |
@@ -809,7 +818,6 @@ Module  Name        Pts    Location
 | `revo3/mit_debug/trajectory_to_c.py` | Convert trajectory JSON → C header for firmware debug |
 | `revo3/jitter_analysis.py` | Analyze trajectory jitter metrics, A/B comparison |
 | `revo3/mit_debug/quintic_trajectory.h` | C header: quintic interpolator for firmware MIT tracking |
-| `demo/hand_touch_revo3.py`   | Tactile sensor full demo               |
 
 ### Run Examples
 

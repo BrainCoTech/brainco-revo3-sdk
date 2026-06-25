@@ -29,7 +29,8 @@ The hand has 11 physical tactile modules. The Modbus protocol maps these to 42 "
 | `4000~4010` | Touch Module Enable | 11 registers (one per module). `0` = Disable, `1` = Enable. |
 | `4011` | Calibrate Touch Zero (All) | Write any non-zero value to calibrate zero drift baseline. |
 | `4012~4022` | Calibrate Touch Zero (Single) | 11 registers. Write `1` to calibrate a specific module. |
-| `4023` | Touch Data Type | `0` = Pressure Array, `1` = Force Summary. |
+| `4023` | Touch Read Data Type | `0` = Pressure Array, `1` = Force Summary. |
+| `4024` | Touch Module Value Type | `0` = AD Value, `1` = Raw Pressure, `2` = Force. |
 
 ## Data Registers (Input, RO)
 
@@ -47,6 +48,7 @@ enabled_mask = sdk.revo3_get_all_touch_modules_enabled(slave_id)
 
 # 2. Calibration / Zeroing
 sdk.revo3_set_touch_data_type(slave_id, 0) # 0 = Pressure Array, 1 = Force Summary
+sdk.revo3_set_touch_module_value_type(slave_id, 2) # 0 = AD Value, 1 = Raw Pressure, 2 = Force
 sdk.revo3_calibrate_touch_zero(slave_id)  # Calibrate zero drift for all modules
 # sdk.revo3_calibrate_touch_zero_single(slave_id, module_id) # Or calibrate a specific module
 

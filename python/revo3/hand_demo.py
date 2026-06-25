@@ -34,8 +34,12 @@ async def main():
         try:
             enabled = await client.revo3_get_all_touch_modules_enabled(slave_id)
             if enabled:
+                value_type = await client.revo3_get_touch_module_value_type(slave_id)
                 summary = await client.revo3_get_touch_summary(slave_id)
-                print(f"Touch enabled=0x{enabled:03X}, summary[0..7]={summary[:8]}")
+                print(
+                    f"Touch enabled=0x{enabled:03X}, "
+                    f"value_type={int(value_type)}, summary[0..7]={summary[:8]}"
+                )
             else:
                 print("Touch modules are not enabled or not available.")
         except Exception as exc:

@@ -41,7 +41,7 @@ except ImportError:
         )
         MOCK_MODE = True
         print("⚠ pyvitaisdk not found, using Mock Device")
-        print("Install real SDK with: pip install pyvitaisdk")
+        print("Install real SDK with: bash python/install_vts_whl.sh")
     except ImportError:
         print("❌ Error: Neither real nor mock VisionTouch available")
         VTSensor = None

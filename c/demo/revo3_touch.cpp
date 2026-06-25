@@ -19,7 +19,16 @@ int main(int argc, char **argv) {
   uint16_t enabled = revo3_get_all_touch_modules_enabled(ctx.handle, ctx.slave_id);
   std::printf("Enabled touch modules: 0x%03X\n", enabled);
 
-  uint16_t summary[26] = {0};
+  revo3_set_touch_module_value_type(ctx.handle, ctx.slave_id, 2);
+  revo3_sleep_ms(200);
+  int value_type = revo3_get_touch_module_value_type(ctx.handle, ctx.slave_id);
+  if (value_type >= 0) {
+    std::printf("Touch module value type: %d (0=AD, 1=raw pressure, 2=force)\n", value_type);
+  } else {
+    std::printf("[WARN] Failed to read touch module value type.\n");
+  }
+
+  uint16_t summary[42] = {0};
   if (revo3_get_touch_summary(ctx.handle, ctx.slave_id, summary) == 0) {
     std::printf("Touch summary:");
     for (uint16_t value : summary) {

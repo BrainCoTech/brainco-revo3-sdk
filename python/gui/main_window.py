@@ -451,7 +451,10 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "VisionTouch Not Available",
-                    f"VisionTouch features require pyvitaisdk.\n\nInstall with: pip install pyvitaisdk\n\nError: {e}",
+                    "VisionTouch features require pyvitaisdk.\n\n"
+                    "Please install pyvitaisdk4bc by running the helper script in the project root:\n"
+                    "bash python/install_vts_whl.sh\n\n"
+                    f"Error: {e}",
                 )
                 return
         self.vision_touch_window.show()
