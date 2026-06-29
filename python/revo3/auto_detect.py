@@ -28,6 +28,26 @@ def parse_protocol(value):
     }[value]
 
 
+def parse_canfd_data_baudrate(value):
+    if value is None:
+        return None
+    v = str(value).lower().strip().rstrip("m").rstrip("mbps").rstrip("bps")
+    try:
+        val = int(v)
+    except ValueError:
+        raise ValueError(f"Invalid CANFD data baudrate: {value}")
+    if val == 1 or val == 1000000:
+        return sdk.BaudrateCAN.Baud1Mbps
+    elif val == 2 or val == 2000000:
+        return sdk.BaudrateCAN.Baud2Mbps
+    elif val == 4 or val == 4000000:
+        return sdk.BaudrateCAN.Baud4Mbps
+    elif val == 5 or val == 5000000:
+        return sdk.BaudrateCAN.Baud5Mbps
+    else:
+        raise ValueError(f"Invalid CANFD data baudrate: {value}. Options: 1M, 2M, 4M, 5M")
+
+
 async def main():
     check_sdk()
     parser = argparse.ArgumentParser(description="Revo3 auto-detection")
@@ -40,6 +60,10 @@ async def main():
     parser.add_argument(
         "--modbus-baudrate",
         help="Probe only one Modbus baudrate in bps, e.g. 5000000",
+    )
+    parser.add_argument(
+        "--canfd-data-baudrate",
+        help="Probe only one CANFD data baudrate, e.g. 5000000 or 5M (Options: 1M, 2M, 4M, 5M)",
     )
     parser.add_argument("--protocol", choices=("auto", "modbus", "canfd", "ethercat"), default="auto")
     args = parser.parse_args()
@@ -54,6 +78,7 @@ async def main():
             protocol=parse_protocol(args.protocol),
             slave_id=args.slave_id,
             modbus_baudrate=parse_modbus_baudrate(args.modbus_baudrate),
+            canfd_data_baudrate=parse_canfd_data_baudrate(args.canfd_data_baudrate),
         )
         async for device in scanner:
             # print(f"Detected: {device}")
@@ -68,6 +93,7 @@ async def main():
             protocol=parse_protocol(args.protocol),
             slave_id=args.slave_id,
             modbus_baudrate=parse_modbus_baudrate(args.modbus_baudrate),
+            canfd_data_baudrate=parse_canfd_data_baudrate(args.canfd_data_baudrate),
         )
 
     devices = [device for device in devices if revo3_uses_motor_api(device.hardware_type)]

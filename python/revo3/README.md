@@ -193,6 +193,14 @@ devices = await sdk.revo3_auto_detect(
     slave_id=0x7E,
     modbus_baudrate=sdk.Baudrate.Baud5Mbps,
 )
+# Or specify CANFD data baudrate:
+devices = await sdk.revo3_auto_detect(
+    scan_all=False,
+    port="brainco:0",
+    protocol=sdk.ProtocolType.CanFd,
+    slave_id=0x7E,
+    canfd_data_baudrate=sdk.BaudrateCAN.Baud5Mbps,
+)
 ```
 
 For GUI or selection workflows, stream devices as they are found:
@@ -202,6 +210,7 @@ scanner = sdk.Revo3AutoDetector(
     stop_on_first=False,
     protocol=sdk.ProtocolType.Auto,
     modbus_baudrate=None,
+    canfd_data_baudrate=None,
 )
 async for device in scanner:
     print(device)
@@ -213,7 +222,8 @@ async for device in scanner:
 
 The `revo3/auto_detect.py` example keeps SDK scan logs quiet by default. Pass
 `--verbose` if you need adapter-level scan diagnostics. Pass
-`--modbus-baudrate 5000000` when reconnecting to a known Modbus baudrate.
+`--modbus-baudrate 5000000` when reconnecting to a known Modbus baudrate, or
+`--canfd-data-baudrate 5000000` (or `5M`) to restrict CANFD scanning to a specific data baudrate.
 
 ### Manual Connection
 

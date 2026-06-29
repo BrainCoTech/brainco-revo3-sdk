@@ -497,6 +497,7 @@ class ConnectionPanel(QWidget):
             params = {
                 "port_name": self.canfd_port_combo.itemData(idx) if idx >= 0 else None,
                 "slave_id": self.canfd_slave_spin.value(),
+                # Default CANFD baudrates for manual connection fallback when no UI selector is present
                 "arb_baudrate": 1000000,
                 "data_baudrate": 5000000,
             }
