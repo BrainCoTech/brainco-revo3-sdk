@@ -8,7 +8,9 @@ This repository provides example applications and integration code demonstrating
 - `python/revo3/` - Python Revo3 demos
 - `python/gui/` - PySide GUI with Revo3 panels and mock mode
 
-## C++
+## Getting Started
+
+### C++
 
 ```bash
 sh download-lib.sh
@@ -19,7 +21,7 @@ make -C c
 ./c/demo/hand_dfu firmware.bin
 ```
 
-## Python
+### Python
 
 > **Note:** It is highly recommended to use a virtual environment (such as `conda` or `venv`) before installing the SDK and dependencies.
 > ```bash
@@ -27,7 +29,7 @@ make -C c
 > conda activate revo3
 > ```
 
-**1. Install the SDK**
+#### 1. Install the SDK
 
 *For internal testing (download from OSS):*
 ```bash
@@ -39,12 +41,12 @@ bash python/install_whl.sh 1.3.9
 pip install bc-revo3-sdk==1.3.9
 ```
 
-**2. Run examples**
+#### 2. Run examples
 
+```bash
 cd python
 # Install dependencies via uv (recommended):
 uv sync
-
 
 # Run CLI examples (requires a real Revo3 device)
 python revo3/auto_detect.py
