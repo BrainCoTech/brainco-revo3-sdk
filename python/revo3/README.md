@@ -119,7 +119,8 @@ Trajectory & Teaching APIs:
 | `revo3_move_thumb_with_gains_wait(slave_id, targets, T, dt, kp, kd)` | Thumb move and block with custom gains (Blocking/Await) |
 | `revo3_start_servo_drag(slave_id, joint_id, target, kp, kd, vel_cap_rpm, interval_ms, idle_timeout_ms, filter_mode, omega)` | Start SDK-managed GUI/joystick drag stream |
 | `revo3_update_servo_drag(slave_id, joint_id, target)` | Update latest target for active drag stream |
-| `revo3_stop_servo_drag(slave_id, joint_id, final_target)` | Stop drag stream and hold final target |
+| `revo3_cancel_servo_drag(slave_id, joint_id)` | Cancel active drag stream without final hold |
+| `revo3_stop_servo_drag(slave_id, joint_id, final_target)` | Stop drag stream and normally hold final target |
 | `revo3_teach_joint(slave_id, joint_id, dt, T)` | Record single joint (backdrive mode) |
 | `revo3_teach_hand(slave_id, dt, T)` | Record full hand (backdrive mode) |
 | `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Replay recorded single joint |
@@ -214,6 +215,7 @@ scanner = sdk.Revo3AutoDetector(
 )
 async for device in scanner:
     print(device)
+    print(device.touch_vendor)  # TouchVendor: 0 = Unknown, 1 = Pressure, 2 = Matrix
     if user_selected(device):
         await scanner.stop()
         ctx = await sdk.init_from_detected(device)
@@ -399,6 +401,15 @@ latest target, and sends position-mode MIT commands with zero target velocity.
 The stream stays active until `revo3_stop_servo_drag` is called, even if the
 slider is held still for a while.
 
+Use `revo3_cancel_servo_drag` only for guarded cleanup paths, such as a local
+GUI stall guard or disconnect cleanup. It cancels the SDK stream without sending
+a final hold command. Normal slider release should use `revo3_stop_servo_drag`.
+
+With collision protection enabled, a collision/stall stops the active drag
+stream and keeps `collision_active` true for the configured auto-clear window.
+After that window expires, the next stream re-checks telemetry, so a short
+obstruction does not permanently block dragging back.
+
 ```python
 # Slider press / drag start
 await ctx.revo3_start_servo_drag(
@@ -415,8 +426,8 @@ await ctx.revo3_start_servo_drag(
 )
 
 # Slider valueChanged events
-await ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=35.0)
-await ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=50.0)
+ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=35.0)
+ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=50.0)
 
 # Slider release / leaving position mode
 await ctx.revo3_stop_servo_drag(slave_id, joint_id=5, final_pos=50.0)
@@ -548,21 +559,21 @@ await ctx.revo3_replay_hand(slave_id, trajectory=trajectory, dt=0.02, kp=3.0, kd
 
 ### Overview
 
-Revo3 has 11 touch modules (416 total sampling points:
+Revo3 has 11 touch modules. Pressure touch devices provide 416 total sampling points and Matrix touch devices provide up to 660 total sampling points.
 
-| Module ID | Name       | Points | Description        |
-|-----------|------------|--------|--------------------|
-| 0         | Palm       | 36     | Palm pad           |
-| 1         | ThumbTip   | 31     | Thumb fingertip    |
-| 2         | ThumbPad   | 57     | Thumb pad          |
-| 3         | IndexTip   | 21     | Index fingertip    |
-| 4         | IndexPad   | 52     | Index pad          |
-| 5         | MiddleTip  | 21     | Middle fingertip   |
-| 6         | MiddlePad  | 52     | Middle pad         |
-| 7         | RingTip    | 21     | Ring fingertip     |
-| 8         | RingPad    | 52     | Ring pad           |
-| 9         | PinkyTip   | 21     | Pinky fingertip    |
-| 10        | PinkyPad   | 52     | Pinky pad          |
+| Module ID | Name       | Pressure Points | Matrix Points | Description        |
+|-----------|------------|-----------------|---------------|--------------------|
+| 0         | Palm       | 36              | 60            | Palm pad           |
+| 1         | ThumbTip   | 31              | 60            | Thumb fingertip    |
+| 2         | ThumbPad   | 57              | 60            | Thumb pad          |
+| 3         | IndexTip   | 21              | 60            | Index fingertip    |
+| 4         | IndexPad   | 52              | 60            | Index pad          |
+| 5         | MiddleTip  | 21              | 60            | Middle fingertip   |
+| 6         | MiddlePad  | 52              | 60            | Middle pad         |
+| 7         | RingTip    | 21              | 60            | Ring fingertip     |
+| 8         | RingPad    | 52              | 60            | Ring pad           |
+| 9         | PinkyTip   | 21              | 60            | Pinky fingertip    |
+| 10        | PinkyPad   | 52              | 60            | Pinky pad          |
 
 Summary register provides 42 aggregated values (indices 0~41) mapping to the complete 42 zones of the Revo3 hand (Palm, Thumb, and 4 non-thumb fingers' tip/middle/lower pad sub-segments):
 
@@ -601,7 +612,7 @@ is_enabled = await ctx.revo3_get_touch_module_enabled(slave_id, module_id)
 ```python
 # Set data output type
 await ctx.revo3_set_touch_data_type(slave_id, data_type)
-# data_type: 0 = Pressure Array, 1 = Force Summary
+# data_type: 0 = Tactile Array, 1 = Force Summary
 
 # Read current data type
 data_type = await ctx.revo3_get_touch_data_type(slave_id)
@@ -609,12 +620,14 @@ data_type = await ctx.revo3_get_touch_data_type(slave_id)
 
 # Set module data value type
 await ctx.revo3_set_touch_module_value_type(slave_id, module_value_type)
-# module_value_type: 0 = AD Value, 1 = Raw Pressure, 2 = Force
+# module_value_type: 0 = ADC Value, 1 = Raw Pressure, 2 = Force
 
 # Read current module data value type
 module_value_type = await ctx.revo3_get_touch_module_value_type(slave_id)
 # → int (0, 1, or 2)
 ```
+
+For Matrix touch devices, `revo3_set_touch_module_value_type(..., Force)` maps to Matrix output mode `Force`, and `AdcValue` / `RawPressure` map to Matrix output mode `AdcValue`.
 
 ### Summary Data
 
@@ -628,12 +641,12 @@ summary = await ctx.revo3_get_touch_summary(slave_id)
 ### Module Data
 
 ```python
-# Read single module pressure array
+# Read single module tactile array
 data = await ctx.revo3_get_touch_module_data(slave_id, module_id)
 # module_id: 0~10
 # → List[int] (variable length per module, see table above)
 
-# Example: read palm (29 points)
+# Example: read palm
 palm_data = await ctx.revo3_get_touch_module_data(slave_id, 0)
 print(f"Palm: {len(palm_data)} points, total={sum(palm_data)}")
 ```
@@ -653,11 +666,109 @@ touch_data = await ctx.revo3_get_all_touch_data(slave_id)
 ### Calibrate Touch Zero
 
 ```python
-# Calibrate zero drift for a single module
-await ctx.revo3_calibrate_touch_zero_single(slave_id, module_id)  # module_id: 0~10
-
-# Calibrate zero drift for all modules
+# Backward-compatible generic APIs
 await ctx.revo3_calibrate_touch_zero(slave_id)
+await ctx.revo3_calibrate_touch_zero_single(slave_id, module_id)  # module_id: 0~10
+```
+
+On Pressure touch devices, these generic APIs write the pressure-zero registers
+4011 and 4012~4022. On Matrix touch devices, they map to Matrix tare commands.
+
+### Pressure Touch
+
+```python
+# Pressure array zero calibration
+await ctx.revo3_calibrate_pressure_touch_zero(slave_id)  # register 4011, write 1
+await ctx.revo3_calibrate_pressure_touch_module_zero(
+    slave_id,
+    module_id,
+)  # register 4012 + module_id, write 1
+
+# Regional force tare / restore
+await ctx.revo3_set_pressure_touch_force_tare(
+    slave_id,
+    sdk.PressureTouchForceTareCommand.Clear,
+)  # register 4025, write 2
+
+await ctx.revo3_set_pressure_touch_force_tare(
+    slave_id,
+    sdk.PressureTouchForceTareCommand.RestoreFactory,
+)  # register 4025, write 3
+
+await ctx.revo3_set_pressure_touch_module_force_tare(
+    slave_id,
+    module_id,
+    sdk.PressureTouchForceTareCommand.Clear,
+)  # register 4026 + module_id, write 2
+
+await ctx.revo3_set_pressure_touch_module_force_tare(
+    slave_id,
+    module_id,
+    sdk.PressureTouchForceTareCommand.RestoreFactory,
+)  # register 4026 + module_id, write 3
+```
+
+The runnable touch example exposes these Pressure-specific commands as explicit
+flags so factory restore is never executed accidentally:
+
+```bash
+# Pressure zero calibration for all modules: 4011=1
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-zero-all
+
+# Pressure zero calibration for one module: 4012+module_id=1
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-zero-module
+
+# Pressure regional force clear for all modules: 4025=2
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-force-clear-all
+
+# Pressure regional force clear for one module: 4026+module_id=2
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-force-clear-module
+
+# Pressure regional force restore factory settings for all modules: 4025=3
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-force-restore-all
+
+# Pressure regional force restore factory settings for one module: 4026+module_id=3
+python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-force-restore-module
+```
+
+### Matrix Touch
+
+```python
+vendor = await ctx.get_touch_vendor(slave_id)
+# TouchVendor: 0 = Unknown, 1 = Pressure, 2 = Matrix
+
+if int(vendor) == 2:
+    module_sns = await ctx.revo3_get_all_matrix_touch_module_serial_numbers(slave_id)
+    palm_sn = await ctx.revo3_get_matrix_touch_module_serial_number(slave_id, 0)
+
+    point_counts = await ctx.revo3_get_all_matrix_touch_module_point_counts(slave_id)
+    palm_count = await ctx.revo3_get_matrix_touch_module_point_count(slave_id, 0)
+
+    await ctx.revo3_set_matrix_touch_output_mode(
+        slave_id,
+        sdk.MatrixTouchOutputMode.Force,
+    )
+    mode = await ctx.revo3_get_matrix_touch_output_mode(slave_id)
+
+    await ctx.revo3_set_matrix_touch_module_output_mode(
+        slave_id,
+        0,
+        sdk.MatrixTouchOutputMode.AdcValue,
+    )
+    module_mode = await ctx.revo3_get_matrix_touch_module_output_mode(slave_id, 0)
+
+    await ctx.revo3_set_matrix_touch_tare(slave_id, sdk.MatrixTouchTareCommand.Tare)
+    tare_status = await ctx.revo3_get_matrix_touch_tare_status(slave_id)
+
+    await ctx.revo3_set_matrix_touch_module_tare(
+        slave_id,
+        0,
+        sdk.MatrixTouchTareCommand.Cancel,
+    )
+    module_tare_status = await ctx.revo3_get_matrix_touch_module_tare_status(slave_id, 0)
+
+    palm_data = await ctx.revo3_get_touch_module_data(slave_id, 0)
+    all_touch = await ctx.revo3_get_all_touch_data(slave_id)
 ```
 
 ---
@@ -872,6 +983,8 @@ python demo/hand_touch_revo3.py -m /dev/ttyUSB0 5000000 1
 
 # GUI (Revo3 Modbus)
 python gui/main.py --revo3-modbus
+# Manually specify touch vendor (matrix or pressure) to override auto-detection (e.g. for older firmware)
+python gui/main.py --touch-vendor matrix
 ```
 
 ---

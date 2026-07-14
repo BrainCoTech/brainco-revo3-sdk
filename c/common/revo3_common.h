@@ -13,4 +13,5 @@ bool revo3_init_from_args(Revo3Context &ctx, int argc, char **argv);
 void revo3_close(Revo3Context &ctx);
 void revo3_print_device_info(DeviceHandler *handle, uint8_t slave_id);
 const char *revo3_hw_type_name(StarkHardwareType hw_type);
+bool revo3_hw_type_has_touch(StarkHardwareType hw_type);
 void revo3_sleep_ms(int ms);

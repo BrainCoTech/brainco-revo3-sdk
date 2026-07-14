@@ -28,7 +28,7 @@ async def main():
         print("=== Revo3 Python Hand DFU ===")
         print(f"Firmware: {firmware_path}")
         print("Do not disconnect power or communication while DFU is running.")
-        await ctx.ctx.revo3_start_dfu(ctx.slave_id, firmware_path, 5)
+        await ctx.ctx.revo3_start_dfu(ctx.slave_id, firmware_path, 5, None, None)
         print("DFU completed.")
         return 0
     finally:

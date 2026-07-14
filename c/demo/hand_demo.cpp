@@ -18,6 +18,7 @@ void set_all(float *values, float value) {
   }
 }
 
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -53,23 +54,76 @@ int main(int argc, char **argv) {
     std::printf("Touch modules are not enabled or not available on this device.\n");
   }
 
-  float targets[21] = {0.0f};
-  set_all(targets, 0.0f);
-  targets[1] = 20.0f;
-  targets[5] = 20.0f;
-  targets[9] = 20.0f;
-  targets[13] = 20.0f;
-  targets[17] = 20.0f;
+  float zeros[21] = {0.0f};
+  set_all(zeros, 0.0f);
 
-  std::printf("Move MCP joints to 20 deg with trajectory...\n");
-  if (revo3_move_hand(ctx.handle, ctx.slave_id, targets, 21, 2.0f, 0.01f) != 0) {
-    std::printf("[WARN] Trajectory move failed.\n");
+  // 1. Explicitly switch all 21 joints to MIT/Impedance mode (4)
+  std::printf("Switching all joints to Impedance control mode (4) for smooth trajectory planning...\n");
+  revo3_multi_joint_control(ctx.handle, ctx.slave_id, 4, zeros);
+  revo3_sleep_ms(100);
+
+  float grip_targets[21] = {0.0f};
+  set_all(grip_targets, 0.0f);
+  for (int joint : {1, 2, 5, 6, 9, 10, 13, 14}) {
+    grip_targets[joint] = 60.0f;
+  }
+  for (int joint : {17, 18, 19, 20}) {
+    grip_targets[joint] = 45.0f;
   }
 
-  revo3_sleep_ms(300);
-  set_all(targets, 0.0f);
-  std::printf("Return all joints to 0 deg...\n");
-  revo3_move_hand(ctx.handle, ctx.slave_id, targets, 21, 2.0f, 0.01f);
+  // =========================================================================
+  // Step 1: Initial Stretch (First open all joints to 0 deg with smooth trajectory)
+  // =========================================================================
+  std::printf("Step 1: Open all fingers to 0 deg (Initial Stretch via revo3_move_hand_wait)...\n");
+  revo3_move_hand_wait(ctx.handle, ctx.slave_id, zeros, 21, 0.7f, 0.025f);
+
+  // =========================================================================
+  // Step 2: Grip (Move whole hand to 60 deg with smooth trajectory)
+  // =========================================================================
+  std::printf("Step 2: Close whole hand to 60 deg (Grip via revo3_move_hand_wait)...\n");
+  revo3_move_hand_wait(ctx.handle, ctx.slave_id, grip_targets, 21, 0.7f, 0.025f);
+
+  // =========================================================================
+  // Step 3: Open again (Return whole hand to 0 deg with smooth trajectory)
+  // =========================================================================
+  std::printf("Step 3: Open whole hand to 0 deg (Release via revo3_move_hand_wait)...\n");
+  revo3_move_hand_wait(ctx.handle, ctx.slave_id, zeros, 21, 0.7f, 0.025f);
+
+  // =========================================================================
+  // Step 2: Test fingers one by one (Pinky -> Ring -> Middle -> Index -> Thumb)
+  // =========================================================================
+  struct FingerTest {
+    const char *name;
+    uint16_t idx;
+    float target[4];
+  };
+
+  FingerTest diagnostic_sequence[] = {
+    {"Pinky (Little Finger)", 4, {0.0f, 45.0f, 45.0f, 0.0f}},
+    {"Ring Finger", 3, {0.0f, 45.0f, 45.0f, 0.0f}},
+    {"Middle Finger", 2, {0.0f, 45.0f, 45.0f, 0.0f}},
+    {"Index Finger", 1, {0.0f, 45.0f, 45.0f, 0.0f}}
+  };
+
+  float finger_zero[4] = {0.0f};
+
+  for (int f = 0; f < 4; ++f) {
+    std::printf("Testing: %s (smooth trajectory)...\n", diagnostic_sequence[f].name);
+    // Bend finger
+    revo3_move_finger_wait(ctx.handle, ctx.slave_id, diagnostic_sequence[f].idx, diagnostic_sequence[f].target, 0.5f, 0.01f);
+    // Stretch finger back
+    revo3_move_finger_wait(ctx.handle, ctx.slave_id, diagnostic_sequence[f].idx, finger_zero, 0.5f, 0.01f);
+  }
+
+  std::printf("Testing: Thumb (smooth trajectory)...\n");
+  float t_bend[5] = {0.0f, 30.0f, 30.0f, 30.0f, 30.0f};
+  float t_zero[5] = {0.0f};
+  revo3_move_thumb_wait(ctx.handle, ctx.slave_id, t_bend, 0.5f, 0.01f);
+  revo3_move_thumb_wait(ctx.handle, ctx.slave_id, t_zero, 0.5f, 0.01f);
+
+  std::printf("Restoring all joints back to Position control mode...\n");
+  revo3_multi_joint_control(ctx.handle, ctx.slave_id, 0, zeros);
+  revo3_sleep_ms(100);
 
   revo3_close(ctx);
   return 0;

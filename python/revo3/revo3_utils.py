@@ -12,8 +12,9 @@ from enum import IntEnum
 
 # Import from common_imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common_imports import logger, libstark, int_to_baudrate, modbus_open
+from common_imports import check_sdk, logger, int_to_baudrate, modbus_open
 
+libstark = check_sdk()
 libstark.init_logging()
 
 class Revo3Finger(IntEnum):

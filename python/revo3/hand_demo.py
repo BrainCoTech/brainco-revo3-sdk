@@ -45,14 +45,52 @@ async def main():
         except Exception as exc:
             print(f"Touch summary skipped: {exc}")
 
-        targets = [0.0] * 21
-        for joint in (1, 5, 9, 13, 17):
-            targets[joint] = 20.0
-        print("Move MCP joints to 20 deg...")
-        await client.revo3_move_hand(slave_id, targets, 2.0, 0.01)
+        zeros = [0.0] * 21
+        grip_targets = [0.0] * 21
+        for joint in (1, 2, 5, 6, 9, 10, 13, 14):
+            grip_targets[joint] = 60.0
+        for joint in (17, 18, 19, 20):
+            grip_targets[joint] = 45.0
 
-        print("Return all joints to 0 deg...")
-        await client.revo3_move_hand(slave_id, [0.0] * 21, 2.0, 0.01)
+        # 1. Switch all joints to Impedance mode (4)
+        print("Switching all joints to Impedance control mode (4) for smooth trajectory planning...")
+        await client.revo3_multi_joint_control(slave_id, 4, zeros)
+        await asyncio.sleep(0.1)
+
+        # Step 1: Open all fingers to 0 deg with smooth trajectory
+        print("Step 1: Open all fingers to 0 deg (Initial Stretch via revo3_move_hand_wait)...")
+        await client.revo3_move_hand_wait(slave_id, zeros, 0.7, 0.025)
+
+        # Step 2: Grip (Move whole hand to 60 deg with smooth trajectory)
+        print("Step 2: Close whole hand to 60 deg (Grip via revo3_move_hand_wait)...")
+        await client.revo3_move_hand_wait(slave_id, grip_targets, 0.7, 0.025)
+
+        # Step 3: Open again (Return whole hand to 0 deg with smooth trajectory)
+        print("Step 3: Open whole hand to 0 deg (Release via revo3_move_hand_wait)...")
+        await client.revo3_move_hand_wait(slave_id, zeros, 0.7, 0.025)
+
+        # Step 4: Test fingers one by one (Pinky -> Ring -> Middle -> Index -> Thumb)
+        fingers = [
+            ("Pinky (Little Finger)", 4, [0.0, 45.0, 45.0, 0.0]),
+            ("Ring Finger", 3, [0.0, 45.0, 45.0, 0.0]),
+            ("Middle Finger", 2, [0.0, 45.0, 45.0, 0.0]),
+            ("Index Finger", 1, [0.0, 45.0, 45.0, 0.0]),
+        ]
+
+        for name, idx, finger_target in fingers:
+            print(f"Testing: {name} (smooth trajectory)...")
+            await client.revo3_move_finger_wait(slave_id, idx, finger_target, 0.5, 0.01)
+            await client.revo3_move_finger_wait(slave_id, idx, [0.0] * 4, 0.5, 0.01)
+
+        print("Testing: Thumb (smooth trajectory)...")
+        await client.revo3_move_thumb_wait(slave_id, [0.0, 30.0, 30.0, 30.0, 30.0], 0.5, 0.01)
+        await client.revo3_move_thumb_wait(slave_id, [0.0] * 5, 0.5, 0.01)
+
+        # Restore all joints back to standard Position control mode (0)
+        print("Restoring all joints back to Position control mode...")
+        await client.revo3_multi_joint_control(slave_id, 0, zeros)
+        await asyncio.sleep(0.1)
+
         return 0
     finally:
         await cleanup_context(ctx)

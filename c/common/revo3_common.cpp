@@ -47,6 +47,18 @@ const char *revo3_hw_type_name(StarkHardwareType hw_type) {
   }
 }
 
+bool revo3_hw_type_has_touch(StarkHardwareType hw_type) {
+  switch (hw_type) {
+  case STARK_HARDWARE_TYPE_REVO3_ULTRA_TOUCH:
+  case STARK_HARDWARE_TYPE_REVO3_ULTRA_VISION_TOUCH:
+  case STARK_HARDWARE_TYPE_REVO3_PRO_TOUCH:
+  case STARK_HARDWARE_TYPE_REVO3_BASIC_TOUCH:
+    return true;
+  default:
+    return false;
+  }
+}
+
 bool revo3_init_from_args(Revo3Context &ctx, int argc, char **argv) {
   if (argc > 1 && std::strcmp(argv[1], "--help") == 0) {
     print_usage(argv[0]);
@@ -116,11 +128,18 @@ void revo3_print_device_info(DeviceHandler *handle, uint8_t slave_id) {
     return;
   }
 
-  std::printf("Serial:   %s\n", info->serial_number ? info->serial_number : "");
-  std::printf("Firmware: %s\n", info->firmware_version ? info->firmware_version : "");
-  std::printf("Hardware: %s (%u)\n", revo3_hw_type_name(info->hardware_type),
+  TouchVendor vendor = revo3_get_touch_vendor(handle, slave_id);
+  const char *vendor_str = "Unknown";
+  if (vendor == TOUCH_VENDOR_MATRIX) vendor_str = "Matrix";
+  else if (vendor == TOUCH_VENDOR_PRESSURE) vendor_str = "Pressure";
+
+  std::printf("Serial:       %s\n", info->serial_number ? info->serial_number : "");
+  std::printf("Firmware:     %s\n", info->firmware_version ? info->firmware_version : "");
+  std::printf("Hardware Ver: %s\n", info->hardware_version ? info->hardware_version : "");
+  std::printf("Hardware:     %s (%u)\n", revo3_hw_type_name(info->hardware_type),
               static_cast<unsigned>(info->hardware_type));
-  std::printf("Side:     %s\n", info->hand_type == HAND_TYPE_RIGHT ? "Right" : "Left");
+  std::printf("Touch Vendor: %s\n", vendor_str);
+  std::printf("Side:         %s\n", info->hand_type == HAND_TYPE_RIGHT ? "Right" : "Left");
 
   free_device_info(info);
 }

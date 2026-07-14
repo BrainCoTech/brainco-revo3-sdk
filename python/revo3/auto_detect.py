@@ -15,6 +15,7 @@ from common_imports import (
     parse_modbus_baudrate,
     revo3_uses_motor_api,
     sdk,
+    has_touch,
 )
 
 
@@ -46,6 +47,17 @@ def parse_canfd_data_baudrate(value):
         return sdk.BaudrateCAN.Baud5Mbps
     else:
         raise ValueError(f"Invalid CANFD data baudrate: {value}. Options: 1M, 2M, 4M, 5M")
+
+
+def get_touch_vendor_name(vendor):
+    if vendor is None:
+        return "Unknown"
+    value = int(vendor)
+    return {
+        0: "Unknown",
+        1: "Pressure",
+        2: "Matrix",
+    }.get(value, f"Unknown ({value})")
 
 
 async def main():
@@ -109,6 +121,8 @@ async def main():
         print(f"    Port: {device.port_name}")
         print(f"    Slave ID: {device.slave_id}")
         print(f"    Baudrate: {getattr(device, 'baudrate', 0)}")
+        if device.hardware_type is not None and has_touch(device.hardware_type):
+            print(f"    Touch vendor: {get_touch_vendor_name(getattr(device, 'touch_vendor', None))}")
         if getattr(device, "data_baudrate", 0):
             print(f"    Data baudrate: {device.data_baudrate}")
         if device.serial_number:

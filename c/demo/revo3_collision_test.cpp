@@ -69,8 +69,10 @@ int main(int argc, char **argv) {
   config.source = COLLISION_DETECTION_SOURCE_HYBRID;
   config.max_position_error = 10.0f;
   config.max_current = 500.0f;
-  config.debounce_time_ms = 100;
+  config.debounce_time_ms = 50;
+  config.max_cached_status_age_ms = 50;
   config.strategy = COLLISION_PROTECTION_STRATEGY_SOFT_STOP;
+  config.auto_clear_time_ms = 1000;
 
   if (revo3_set_collision_protection_config(handle, slave_id, config) != 0) {
     std::printf("[WARN] Failed to configure collision protection.\n");

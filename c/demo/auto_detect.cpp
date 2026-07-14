@@ -37,13 +37,24 @@ const char *protocol_name(StarkProtocolType protocol) {
   }
 }
 
+const char *touch_vendor_name(TouchVendor vendor) {
+  switch (vendor) {
+  case TOUCH_VENDOR_MATRIX:
+    return "Matrix";
+  case TOUCH_VENDOR_PRESSURE:
+    return "Pressure";
+  default:
+    return "Unknown";
+  }
+}
+
 void print_usage(const char *program) {
   std::printf("Usage:\n");
   std::printf("  %s [--scan-all] [--stream] [--stop-on-first] [--verbose] [--broadcast] [--port <name>] [--slave-id <id>] [--modbus-baudrate <bps>] [--canfd-data-baudrate <bps>] [--protocol auto|modbus|canfd|ethercat]\n", program);
 }
 
 void print_device(size_t index, const CDetectedDevice &device) {
-  std::printf("[%zu] %s %s slave=%u baud=%u data_baud=%u hw=%s serial=%s fw=%s\n",
+  std::printf("[%zu] %s %s slave=%u baud=%u data_baud=%u hw=%s hw_ver=%s touch_vendor=%s serial=%s fw=%s\n",
               index,
               protocol_name(device.protocol),
               device.port_name ? device.port_name : "",
@@ -51,6 +62,8 @@ void print_device(size_t index, const CDetectedDevice &device) {
               device.baudrate,
               device.data_baudrate,
               revo3_hw_type_name(device.hardware_type),
+              device.hardware_version ? device.hardware_version : "",
+              touch_vendor_name(device.touch_vendor),
               device.serial_number ? device.serial_number : "",
               device.firmware_version ? device.firmware_version : "");
 }

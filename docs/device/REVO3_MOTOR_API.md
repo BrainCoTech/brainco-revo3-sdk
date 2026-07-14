@@ -153,7 +153,8 @@ The SDK introduces a dedicated **Servo Control Suite** that features:
 | `revo3_servo_thumb_with_gains(..., kp[5], kd[5])` | Servos thumb using custom gains. Automatically preempts background trajectories. | Advanced compliant thumb tasks. |
 | `revo3_start_servo_drag(slave_id, joint_id, target_pos, kp, kd, vel_cap_rpm, interval_ms, idle_timeout_ms, filter_mode, omega)` | Starts one SDK-managed background stream for GUI-style target dragging. | Slider press, joystick engage, VR target stream start. |
 | `revo3_update_servo_drag(slave_id, joint_id, target_pos)` | Updates the latest target for an active servo-drag stream. Does not direct-read actual position. | Slider valueChanged / joystick target refresh. |
-| `revo3_stop_servo_drag(slave_id, joint_id, final_pos)` | Stops servo-drag and sends one zero-velocity hold at `final_pos`. | Slider release, leaving position mode, cleanup. |
+| `revo3_cancel_servo_drag(slave_id, joint_id)` | Cancels an active servo-drag stream without sending a final hold command. | Local safety guard, disconnect cleanup, stale-start cleanup. |
+| `revo3_stop_servo_drag(slave_id, joint_id, final_pos)` | Stops servo-drag and normally sends one zero-velocity hold at `final_pos`. If that joint is already collision-active, it skips the final hold and keeps the red state until `auto_clear_time_ms` expires or collision state is reset. Raw firmware `Stall` bits are handled by the normal collision debounce path, not by this release helper alone. | Slider release, leaving position mode, cleanup. |
 
 ### Servo Drag Helper
 
@@ -167,18 +168,22 @@ Recommended Modbus GUI starting values:
 | `kd` | `0.25` | Damping. Increase slightly if actual position overshoots or oscillates. |
 | `vel_cap_rpm` | `40.0 ~ 60.0` | Reserved for future velocity feed-forward experiments. Current position-mode drag keeps target velocity at zero. |
 | `interval_ms` | `15` | A conservative GUI value when DataCollector is also running on Modbus. Use smaller values only when bus load is acceptable. |
-| `idle_timeout_ms` | `300` | Refresh interval for an unchanged target. It does not stop the stream while the slider/joystick is still held. Use `revo3_stop_servo_drag` to end the stream. |
+| `idle_timeout_ms` | `300` | Refresh interval for an unchanged target. It does not stop the stream while the slider/joystick is still held. Use `revo3_stop_servo_drag` for normal release, or `revo3_cancel_servo_drag` for cleanup paths that must not send a final hold. |
 | `filter_mode` | `0` | No SDK-side smoothing. This is the preferred GUI default when slider updates are already rate-limited. Use `2` only if the input target is noisy. |
 | `omega` | `35.0` | Used only when `filter_mode=2`. Higher means faster tracking but less smoothing. |
 
 `servo_drag` can coexist with DataCollector because both use the shared SDK context lock, but they still share the same physical serial/CAN bus. On macOS Modbus, start with motor collection around 50 Hz to 60 Hz, and reduce it to 5 Hz to 10 Hz while a slider/joystick drag is active. Control writes should have priority over idle status reads; the SDK collector skips a poll when the device context is busy instead of queuing behind control commands. If actual tracking still lags, increase `interval_ms` or tune `kp`/`kd`.
+
+When collision protection is enabled, `servo_drag` is retry-friendly for GUI interaction. A confirmed collision/stall stops the current drag stream, sends the configured protection command once, and clears that drag event's latch. The next stream checks telemetry again and will trigger protection again if the obstacle is still present. This prevents a short obstruction from permanently blocking drag-back behavior.
+
+For GUI-side fallback guards, prefer `revo3_cancel_servo_drag` over `revo3_stop_servo_drag`. `cancel` only removes the SDK background stream; it does not send the final hold frame, so it avoids pushing further into an obstacle and avoids blocking cleanup on a final control write. Normal user release should still call `stop`.
 
 ### Which Control API Should I Use?
 
 | Scenario | Recommended API | Why |
 |----------|-----------------|-----|
 | One-shot posture change, scripted sequence, vision/RL command at 10 Hz - 30 Hz | `revo3_move_*` | SDK plans a smooth quintic trajectory and handles mid-course blending. |
-| GUI slider, joystick, VR controller target that changes only on user input | `revo3_start_servo_drag` + `revo3_update_servo_drag` + `revo3_stop_servo_drag` | SDK owns the background stream and avoids Python/C++ loop jitter. |
+| GUI slider, joystick, VR controller target that changes only on user input | `revo3_start_servo_drag` + `revo3_update_servo_drag` + `revo3_stop_servo_drag`; use `revo3_cancel_servo_drag` only for guarded cleanup | SDK owns the background stream and avoids Python/C++ loop jitter. |
 | Custom real-time controller that already runs its own deterministic loop | `revo3_servo_joint_with_gains`, `revo3_servo_hand_with_gains`, finger/thumb servo APIs | Caller owns timing, filtering, and target generation. |
 | Low-level register-style position/speed/current command | `revo3_single_joint_control`, `revo3_multi_joint_control` | Direct control-mode writes for simple static commands. |
 

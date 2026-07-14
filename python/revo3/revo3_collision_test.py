@@ -45,15 +45,18 @@ async def main(port=None, protocol_str="auto", slave_id=None):
     # - Use Hybrid mode (Software tracking error + hardware Stall flag)
     # - Set maximum tracking error to 12.0 degrees
     # - Set maximum current limit to 500mA
-    # - Set debounce time to 100ms
+    # - Set debounce time to 50ms
+    # - Reuse motor status cache only if it is fresher than 50ms
     # - Strategy: ZeroForce (Relaxes all joints to completely limp state on collision)
     config = libstark.CollisionProtectionConfig(
         enable=True,
         source=libstark.CollisionDetectionSource.Hybrid,
         max_position_error=12.0,
         max_current=500.0,
-        debounce_time_ms=100,
-        strategy=libstark.CollisionProtectionStrategy.SoftStop
+        debounce_time_ms=50,
+        max_cached_status_age_ms=50,
+        strategy=libstark.CollisionProtectionStrategy.SoftStop,
+        auto_clear_time_ms=1000
     )
     client.revo3_set_collision_protection_config(slave_id, config)
     logger.info(f"Collision protection configured: enable={config.enable}, source={config.source}, strategy={config.strategy}")
@@ -64,8 +67,7 @@ async def main(port=None, protocol_str="auto", slave_id=None):
     target_pos = 60.0
     logger.info(f"Moving Joint {joint_id} to {target_pos} deg over 3.0 s...")
 
-    # Spawn move_joint non-blocking
-    await client.revo3_move_joint(slave_id, joint_id, target_pos, 3.0, 0.01)
+    client.revo3_move_joint(slave_id, joint_id, target_pos, 3.0, 0.01)
 
     # Monitor collision status
     start_time = asyncio.get_event_loop().time()
