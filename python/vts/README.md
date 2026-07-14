@@ -116,9 +116,68 @@ python python/vts/vts_collect_sensor_data.py --sn VTSensorI123456,VTSensorI65432
 
 ---
 
+## 独立启动 VisionTouch GUI 面板
+
+SDK 提供了一个可以独立于主 SDK 界面运行的 VisionTouch 图形化调试面板：`examples/python/gui/vision_touch_window.py`。该面板支持多传感器并发连接、下拉切换、实时 3D 点云/深度图渲染、以及多传感器实时六维力状态概览。
+
+为减少初始化等待，独立 GUI 默认不加载力估计模型。此时图像、深度图、Marker、Slip 等数据可用，Force6D 显示关闭。只有需要真实 Force6D 力值时，再通过 `--force-model-mode auto` 或 `required` 加载模型。
+
+GUI 面板内也可以直接选择力模型模式和权重父目录，并会显示初始化进度。若传感器已经连接，修改模型模式或目录后需要断开并重新连接才会重新初始化模型。
+
+### 命令行参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--sn` | 指定传感器 SN，不填则默认发现并同时连接所有设备 | 自动连接所有设备 |
+| `--force-model-dir` | 力估计模型权重的父目录 | `None` |
+| `--force-model-mode` | 力估计加载模式：`none` (快速启动不载入力), `auto` (检测到即载入，缺失不报错), `required` (缺失模型则报错并跳过) | `none` |
+
+### 常用命令示例
+
+```bash
+# 1. 快速启动独立 GUI（默认不加载力模型，初始化速度最快）
+python -m examples.python.gui.vision_touch_window
+
+# 2. 自动加载力模型（指定权重目录，当模型匹配时激活力估计 Force6D 渲染）
+python -m examples.python.gui.vision_touch_window --force-model-dir python/vts/checkpoints --force-model-mode auto
+
+# 3. 强校验力模型启动（若某些已发现的 VTS 设备缺乏对应权重，则初始化报错跳过）
+python -m examples.python.gui.vision_touch_window --force-model-dir python/vts/checkpoints --force-model-mode required
+```
+
+---
+
+## 与 Python Motor GUI 结合
+
+主 Python GUI (`examples/python/gui/main.py`) 会根据 `Revo3UltraVisionTouch` 硬件类型显示 `VisionTouch` Tab。如果同一只手还上报 Pressure 或 Matrix 触觉，普通 Revo3 触觉 Tab 会同时保留。该 Tab 默认使用快速初始化模式，不加载力估计模型。
+
+主 GUI 的 `VisionTouch` Tab 和独立窗口使用同一套面板：可以在 Tab 内选择权重父目录、切换 `none` / `auto` / `required` 模式，并通过进度条查看多传感器初始化状态。
+
+### 命令行参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--vts-force-model-dir` | VTS 力估计模型权重父目录 | 若存在则自动使用 `python/vts/checkpoints` |
+| `--vts-force-model-mode` | 力估计加载模式：`none` (快速启动不载入力), `auto` (检测到即载入，缺失不报错), `required` (缺失模型则报错并跳过) | `none` |
+
+### 常用命令示例
+
+```bash
+# 快速启动主 GUI，VTS Tab 不加载力模型
+python examples/python/gui/main.py
+
+# 在主 GUI 的 VTS Tab 中启用 Force6D
+python examples/python/gui/main.py --vts-force-model-dir python/vts/checkpoints --vts-force-model-mode auto
+
+# 强制要求每个 VTS 都有模型
+python examples/python/gui/main.py --vts-force-model-dir python/vts/checkpoints --vts-force-model-mode required
+```
+
+---
+
 ## 注意事项
 
-1. **模型路径**：请确保从百度网盘下载的力估计权重按照 `{父目录}/{SN}/{SN}.onnx.enc` 的结构存放，并通过 `--force-model-dir` 指定父目录。
+1. **模型路径**：请确保从百度网盘下载的力估计权重按照 `{父目录}/{SN}/{SN}.onnx.enc` 的结构存放，并通过 `--force-model-dir` 或 `--vts-force-model-dir` 指定父目录。
 
 2. **SN 自动匹配**：示例脚本会读取当前连接设备的产品 SN，并自动在模型父目录下查找同名子目录中的权重文件，无需手动指定单个模型文件。
 

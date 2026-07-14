@@ -13,6 +13,42 @@ int main(int argc, char **argv) {
   std::printf("=== Revo3 C++ Touch Demo ===\n");
   revo3_print_device_info(ctx.handle, ctx.slave_id);
 
+  // Optional: If the touch vendor cannot be auto-detected (e.g., returns 0/Unknown on old firmware),
+  // you can manually force-set the touch vendor using revo3_set_touch_vendor:
+  // TOUCH_VENDOR_PRESSURE = 1, TOUCH_VENDOR_MATRIX = 2. Here we showcase overriding to Matrix:
+  // revo3_set_touch_vendor(ctx.handle, ctx.slave_id, TOUCH_VENDOR_MATRIX);
+
+  uint8_t touch_vendor = revo3_get_touch_vendor(ctx.handle, ctx.slave_id);
+  std::printf("Touch vendor: %u (0=Unknown, 1=Pressure, 2=Matrix)\n", touch_vendor);
+
+  if (touch_vendor == TOUCH_VENDOR_MATRIX) {
+    char module_sn[33] = {0};
+    if (revo3_get_matrix_touch_module_serial_number(ctx.handle, ctx.slave_id, 0, module_sn,
+                                                    sizeof(module_sn)) == 0) {
+      std::printf("Matrix palm module SN: %s\n", module_sn);
+    }
+
+    uint16_t point_counts[11] = {0};
+    if (revo3_get_all_matrix_touch_module_point_counts(ctx.handle, ctx.slave_id, point_counts) ==
+        0) {
+      std::printf("Matrix point counts:");
+      for (uint16_t count : point_counts) {
+        std::printf(" %u", count);
+      }
+      std::printf("\n");
+    }
+
+    revo3_set_matrix_touch_output_mode(ctx.handle, ctx.slave_id, 1);
+    revo3_sleep_ms(200);
+    int mode = revo3_get_matrix_touch_output_mode(ctx.handle, ctx.slave_id);
+    std::printf("Matrix output mode: %d (0=ADC, 1=force)\n", mode);
+
+    revo3_set_matrix_touch_tare(ctx.handle, ctx.slave_id, 1);
+    revo3_sleep_ms(200);
+    int tare_status = revo3_get_matrix_touch_tare_status(ctx.handle, ctx.slave_id);
+    std::printf("Matrix tare status: %d (0=not tared, 1=tared, 2=busy or failed)\n", tare_status);
+  }
+
   revo3_set_all_touch_modules_enabled(ctx.handle, ctx.slave_id, 0x07FF);
   revo3_sleep_ms(200);
 
@@ -23,7 +59,7 @@ int main(int argc, char **argv) {
   revo3_sleep_ms(200);
   int value_type = revo3_get_touch_module_value_type(ctx.handle, ctx.slave_id);
   if (value_type >= 0) {
-    std::printf("Touch module value type: %d (0=AD, 1=raw pressure, 2=force)\n", value_type);
+    std::printf("Touch module value type: %d (0=ADC, 1=raw pressure, 2=force)\n", value_type);
   } else {
     std::printf("[WARN] Failed to read touch module value type.\n");
   }

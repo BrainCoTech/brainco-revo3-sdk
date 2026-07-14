@@ -134,6 +134,13 @@ def has_touch(hw_type) -> bool:
     )
 
 
+def has_vision_tactile(hw_type) -> bool:
+    """Return whether a Revo3 hardware type has VisionTouch capability."""
+    if sdk is None:
+        return False
+    return hw_type == sdk.StarkHardwareType.Revo3UltraVisionTouch
+
+
 def get_hw_type_name(hw_type) -> str:
     """Return a Revo3 hardware display name."""
     if sdk is None:
@@ -185,17 +192,24 @@ def run_async(coro_or_fn, raise_exception: bool = False):
     import asyncio
     import traceback
 
-    # 1. Create a new event loop and set it to current thread context.
-    # This is critical for PyO3/Tokio runtime to bind and find the Python event loop on the current thread.
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
 
-    # 2. Wrap if callable (lazy evaluation), otherwise execute directly
     async def _wrapper():
         if callable(coro_or_fn):
             return await coro_or_fn()
         else:
             return await coro_or_fn
+
+    if running_loop is not None and running_loop.is_running():
+        return running_loop.create_task(_wrapper())
+
+    # 1. Create a new event loop and set it to current thread context.
+    # This is critical for PyO3/Tokio runtime to bind and find the Python event loop on the current thread.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     try:
         return loop.run_until_complete(_wrapper())
