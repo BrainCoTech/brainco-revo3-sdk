@@ -117,7 +117,7 @@ class TimingTestPanel(QWidget):
             self.cycles_spin.value(),
             2,
             test_mode,
-            self.target_combo.currentData(),
+            self.target_combo.currentText(),
             self.shared_data,
             "MIT",
             "Sine",

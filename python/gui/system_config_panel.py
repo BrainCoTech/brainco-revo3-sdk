@@ -102,9 +102,21 @@ class SystemConfigPanel(QWidget):
         self.sku_title = QLabel("SKU:")
         self.sku_label = QLabel("--")
         info_layout.addRow(self.sku_title, self.sku_label)
+        self.touch_vendor_title = QLabel("Touch Vendor:")
+        self.touch_vendor_label = QLabel("--")
+        info_layout.addRow(self.touch_vendor_title, self.touch_vendor_label)
         self.protocol_title = QLabel("Protocol:")
         self.protocol_label = QLabel("--")
         info_layout.addRow(self.protocol_title, self.protocol_label)
+        self.port_title = QLabel("Port:")
+        self.port_label = QLabel("--")
+        info_layout.addRow(self.port_title, self.port_label)
+        self.connected_slave_id_title = QLabel("Slave ID:")
+        self.connected_slave_id_label = QLabel("--")
+        info_layout.addRow(self.connected_slave_id_title, self.connected_slave_id_label)
+        self.baudrate_title = QLabel("Baudrate:")
+        self.baudrate_label = QLabel("--")
+        info_layout.addRow(self.baudrate_title, self.baudrate_label)
         layout.addWidget(self.info_group)
 
         self.slave_id_group = QGroupBox()
@@ -172,7 +184,8 @@ class SystemConfigPanel(QWidget):
         runtime_layout.addWidget(self.teaching_mode_check, 0, 1)
         runtime_layout.addWidget(self.software_estop_check, 1, 0)
         runtime_layout.addWidget(self.broadcast_id_check, 1, 1)
-        runtime_layout.setColumnStretch(2, 1)
+        runtime_layout.setColumnStretch(0, 1)
+        runtime_layout.setColumnStretch(1, 1)
         layout.addWidget(self.runtime_group)
 
         self.protection_group = QGroupBox("Protection")
@@ -349,10 +362,23 @@ class SystemConfigPanel(QWidget):
             self.hw_version_label.setText(getattr(device_info, "hardware_version", "--") or "--")
             self.hw_label.setText(self._enum_name(getattr(device_info, "hardware_type", "--")))
             self.sku_label.setText(self._enum_name(getattr(device_info, "sku_type", "--")))
+        touch_vendor = getattr(device, "touch_vendor", None)
+        self.touch_vendor_label.setText(self._touch_vendor_name(touch_vendor))
+        self.connected_slave_id_label.setText(f"0x{slave_id:02X} ({slave_id})")
 
         self._load_runtime_settings()
         self._load_comm_settings()
         self._load_revo3_status()
+
+    def set_connection_info(self, info):
+        self.protocol_label.setText(info.get("protocol") or "--")
+        self.current_protocol_label.setText(info.get("protocol") or "--")
+        self.port_label.setText(info.get("port") or "--")
+        slave_id = info.get("slave_id")
+        self.connected_slave_id_label.setText(
+            f"0x{slave_id:02X} ({slave_id})" if isinstance(slave_id, int) else "--"
+        )
+        self.baudrate_label.setText(str(info.get("baudrate") or "--"))
 
     def clear_device(self):
         self.shared_data = None
@@ -362,7 +388,11 @@ class SystemConfigPanel(QWidget):
             self.hw_label,
             self.hw_version_label,
             self.sku_label,
+            self.touch_vendor_label,
             self.protocol_label,
+            self.port_label,
+            self.connected_slave_id_label,
+            self.baudrate_label,
             self.current_protocol_label,
             self.current_modbus_label,
             self.current_can_arb_label,
@@ -389,6 +419,11 @@ class SystemConfigPanel(QWidget):
         self.sn_title.setText(tr("serial_number") + ":")
         self.fw_title.setText(tr("firmware_version") + ":")
         self.hw_title.setText(tr("hardware_type") + ":")
+        self.touch_vendor_title.setText("Touch Vendor:")
+        self.protocol_title.setText("Protocol:")
+        self.port_title.setText("Port:")
+        self.connected_slave_id_title.setText("Slave ID:")
+        self.baudrate_title.setText("Baudrate:")
         self.slave_id_group.setTitle(tr("slave_id_settings"))
         self.new_slave_id_label.setText(tr("new_slave_id") + ":")
         self.set_slave_id_btn.setText(tr("btn_set"))
@@ -818,13 +853,32 @@ class SystemConfigPanel(QWidget):
     def _call_bool(self, method_name: str, default: bool):
         if not hasattr(self.device, method_name):
             return default
-        return run_async(lambda: getattr(self.device, method_name)(self.slave_id))
+        try:
+            res = run_async(lambda: getattr(self.device, method_name)(self.slave_id))
+            return bool(res) if res is not None else default
+        except Exception as e:
+            logger.error(f"Failed to query {method_name}: {e}")
+            return default
 
     def _enum_name(self, value):
         if hasattr(value, "name"):
             return value.name
         text = str(value)
         return text.split(".")[-1]
+
+    def _touch_vendor_name(self, value):
+        if value is None:
+            return "--"
+        try:
+            value_int = int(value)
+        except Exception:
+            value_int = None
+        names = {
+            0: "Unknown",
+            1: "Pressure",
+            2: "Matrix",
+        }
+        return names.get(value_int, self._enum_name(value))
 
     def _log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")

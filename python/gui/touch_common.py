@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 
-from .styles import COLORS
+from .styles import COLORS, is_dark_mode
 from common_imports import logger, run_async
 
 
@@ -112,6 +112,9 @@ class HeatmapChart(QWidget):
         self.cols = cols
         self.coord_map = coord_map  # list of (row, col) tuples, or None for divmod fallback
         self.current_values = [0] * point_count
+        self.value_unit = "force"
+        self.current_max_limit = 500.0
+        self.current_stats_max_limit = None
         self._setup_ui()
 
     def _get_coords(self, i: int):
@@ -137,7 +140,7 @@ class HeatmapChart(QWidget):
         )
         header.addWidget(name_label)
         header.addStretch()
-        self.stats_label = QLabel("max: 0  sum: 0  avg: 0")
+        self.stats_label = QLabel("max: 0.0  avg: 0.0 mN  |  sum: 0.00 N  |  cnt: 0/0")
         self.stats_label.setStyleSheet(
             "font-size: 14px; font-family: 'Courier New'; color: #eee;"
         )
@@ -163,6 +166,8 @@ class HeatmapChart(QWidget):
             ]
             self.cmap = pg.ColorMap(positions, colors_rgb)
             self.lut = self.cmap.getLookupTable(nPts=256)
+            self.disabled_cmap = pg.ColorMap([0.0, 1.0], [(35, 35, 45), (35, 35, 45)])
+            self.disabled_lut = self.disabled_cmap.getLookupTable(nPts=256)
 
             self.img_item = pg.ImageItem()
             self.img_item.setLookupTable(self.lut)
@@ -200,12 +205,14 @@ class HeatmapChart(QWidget):
                     self.text_items.append(txt)
 
             # Colorbar
+            self.bar_item = None
             try:
                 bar_item = pg.ColorBarItem(
                     values=(0, 500), colorMap=self.cmap,
                     interactive=False, width=15,
                 )
                 bar_item.setImageItem(self.img_item, insert_in=self.plot_widget.plotItem)
+                self.bar_item = bar_item
             except Exception:
                 pass
 
@@ -213,8 +220,66 @@ class HeatmapChart(QWidget):
         else:
             layout.addWidget(QLabel("pyqtgraph required"), 1)
 
-    def add_data(self, values: list):
+    def _update_stats_label(self):
+        n_total = len(self.current_values) if self.current_values else 1
+        total = sum(self.current_values)
+        avg = total / n_total
+        max_val = max(self.current_values) if self.current_values else 0
+        active_vals = [v for v in self.current_values if v > 0]
+        active_count = len(active_vals)
+
+        if self.value_unit == "force":
+            if self.current_stats_max_limit is not None:
+                sum_limit = self.current_stats_max_limit * self.point_count
+                self.stats_label.setText(
+                    f"max: {max_val:.0f}  avg: {avg:.0f}/{self.current_stats_max_limit:.0f} mN  |  "
+                    f"sum: {total / 1000.0:.1f}/{sum_limit / 1000.0:.1f} N  |  cnt: {active_count}/{n_total}"
+                )
+            else:
+                self.stats_label.setText(
+                    f"max: {max_val:.0f}  avg: {avg:.0f} mN  |  "
+                    f"sum: {total / 1000.0:.1f} N  |  cnt: {active_count}/{n_total}"
+                )
+        else:
+            if self.current_stats_max_limit is not None:
+                avg_text = f"{avg:.0f}/{self.current_stats_max_limit:.0f}"
+            else:
+                avg_text = f"{avg:.0f}"
+            self.stats_label.setText(
+                f"max: {max_val:.0f}  avg: {avg_text} (ADC)  |  "
+                f"sum: {total:.0f}  |  cnt: {active_count}/{n_total}"
+            )
+
+    def set_value_unit(self, value_unit: str, max_limit: float = None, stats_max_limit: float = None):
+        self.value_unit = value_unit
+        if max_limit is not None:
+            self.current_max_limit = max_limit
+        self.current_stats_max_limit = stats_max_limit
+        self._update_stats_label()
+
+    def add_data(
+        self,
+        values: list,
+        is_enabled: bool = True,
+        max_limit: float = 500.0,
+        value_unit: str = "force",
+        stats_max_limit: float = None,
+    ):
         """Update heatmap with new values"""
+        self.value_unit = value_unit
+        self.current_max_limit = max_limit
+        self.current_stats_max_limit = stats_max_limit
+        if not is_enabled:
+            if HAS_PYQTGRAPH:
+                self.img_item.setLookupTable(self.disabled_lut)
+                self._data_2d.fill(0.0)
+                self.img_item.setImage(self._data_2d.T, levels=(0, 100))
+                for txt in self.text_items:
+                    txt.setText("OFF")
+                    txt.setColor('#666666')
+            self.stats_label.setText("Disabled")
+            return
+
         n = min(len(values), self.point_count)
         self.current_values = list(values[:n]) + [0] * max(0, self.point_count - n)
 
@@ -228,21 +293,23 @@ class HeatmapChart(QWidget):
         level_max = max(100, max_val * 1.2)
 
         if HAS_PYQTGRAPH:
-            self.img_item.setImage(self._data_2d.T, levels=(0, level_max))
+            self.img_item.setLookupTable(self.lut)
+            self.img_item.setImage(self._data_2d.T, levels=(0, max_limit))
+            if hasattr(self, "bar_item") and self.bar_item is not None:
+                try:
+                    self.bar_item.setLevels((0, max_limit))
+                except Exception:
+                    pass
 
             for i, txt in enumerate(self.text_items):
                 val = self.current_values[i]
-                txt.setText(str(val))
-                if val > level_max * 0.5:
+                txt.setText(f"{val:.1f}" if isinstance(val, float) else str(val))
+                if val > max_limit * 0.5:
                     txt.setColor('k')
                 else:
                     txt.setColor('w')
 
-        total = sum(self.current_values)
-        avg = total / self.point_count if self.point_count else 0
-        self.stats_label.setText(
-            f"max: {max(self.current_values)}  sum: {total}  avg: {avg:.0f}"
-        )
+        self._update_stats_label()
 
     def clear(self):
         self.current_values = [0] * self.point_count
@@ -251,11 +318,17 @@ class HeatmapChart(QWidget):
             if r_idx < self.rows and c_idx < self.cols:
                 self._data_2d[r_idx, c_idx] = 0.0
         if HAS_PYQTGRAPH:
+            self.img_item.setLookupTable(self.lut)
             self.img_item.setImage(self._data_2d.T, levels=(0, 500))
+            if hasattr(self, "bar_item") and self.bar_item is not None:
+                try:
+                    self.bar_item.setLevels((0, 500))
+                except Exception:
+                    pass
             for txt in self.text_items:
                 txt.setText("0")
                 txt.setColor('w')
-        self.stats_label.setText("max: 0  sum: 0  avg: 0")
+        self.stats_label.setText("max: 0.0  avg: 0.0 mN  |  sum: 0.00 N  |  cnt: 0/0")
 
 
 def build_status_cards(parent_layout, sensor_names, sensor_colors, is_compact=False):
@@ -280,12 +353,46 @@ def build_status_cards(parent_layout, sensor_names, sensor_colors, is_compact=Fa
     cards_layout.setContentsMargins(0, 0, 0, 0)
     cards_layout.setSpacing(2 if is_compact else 4)
 
+    is_dark = is_dark_mode()
+    bg_card = COLORS['bg_card'] if is_dark else "#ffffff"
+    border_color = "#34495e" if is_dark else "#dee2e6"
+    text_muted = COLORS['text_secondary'] if is_dark else "#2c3e50"
+    bg_bar = "#2a2a3e" if is_dark else "#e9ecef"
+    border_bar = "#444" if is_dark else "#cfd4d9"
+
     for i, (name, color) in enumerate(zip(sensor_names, sensor_colors)):
+        # If light mode, darken the color to guarantee enough contrast on white background
+        r, g, b = color
+        if not is_dark:
+            if r > 200 and g > 200 and b < 150:
+                # Yellow -> Dark Gold/Orange-Brown
+                display_color = (180, 130, 0)
+            elif r > 200 and g < 150 and b > 200:
+                # Magenta -> Dark Purple
+                display_color = (160, 30, 160)
+            elif r < 150 and g > 200 and b > 200:
+                # Cyan -> Dark Cyan/Teal
+                display_color = (0, 140, 140)
+            elif r > 200 and g < 150 and b < 150:
+                # Red -> Deep Red
+                display_color = (200, 40, 40)
+            elif r < 150 and g > 200 and b < 150:
+                # Green -> Deep Green
+                display_color = (30, 150, 30)
+            elif r < 150 and g < 150 and b > 200:
+                # Blue -> Deep Blue
+                display_color = (30, 80, 200)
+            else:
+                display_color = (int(r * 0.7), int(g * 0.7), int(b * 0.7))
+        else:
+            display_color = color
+
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
-                background-color: {COLORS['bg_card']};
-                border-left: 4px solid rgb{color};
+                background-color: {bg_card};
+                border: 1px solid {border_color};
+                border-left: 4px solid rgb{display_color};
                 border-radius: 4px;
                 padding: 2px;
             }}
@@ -296,7 +403,7 @@ def build_status_cards(parent_layout, sensor_names, sensor_colors, is_compact=Fa
 
         name_label = QLabel(name)
         name_label.setFixedWidth(80 if is_compact else 50)
-        name_label.setStyleSheet(f"color: rgb{color}; font-weight: bold; font-size: 13px;")
+        name_label.setStyleSheet(f"color: rgb{display_color}; font-weight: bold; font-size: 13px;")
         card_layout.addWidget(name_label)
 
         bar = QProgressBar()
@@ -304,15 +411,15 @@ def build_status_cards(parent_layout, sensor_names, sensor_colors, is_compact=Fa
         bar.setValue(0)
         bar.setTextVisible(False)
         bar.setFixedHeight(14 if is_compact else 16)
-        r, g, b = color
+        dr, dg, db = display_color
         bar.setStyleSheet(f"""
             QProgressBar {{
-                border: 1px solid #444;
+                border: 1px solid {border_bar};
                 border-radius: 3px;
-                background-color: #2a2a3e;
+                background-color: {bg_bar};
             }}
             QProgressBar::chunk {{
-                background-color: rgb({r}, {g}, {b});
+                background-color: rgb({dr}, {dg}, {db});
                 border-radius: 2px;
             }}
         """)
@@ -320,11 +427,16 @@ def build_status_cards(parent_layout, sensor_names, sensor_colors, is_compact=Fa
         sensor_bars.append(bar)
 
         val_label = QLabel("0")
-        val_label.setFixedWidth(50)
+        val_label.setFixedWidth(220)
         val_label.setAlignment(Qt.AlignRight)
-        val_label.setStyleSheet(
-            "font-family: 'Courier New'; font-size: 13px;"
-        )
+        val_label.setStyleSheet(f"""
+            QLabel {{
+                font-family: 'Courier New';
+                font-size: 12px;
+                font-weight: bold;
+                color: {text_muted};
+            }}
+        """)
         card_layout.addWidget(val_label)
         sensor_labels.append(val_label)
 

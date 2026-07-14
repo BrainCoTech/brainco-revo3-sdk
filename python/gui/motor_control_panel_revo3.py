@@ -11,6 +11,7 @@ Layout: mode selector switches between motor-level and finger-level views.
 """
 
 import asyncio
+import inspect
 import sys
 import threading
 import time
@@ -24,11 +25,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, Signal
 
 from .i18n import tr
-from .styles import COLORS
+from .styles import COLORS, is_dark_mode
 
 # Add parent directory to path for SDK import
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import sdk
+from common_imports import sdk, logger
 
 if TYPE_CHECKING:
     from .shared_data import SharedDataManager
@@ -45,6 +46,27 @@ SERVO_DRAG_FILTER_MODE = 0
 SERVO_DRAG_OMEGA = 35.0
 SERVO_DRAG_IDLE_TIMEOUT_MS = 300
 SERVO_DRAG_KEEPALIVE_MS = 100
+SERVO_DRAG_SDK_TIMEOUT_S = 1.5
+COLLISION_SDK_TIMEOUT_S = 0.8
+COLLISION_UI_FAST_POLL_MS = 50
+COLLISION_UI_IDLE_POLL_MS = 500
+COLLISION_GUI_CACHE_MS = 80
+COLLISION_GUI_AUTO_CLEAR_MS = 1000
+COLLISION_GUI_DEFAULT_POSITION_ERROR_DEG = 25.0
+COLLISION_GUI_DEFAULT_CURRENT_MA = 500.0
+MOTOR_ERROR_DEBUG_LOG_INTERVAL_S = 1.0
+FINGER_STATE_LOG_INTERVAL_S = 1.0
+GUI_STALL_BLOCK_CONSECUTIVE_SAMPLES = 3
+COLLISION_SOURCE_ITEMS = [
+    ("collision_src_hardware", "HardwareOnly"),
+    ("collision_src_hybrid", "Hybrid"),
+    ("collision_src_software", "SoftwareOnly"),
+]
+COLLISION_STRATEGY_ITEMS = [
+    ("collision_strat_softstop", "SoftStop"),
+    ("collision_strat_zeroforce", "ZeroForce"),
+    ("collision_strat_holdactual", "HoldActual"),
+]
 
 # Finger -> motor_id mapping (top-to-bottom order per finger)
 REVO3_FINGER_MOTORS = {
@@ -65,6 +87,17 @@ MOTOR_ERROR_BITS = {
     11: "Running",
 }
 
+FINGER_STATE_STYLE_OK = "color: white; background-color: #27ae60; border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 6px;"
+FINGER_STATE_STYLE_STALL = "color: #1f2933; background-color: #facc15; border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 6px;"
+FINGER_STATE_STYLE_GUARD = "color: white; background-color: #8b5cf6; border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 6px;"
+FINGER_STATE_STYLE_COLLISION = "color: white; background-color: #dc2626; border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 6px;"
+FINGER_STATE_STYLE_ERROR = "color: white; background-color: #f97316; border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 6px;"
+DIAG_COLOR_OK = "#27ae60"
+DIAG_COLOR_STALL = "#facc15"
+DIAG_COLOR_GUARD = "#8b5cf6"
+DIAG_COLOR_WARN = "#f97316"
+DIAG_COLOR_ERROR = "#dc2626"
+
 def decode_motor_error(err_val) -> list:
     """Decode a motor error integer bitmask into a list of error strings."""
     if err_val == 0:
@@ -78,6 +111,99 @@ def decode_motor_error(err_val) -> list:
     if (err_val & ~known_mask) != 0:
         errs.append(f"Unknown(0x{err_val:04X})")
     return errs
+
+def build_finger_state_text(motor_ids, active_joints=None, blocked_joints=None, online=None, temps=None, errors=None, dragging_joints=None, is_connected=True):
+    if not is_connected:
+        return "", "background-color: transparent;", ""
+    active_joints = active_joints or set()
+    blocked_joints = blocked_joints or set()
+    dragging_joints = dragging_joints or set()
+    errors = errors or []
+
+    dragging = []
+    collisions = []
+    stall_guards = []
+    stalls = []
+    other_errors = []
+    offline = []
+    details = []
+
+    for mid in motor_ids:
+        label = f"M{mid:02d}"
+        if mid in dragging_joints:
+            dragging.append(label)
+            details.append(f"{label}: Dragging")
+
+        if mid in active_joints:
+            collisions.append(label)
+            details.append(f"{label}: Collision")
+        if mid in blocked_joints:
+            stall_guards.append(label)
+            details.append(f"{label}: Stall guard")
+
+        if online is not None and (online & (1 << mid)) == 0:
+            offline.append(label)
+            details.append(f"{label}: Offline")
+
+        err_val = errors[mid] if mid < len(errors) else 0
+        err_names = [name for name in decode_motor_error(err_val) if name != "Running"]
+        if "Stall" in err_names:
+            stalls.append(label)
+            details.append(f"{label}: Stall")
+        remaining_errors = [name for name in err_names if name != "Stall"]
+        if remaining_errors:
+            other_errors.append(label)
+            details.append(f"{label}: {' + '.join(remaining_errors)}")
+
+    parts = []
+    if dragging:
+        parts.append("Drag: " + ", ".join(dragging))
+    if collisions:
+        parts.append("Collision: " + ", ".join(collisions))
+    if stall_guards:
+        parts.append("Stall guard: " + ", ".join(stall_guards))
+    if stalls:
+        parts.append("Stall: " + ", ".join(stalls))
+    if other_errors:
+        parts.append("Error: " + ", ".join(other_errors))
+    if offline:
+        parts.append("Offline: " + ", ".join(offline))
+
+    if not parts:
+        return "OK", FINGER_STATE_STYLE_OK, "OK"
+    if collisions:
+        style = FINGER_STATE_STYLE_COLLISION
+    elif stalls:
+        style = FINGER_STATE_STYLE_STALL
+    elif stall_guards:
+        style = FINGER_STATE_STYLE_GUARD
+    elif other_errors or offline:
+        style = FINGER_STATE_STYLE_ERROR
+    else:
+        style = FINGER_STATE_STYLE_OK
+    return " | ".join(parts), style, "\n".join(details)
+
+def _format_motor_labels(motor_ids):
+    return ", ".join(f"M{mid:02d}" for mid in sorted(motor_ids))
+
+def motor_diag_style(color, text_color="white"):
+    return f"color: {text_color}; background-color: {color}; border-radius: 3px; font-size: 9px; padding: 1px;"
+
+def motor_diag_color_and_text(temp, err_val, collision_active=False, stall_guard_active=False):
+    if collision_active:
+        return DIAG_COLOR_ERROR, "white", "!", ["Collision"]
+    if stall_guard_active:
+        return DIAG_COLOR_GUARD, "white", "G", ["Stall Guard"]
+    err_names = [name for name in decode_motor_error(err_val) if name != "Running"]
+    if err_names:
+        if "Stall" in err_names:
+            return DIAG_COLOR_STALL, "#1f2933", "⚠", err_names
+        return DIAG_COLOR_WARN, "white", "⚠", err_names
+    if temp >= 60:
+        return DIAG_COLOR_WARN, "white", f"{int(temp)}°", err_names
+    if temp >= 45:
+        return DIAG_COLOR_WARN, "white", f"{int(temp)}°", err_names
+    return DIAG_COLOR_OK, "white", f"{int(temp)}°", err_names
 
 REVO3_FINGER_NAMES = ["Thumb", "Index", "Middle", "Ring", "Pinky"]
 
@@ -197,6 +323,30 @@ MIT_KD_RANGE = (0.0, 5.0, 0.1)
 CARTESIAN_RANGE = (-100.0, 100.0, 0.5)
 
 
+def enum_display_name(value) -> str:
+    if value is None:
+        return "--"
+    if hasattr(value, "name"):
+        return value.name
+    text = str(value)
+    return text.split(".")[-1] if text else "--"
+
+
+def touch_vendor_display_name(value) -> str:
+    if value is None:
+        return "--"
+    try:
+        value_int = int(value)
+    except Exception:
+        value_int = None
+    names = {
+        0: "Unknown",
+        1: "Pressure",
+        2: "Matrix",
+    }
+    return names.get(value_int, enum_display_name(value))
+
+
 class DeviceInfoPanel(QWidget):
     """Device info summary panel for the empty grid slot."""
     def __init__(self):
@@ -209,35 +359,61 @@ class DeviceInfoPanel(QWidget):
         self.group_dev = QGroupBox(tr("device_info"))
         self.group_motor = QGroupBox(tr("v3_motor_status_info"))
 
-        style = """
-            QGroupBox {
+        is_dark = is_dark_mode()
+        bg_dev = "#2d3748" if is_dark else "#f8f9fa"
+        bg_motor = "#2d3748" if is_dark else "#fdfbf7"
+        text_color = "#ecf0f1" if is_dark else "#2c3e50"
+
+        style_dev = f"""
+            QGroupBox {{
                 font-weight: bold;
-                background-color: #f8f9fa;
+                background-color: {bg_dev};
                 border: 2px solid #5D9CEC;
                 border-radius: 6px;
                 margin-top: 8px;
                 padding: 10px 8px 8px 8px;
-            }
-            QGroupBox::title {
+                color: {text_color};
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 6px;
                 background-color: transparent;
                 color: #5D9CEC;
                 font-size: 14px;
-            }
-            QLabel { font-size: 14px; }
+            }}
+            QLabel {{ font-size: 14px; color: {text_color}; }}
         """
-        self.group_dev.setStyleSheet(style)
-        self.group_motor.setStyleSheet(style.replace("#5D9CEC", "#e67e22").replace("#f8f9fa", "#fdfbf7"))
+        self.group_dev.setStyleSheet(style_dev)
+        style_motor = style_dev.replace("#5D9CEC", "#e67e22").replace(bg_dev, bg_motor)
+        self.group_motor.setStyleSheet(style_motor)
+        self._info_values = {
+            "hw_type": "--",
+            "hw": "--",
+            "fw": "--",
+            "sn": "--",
+            "sku": "--",
+            "touch_vendor": "--",
+        }
 
         # Device info UI
         l_dev = QVBoxLayout()
+        self.lbl_type = QLabel(f"{tr('v3_hw_type')}: --")
         self.lbl_hw = QLabel(f"{tr('v3_hw')}: --")
         self.lbl_fw = QLabel(f"{tr('v3_fw')}: --")
         self.lbl_sn = QLabel(f"{tr('v3_sn')}: --")
+        self.lbl_sku = QLabel(f"{tr('v3_sku')}: --")
+        self.lbl_touch_vendor = QLabel(f"{tr('v3_touch_vendor')}: --")
         self.lbl_online = QLabel(f"{tr('v3_online')}: --")
-        for lbl in [self.lbl_hw, self.lbl_fw, self.lbl_sn, self.lbl_online]:
+        for lbl in [
+            self.lbl_type,
+            self.lbl_hw,
+            self.lbl_fw,
+            self.lbl_sn,
+            self.lbl_sku,
+            self.lbl_touch_vendor,
+            self.lbl_online,
+        ]:
             l_dev.addWidget(lbl)
         self.group_dev.setLayout(l_dev)
 
@@ -255,16 +431,33 @@ class DeviceInfoPanel(QWidget):
         vl.addWidget(self.group_motor)
         vl.addStretch()
 
-    def update_info(self, hw=None, fw=None, sn=None, online=None,
-                    temps=None, errors=None):
+    def update_info(
+        self,
+        hw=None,
+        fw=None,
+        sn=None,
+        online=None,
+        temps=None,
+        errors=None,
+        hw_type=None,
+        sku=None,
+        touch_vendor=None,
+    ):
         """Update all device info labels."""
         import time
+        if hw_type is not None:
+            self._info_values["hw_type"] = enum_display_name(hw_type)
         if hw is not None:
-            self.lbl_hw.setText(f"{tr('v3_hw')}: {hw}")
+            self._info_values["hw"] = hw
         if fw is not None:
-            self.lbl_fw.setText(f"{tr('v3_fw')}: {fw}")
+            self._info_values["fw"] = fw
         if sn is not None:
-            self.lbl_sn.setText(f"{tr('v3_sn')}: {sn if sn else '(empty)'}")
+            self._info_values["sn"] = sn if sn else "(empty)"
+        if sku is not None:
+            self._info_values["sku"] = enum_display_name(sku)
+        if touch_vendor is not None:
+            self._info_values["touch_vendor"] = touch_vendor_display_name(touch_vendor)
+        self._refresh_static_info_labels()
         if online is not None:
             total = 21
             cnt = bin(online).count('1')
@@ -295,19 +488,35 @@ class DeviceInfoPanel(QWidget):
 
     def clear_info(self):
         """Reset all labels."""
-        for lbl in [self.lbl_hw, self.lbl_fw, self.lbl_sn,
-                    self.lbl_online, self.lbl_temp, self.lbl_errors]:
+        for lbl in [
+            self.lbl_type,
+            self.lbl_hw,
+            self.lbl_fw,
+            self.lbl_sn,
+            self.lbl_sku,
+            self.lbl_touch_vendor,
+            self.lbl_online,
+            self.lbl_temp,
+            self.lbl_errors,
+        ]:
             lbl.setText(lbl.text().split(':')[0] + ": --")
             lbl.setStyleSheet("")
+        self._info_values = {key: "--" for key in self._info_values}
+        self._refresh_static_info_labels()
         self.lbl_last_update.setText("")
+
+    def _refresh_static_info_labels(self):
+        self.lbl_type.setText(f"{tr('v3_hw_type')}: {self._info_values['hw_type']}")
+        self.lbl_hw.setText(f"{tr('v3_hw')}: {self._info_values['hw']}")
+        self.lbl_fw.setText(f"{tr('v3_fw')}: {self._info_values['fw']}")
+        self.lbl_sn.setText(f"{tr('v3_sn')}: {self._info_values['sn']}")
+        self.lbl_sku.setText(f"{tr('v3_sku')}: {self._info_values['sku']}")
+        self.lbl_touch_vendor.setText(f"{tr('v3_touch_vendor')}: {self._info_values['touch_vendor']}")
 
     def update_texts(self):
         self.group_dev.setTitle(tr("device_info"))
         self.group_motor.setTitle(tr("v3_motor_status_info"))
-        # Force re-evaluation of info text
-        self.lbl_hw.setText(f"{tr('v3_hw')}: {self.lbl_hw.text().split(': ', 1)[1] if ': ' in self.lbl_hw.text() else '--'}")
-        self.lbl_fw.setText(f"{tr('v3_fw')}: {self.lbl_fw.text().split(': ', 1)[1] if ': ' in self.lbl_fw.text() else '--'}")
-        self.lbl_sn.setText(f"{tr('v3_sn')}: {self.lbl_sn.text().split(': ', 1)[1] if ': ' in self.lbl_sn.text() else '--'}")
+        self._refresh_static_info_labels()
         # Simplistic approach: if not connected, just reset format, else it updates automatically on next poll
         if "⚠" not in self.lbl_online.text() and "✅" not in self.lbl_online.text():
             self.lbl_online.setText(f"{tr('v3_online')}: --")
@@ -331,7 +540,10 @@ class _GuiAsyncRunner:
 
         async def _wrapper():
             try:
-                return await coro_fn()
+                result = coro_fn()
+                if inspect.isawaitable(result):
+                    return await result
+                return result
             except Exception as e:
                 print(f"[GUI Async Task] Warning/Error: {str(e)}")
                 return None
@@ -384,14 +596,14 @@ class Revo3MotorSlider(QWidget):
         self._slider_scale = 10
         self.live_update = True
         self.current_mode = MODE_POSITION # 默认是位置模式
-        
+
         # 轨迹限频控制 (80ms 间隔 / 12.5Hz 刷新率，支持尾部补偿与瞬时物理打断)
         self._last_traj_send_time = 0.0
         self._traj_pending_value = None
         self._traj_throttle_timer = QTimer()
         self._traj_throttle_timer.setSingleShot(True)
         self._traj_throttle_timer.timeout.connect(self._on_traj_throttle_timeout)
-        
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -468,7 +680,7 @@ class Revo3MotorSlider(QWidget):
         self.spin.blockSignals(True)
         self.spin.setValue(float_val)
         self.spin.blockSignals(False)
-        
+
         if self.current_mode == MODE_TRAJECTORY:
             import time
             now = time.time()
@@ -480,11 +692,7 @@ class Revo3MotorSlider(QWidget):
                 rem = interval - (now - self._last_traj_send_time)
                 self._traj_throttle_timer.start(int(rem * 1000))
         else:
-            if self.current_mode == MODE_POSITION and self.slider.isSliderDown() and hasattr(self.send_callback, "__self__"):
-                owner = self.send_callback.__self__
-                if self.motor_id not in getattr(owner, "_active_servo_drags", set()) and hasattr(owner, "_start_servo_drag"):
-                    owner._start_servo_drag(self.motor_id, float_val)
-            if self.live_update:
+            if self.live_update and not (self.current_mode == MODE_POSITION and self.slider.isSliderDown()):
                 self.send_callback(self.motor_id, float_val)
 
     def _on_slider_moved(self, value):
@@ -492,6 +700,11 @@ class Revo3MotorSlider(QWidget):
             return
         owner = self.send_callback.__self__
         float_val = value / self._slider_scale
+        if self.motor_id in getattr(owner, "_servo_drag_blocked_until_release", set()):
+            return
+        collision_active = getattr(owner, "_collision_active", [])
+        if self.motor_id < len(collision_active) and collision_active[self.motor_id]:
+            return
         if hasattr(owner, "_start_servo_drag") and self.motor_id not in getattr(owner, "_active_servo_drags", set()):
             owner._start_servo_drag(self.motor_id, float_val)
         if hasattr(owner, "_update_servo_drag_target"):
@@ -501,7 +714,7 @@ class Revo3MotorSlider(QWidget):
         self.slider.blockSignals(True)
         self.slider.setValue(int(value * self._slider_scale))
         self.slider.blockSignals(False)
-        
+
         if self.current_mode == MODE_TRAJECTORY:
             import time
             now = time.time()
@@ -536,6 +749,12 @@ class Revo3MotorSlider(QWidget):
     def _on_slider_pressed(self):
         if self.current_mode == MODE_POSITION and hasattr(self.send_callback, "__self__"):
             owner = self.send_callback.__self__
+            collision_active = getattr(owner, "_collision_active", [])
+            if (
+                self.motor_id in getattr(owner, "_servo_drag_blocked_until_release", set())
+                or self.motor_id < len(collision_active) and collision_active[self.motor_id]
+            ):
+                return
             if hasattr(owner, "_start_servo_drag"):
                 owner._start_servo_drag(self.motor_id, self.spin.value())
 
@@ -546,6 +765,21 @@ class Revo3MotorSlider(QWidget):
         self.spin.blockSignals(False)
         if self.current_mode == MODE_POSITION and hasattr(self.send_callback, "__self__"):
             owner = self.send_callback.__self__
+            was_blocked = self.motor_id in getattr(owner, "_servo_drag_blocked_until_release", set())
+            collision_active = getattr(owner, "_collision_active", [])
+            is_collision_active = self.motor_id < len(collision_active) and collision_active[self.motor_id]
+            if hasattr(owner, "_release_servo_drag_block"):
+                owner._release_servo_drag_block(self.motor_id)
+            if was_blocked or is_collision_active:
+                if was_blocked and hasattr(owner, "_end_servo_drag_control_priority"):
+                    owner._end_servo_drag_control_priority()
+                if hasattr(owner, "_update_collision_status_label"):
+                    owner._update_collision_status_label()
+                if hasattr(owner, "_update_finger_collision_state"):
+                    owner._update_finger_collision_state()
+                if hasattr(owner, "_update_motor_diagnostic_badges"):
+                    owner._update_motor_diagnostic_badges()
+                return
             if hasattr(owner, "_stop_servo_drag") and self.motor_id in getattr(owner, "_active_servo_drags", set()):
                 owner._stop_servo_drag(self.motor_id, slider_value)
                 return
@@ -559,6 +793,21 @@ class Revo3MotorSlider(QWidget):
     def _on_spin_editing_finished(self):
         if self.current_mode == MODE_POSITION and hasattr(self.send_callback, "__self__"):
             owner = self.send_callback.__self__
+            was_blocked = self.motor_id in getattr(owner, "_servo_drag_blocked_until_release", set())
+            collision_active = getattr(owner, "_collision_active", [])
+            is_collision_active = self.motor_id < len(collision_active) and collision_active[self.motor_id]
+            if hasattr(owner, "_release_servo_drag_block"):
+                owner._release_servo_drag_block(self.motor_id)
+            if was_blocked or is_collision_active:
+                if was_blocked and hasattr(owner, "_end_servo_drag_control_priority"):
+                    owner._end_servo_drag_control_priority()
+                if hasattr(owner, "_update_collision_status_label"):
+                    owner._update_collision_status_label()
+                if hasattr(owner, "_update_finger_collision_state"):
+                    owner._update_finger_collision_state()
+                if hasattr(owner, "_update_motor_diagnostic_badges"):
+                    owner._update_motor_diagnostic_badges()
+                return
             if hasattr(owner, "_stop_servo_drag") and self.motor_id in getattr(owner, "_active_servo_drags", set()):
                 owner._stop_servo_drag(self.motor_id, self.spin.value())
                 return
@@ -568,27 +817,15 @@ class Revo3MotorSlider(QWidget):
             self._traj_pending_value = None
             self.run_callback(self.motor_id, self.spin.value())
 
-    def update_diagnostics(self, temp, is_online, err_val=0):
+    def update_diagnostics(self, temp, is_online, err_val=0, collision_active=False, stall_guard_active=False):
         if not is_online:
             self.diag_label.setText("OFF")
-            self.diag_label.setStyleSheet("color: white; background-color: #e74c3c; border-radius: 3px; font-size: 9px; padding: 1px;")
+            self.diag_label.setStyleSheet(motor_diag_style(DIAG_COLOR_WARN))
             self.diag_label.setToolTip('<span style="font-size:14px;">Offline</span>')
         else:
-            real_errs = decode_motor_error(err_val)
-            is_error = bool([e for e in real_errs if e != "Running"])
-
-            color = "#27ae60" # Green
-            if is_error:
-                color = "#e74c3c" # Red
-                self.diag_label.setText("⚠")
-            else:
-                if temp >= 60:
-                    color = "#e74c3c" # Red
-                elif temp >= 45:
-                    color = "#f39c12" # Orange
-                self.diag_label.setText(f"{int(temp)}°")
-
-            self.diag_label.setStyleSheet(f"color: white; background-color: {color}; border-radius: 3px; font-size: 9px; padding: 1px;")
+            color, text_color, text, real_errs = motor_diag_color_and_text(temp, err_val, collision_active, stall_guard_active)
+            self.diag_label.setText(text)
+            self.diag_label.setStyleSheet(motor_diag_style(color, text_color))
 
             if not real_errs:
                 self.diag_label.setToolTip(f'<span style="font-size:14px;">Temperature: {temp}°C</span>')
@@ -651,6 +888,12 @@ class FingerGroup(QGroupBox):
         header.addWidget(self.run_finger_btn)
 
         header.addStretch()
+        self.state_label = QLabel("OK")
+        self.state_label.setAlignment(Qt.AlignCenter)
+        self.state_label.setFixedHeight(22)
+        self.state_label.setMinimumWidth(80)
+        self.state_label.setStyleSheet(FINGER_STATE_STYLE_OK)
+        header.addWidget(self.state_label)
         layout.addLayout(header)
 
         for mid in motor_ids:
@@ -682,6 +925,14 @@ class FingerGroup(QGroupBox):
     def update_motor_status(self, motor_id, value):
         if motor_id in self.motor_sliders:
             self.motor_sliders[motor_id].update_status(value)
+
+    def update_state(self, active_joints=None, blocked_joints=None, online=None, temps=None, errors=None, dragging_joints=None, is_connected=True):
+        text, style, tooltip = build_finger_state_text(
+            self.motor_ids, active_joints, blocked_joints, online, temps, errors, dragging_joints, is_connected
+        )
+        self.state_label.setText(text)
+        self.state_label.setStyleSheet(style)
+        self.state_label.setToolTip(tooltip)
 
     def set_all_values(self, value):
         for slider in self.motor_sliders.values():
@@ -807,27 +1058,15 @@ class MitMotorRow(QWidget):
     def update_status(self, value):
         self.status_label.setText(f"{value:.1f}")
 
-    def update_diagnostics(self, temp, is_online, err_val=0):
+    def update_diagnostics(self, temp, is_online, err_val=0, collision_active=False, stall_guard_active=False):
         if not is_online:
             self.diag_label.setText("OFF")
-            self.diag_label.setStyleSheet("color: white; background-color: #e74c3c; border-radius: 3px; font-size: 9px; padding: 1px;")
+            self.diag_label.setStyleSheet(motor_diag_style(DIAG_COLOR_WARN))
             self.diag_label.setToolTip('<span style="font-size:14px;">Offline</span>')
         else:
-            real_errs = decode_motor_error(err_val)
-            is_error = bool([e for e in real_errs if e != "Running"])
-
-            color = "#27ae60" # Green
-            if is_error:
-                color = "#e74c3c" # Red
-                self.diag_label.setText("⚠")
-            else:
-                if temp >= 60:
-                    color = "#e74c3c" # Red
-                elif temp >= 45:
-                    color = "#f39c12" # Orange
-                self.diag_label.setText(f"{int(temp)}°")
-
-            self.diag_label.setStyleSheet(f"color: white; background-color: {color}; border-radius: 3px; font-size: 9px; padding: 1px;")
+            color, text_color, text, real_errs = motor_diag_color_and_text(temp, err_val, collision_active, stall_guard_active)
+            self.diag_label.setText(text)
+            self.diag_label.setStyleSheet(motor_diag_style(color, text_color))
 
             if not real_errs:
                 self.diag_label.setToolTip(f'<span style="font-size:14px;">Temperature: {temp}°C</span>')
@@ -860,6 +1099,17 @@ class MitFingerGroup(QGroupBox):
         layout.setContentsMargins(8, 16, 8, 8)
         self.setLayout(layout)
 
+        header = QHBoxLayout()
+        header.setSpacing(4)
+        header.addStretch()
+        self.state_label = QLabel("OK")
+        self.state_label.setAlignment(Qt.AlignCenter)
+        self.state_label.setFixedHeight(22)
+        self.state_label.setMinimumWidth(80)
+        self.state_label.setStyleSheet(FINGER_STATE_STYLE_OK)
+        header.addWidget(self.state_label)
+        layout.addLayout(header)
+
         for mid in motor_ids:
             row = MitMotorRow(mid, send_callback)
             self.motor_rows[mid] = row
@@ -868,6 +1118,14 @@ class MitFingerGroup(QGroupBox):
     def update_motor_status(self, motor_id, value):
         if motor_id in self.motor_rows:
             self.motor_rows[motor_id].update_status(value)
+
+    def update_state(self, active_joints=None, blocked_joints=None, online=None, temps=None, errors=None, dragging_joints=None, is_connected=True):
+        text, style, tooltip = build_finger_state_text(
+            self.motor_ids, active_joints, blocked_joints, online, temps, errors, dragging_joints, is_connected
+        )
+        self.state_label.setText(text)
+        self.state_label.setStyleSheet(style)
+        self.state_label.setToolTip(tooltip)
 
     def zero_all(self):
         for row in self.motor_rows.values():
@@ -940,6 +1198,12 @@ class Revo3MotorControlPanel(QWidget):
 
     sig_diag_fetched = Signal(bool, str, int, list, list)
     sig_toggles_fetched = Signal(bool, bool, bool, bool, bool, bool, bool)
+    sig_collision_active_fetched = Signal(list)
+    sig_control_priority = Signal(bool, int)
+    sig_servo_drag_inactive = Signal(int)
+    sig_servo_drag_stopped = Signal(int, object)
+    sig_collision_apply_finished = Signal()
+    sig_collision_reset_finished = Signal()
 
     def __init__(self):
         super().__init__()
@@ -950,26 +1214,47 @@ class Revo3MotorControlPanel(QWidget):
         self._active_servo_drags = set()
         self._servo_drag_starting = set()
         self._servo_drag_latest_targets = {}
-        self._servo_drag_last_sent_targets = {}
-        self._servo_drag_last_refresh_ms = {}
-        self._servo_drag_update_inflight = set()
-        self._servo_drag_tokens = {}
+        self._servo_drag_pending_stop = {}
+        self._servo_drag_blocked_until_release = set()
+        self._servo_drag_stall_counts = {}
+        self._servo_drag_started_at = {}
+        self._servo_drag_first_stall_at = {}
+        self._servo_drag_first_stall_seq = {}
         self._servo_drag_next_token = 0
         self._servo_drag_locks = {}
-        self._servo_drag_update_timer = QTimer()
-        self._servo_drag_update_timer.timeout.connect(self._flush_servo_drag_updates)
-        self._servo_drag_update_timer.setInterval(SERVO_DRAG_INTERVAL_MS)
+        self._servo_drag_tokens = {}
+        self._collision_active = [False] * REVO3_MOTOR_COUNT
+        self._last_motor_online = None
+        self._last_motor_temps = []
+        self._last_motor_errors = []
+        self._last_finger_state_signature = None
+        self._last_finger_state_log_signature = None
+        self._last_finger_state_log_time = 0.0
+        self._last_motor_status_sequence = 0
+        self._last_motor_status_sample_time = 0.0
+        self._last_motor_error_debug_signature = None
+        self._last_motor_error_debug_log_time = 0.0
 
         self._setup_ui()
         self.update_texts()
 
         self.sig_diag_fetched.connect(self._update_diag_ui)
         self.sig_toggles_fetched.connect(self._update_toggles_ui)
+        self.sig_collision_active_fetched.connect(self._apply_collision_active)
+        self.sig_control_priority.connect(self._set_servo_drag_control_priority)
+        self.sig_servo_drag_inactive.connect(self._handle_servo_drag_inactive)
+        self.sig_servo_drag_stopped.connect(self._handle_servo_drag_stopped)
+        self.sig_collision_apply_finished.connect(self._finish_collision_apply)
+        self.sig_collision_reset_finished.connect(self._finish_collision_reset)
 
         # Timer for reading from shared Revo3 data.
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self._update_status_from_shared)
         self.update_timer.setInterval(50)  # 20Hz UI update
+
+        self.collision_ui_timer = QTimer()
+        self.collision_ui_timer.timeout.connect(self._refresh_collision_ui_realtime)
+        self.collision_ui_timer.setInterval(COLLISION_UI_IDLE_POLL_MS)
 
         # Timer for periodic diagnostics refresh (5s)
         self.diag_timer = QTimer()
@@ -1021,16 +1306,16 @@ class Revo3MotorControlPanel(QWidget):
         self.close_all_btn = QPushButton(tr("btn_close_all"))
         self.close_all_btn.clicked.connect(self._close_all)
         top_layout.addWidget(self.close_all_btn)
-        
+
         self.default_gesture_btn = QPushButton("默认手势")
         self.default_gesture_btn.clicked.connect(self._default_gesture)
         top_layout.addWidget(self.default_gesture_btn)
-        
+
         self.btn_half = QPushButton("1/2")
         self.btn_half.setFixedWidth(40)
         self.btn_half.clicked.connect(lambda: self._move_all_to_ratio(1/2))
         top_layout.addWidget(self.btn_half)
-        
+
         self.btn_third = QPushButton("1/3")
         self.btn_third.setFixedWidth(40)
         self.btn_third.clicked.connect(lambda: self._move_all_to_ratio(1/3))
@@ -1040,7 +1325,7 @@ class Revo3MotorControlPanel(QWidget):
         self.btn_quarter.setFixedWidth(40)
         self.btn_quarter.clicked.connect(lambda: self._move_all_to_ratio(1/4))
         top_layout.addWidget(self.btn_quarter)
-        
+
         self.btn_fifth = QPushButton("1/5")
         self.btn_fifth.setFixedWidth(40)
         self.btn_fifth.clicked.connect(lambda: self._move_all_to_ratio(1/5))
@@ -1133,56 +1418,161 @@ class Revo3MotorControlPanel(QWidget):
         top_layout2.addStretch()
         layout.addLayout(top_layout2)
 
+        # Collision protection controls for testing SDK-owned servo drag and trajectory loops.
+        collision_layout = QHBoxLayout()
+        collision_layout.setSpacing(8)
+
+        self.collision_enable_cb = QPushButton(tr("collision_protection"))
+        self.collision_enable_cb.setObjectName("collisionProtectionToggle")
+        self.collision_enable_cb.setCheckable(True)
+        self.collision_enable_cb.setChecked(False)
+        self.collision_enable_cb.setStyleSheet(f"""
+            QPushButton#collisionProtectionToggle {{
+                background-color: #eef1f4;
+                color: #2c3e50;
+                border: 1px solid #b8c2cc;
+                border-radius: 4px;
+                padding: 4px 12px;
+                font-weight: 600;
+                min-width: 96px;
+            }}
+            QPushButton#collisionProtectionToggle:hover {{
+                background-color: #dde6ee;
+            }}
+            QPushButton#collisionProtectionToggle:checked {{
+                background-color: {COLORS['success']};
+                color: white;
+                border: 1px solid {COLORS['success']};
+            }}
+        """)
+        self.collision_enable_cb.clicked.connect(self._on_collision_apply)
+        collision_layout.addWidget(self.collision_enable_cb)
+
+        self.collision_source_combo = QComboBox()
+        for key, _name in COLLISION_SOURCE_ITEMS:
+            self.collision_source_combo.addItem(tr(key))
+        self.collision_source_combo.setCurrentIndex(0)
+        self.collision_source_combo.setFixedWidth(115)
+        collision_layout.addWidget(self.collision_source_combo)
+
+        self.collision_strategy_combo = QComboBox()
+        for key, _name in COLLISION_STRATEGY_ITEMS:
+            self.collision_strategy_combo.addItem(tr(key))
+        self.collision_strategy_combo.setFixedWidth(105)
+        collision_layout.addWidget(self.collision_strategy_combo)
+
+        self.collision_label_err = QLabel(tr("collision_err_deg"))
+        collision_layout.addWidget(self.collision_label_err)
+        self.collision_error_spin = QDoubleSpinBox()
+        self.collision_error_spin.setRange(1.0, 60.0)
+        self.collision_error_spin.setDecimals(1)
+        self.collision_error_spin.setSingleStep(1.0)
+        self.collision_error_spin.setValue(COLLISION_GUI_DEFAULT_POSITION_ERROR_DEG)
+        self.collision_error_spin.setFixedWidth(70)
+        collision_layout.addWidget(self.collision_error_spin)
+
+        self.collision_label_cur = QLabel(tr("collision_cur_ma"))
+        collision_layout.addWidget(self.collision_label_cur)
+        self.collision_current_spin = QDoubleSpinBox()
+        self.collision_current_spin.setRange(100.0, 3000.0)
+        self.collision_current_spin.setDecimals(0)
+        self.collision_current_spin.setSingleStep(50.0)
+        self.collision_current_spin.setValue(COLLISION_GUI_DEFAULT_CURRENT_MA)
+        self.collision_current_spin.setFixedWidth(75)
+        collision_layout.addWidget(self.collision_current_spin)
+
+        self.collision_label_debounce = QLabel(tr("collision_debounce"))
+        collision_layout.addWidget(self.collision_label_debounce)
+        self.collision_debounce_spin = QSpinBox()
+        self.collision_debounce_spin.setRange(0, 1000)
+        self.collision_debounce_spin.setValue(100)
+        self.collision_debounce_spin.setSuffix(" ms")
+        self.collision_debounce_spin.setFixedWidth(85)
+        collision_layout.addWidget(self.collision_debounce_spin)
+
+        self.collision_label_cache = QLabel(tr("collision_cache"))
+        collision_layout.addWidget(self.collision_label_cache)
+        self.collision_cache_spin = QSpinBox()
+        self.collision_cache_spin.setRange(0, 500)
+        self.collision_cache_spin.setValue(COLLISION_GUI_CACHE_MS)
+        self.collision_cache_spin.setSuffix(" ms")
+        self.collision_cache_spin.setFixedWidth(80)
+        collision_layout.addWidget(self.collision_cache_spin)
+
+        self.collision_label_auto_clear = QLabel(tr("collision_auto_clear"))
+        collision_layout.addWidget(self.collision_label_auto_clear)
+        self.collision_auto_clear_spin = QSpinBox()
+        self.collision_auto_clear_spin.setRange(0, 5000)
+        self.collision_auto_clear_spin.setValue(COLLISION_GUI_AUTO_CLEAR_MS)
+        self.collision_auto_clear_spin.setSuffix(" ms")
+        self.collision_auto_clear_spin.setFixedWidth(85)
+        collision_layout.addWidget(self.collision_auto_clear_spin)
+
+        self.collision_apply_btn = QPushButton(tr("btn_apply"))
+        self.collision_apply_btn.clicked.connect(self._on_collision_apply)
+        collision_layout.addWidget(self.collision_apply_btn)
+
+        self.collision_reset_btn = QPushButton(tr("btn_reset_collision"))
+        self.collision_reset_btn.clicked.connect(self._on_collision_reset)
+        collision_layout.addWidget(self.collision_reset_btn)
+
+        self.collision_status_label = QLabel(f"{tr('collision_status_prefix')}: --")
+        self.collision_status_label.setStyleSheet("color: #4a5568; font-size: 11px;")
+        collision_layout.addWidget(self.collision_status_label)
+        collision_layout.addStretch()
+        layout.addLayout(collision_layout)
+        self._update_collision_widgets_enabled()
+
         # Trajectory Params Toolbar (Hidden by default)
         self.traj_bar = QWidget()
         traj_layout = QHBoxLayout()
         traj_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         traj_layout.addWidget(QLabel("T(ms):"))
         self.spin_T = QSpinBox()
         self.spin_T.setRange(10, 10000)
         self.spin_T.setValue(500)
-        self.spin_T.setFixedWidth(60)
+        self.spin_T.setFixedWidth(75)
         traj_layout.addWidget(self.spin_T)
-        
+
         self.lbl_speed_or = QLabel(tr("or_speed") + "(rpm):")
         traj_layout.addWidget(self.lbl_speed_or)
         self.spin_speed = QDoubleSpinBox()
         self.spin_speed.setRange(0.0, 110.0)
         self.spin_speed.setValue(0.0)
         self.spin_speed.setToolTip(tr("speed_priority_tooltip"))
-        self.spin_speed.setFixedWidth(65)
+        self.spin_speed.setFixedWidth(80)
         traj_layout.addWidget(self.spin_speed)
-        
+
         traj_layout.addWidget(QLabel("dt(ms):"))
         self.spin_dt = QSpinBox()
         self.spin_dt.setRange(1, 100)
         self.spin_dt.setValue(10)
-        self.spin_dt.setFixedWidth(50)
+        self.spin_dt.setFixedWidth(70)
         traj_layout.addWidget(self.spin_dt)
-        
+
         traj_layout.addWidget(QLabel("Kp:"))
         self.spin_kp = QDoubleSpinBox()
         self.spin_kp.setRange(0, 10.0)
         self.spin_kp.setSingleStep(0.1)
         self.spin_kp.setValue(SERVO_DRAG_DEFAULT_KP)
-        self.spin_kp.setFixedWidth(55)
+        self.spin_kp.setFixedWidth(75)
         traj_layout.addWidget(self.spin_kp)
-        
+
         traj_layout.addWidget(QLabel("Kd:"))
         self.spin_kd = QDoubleSpinBox()
         self.spin_kd.setRange(0, 5.0)
         self.spin_kd.setSingleStep(0.01)
         self.spin_kd.setValue(SERVO_DRAG_DEFAULT_KD)
-        self.spin_kd.setFixedWidth(55)
+        self.spin_kd.setFixedWidth(75)
         traj_layout.addWidget(self.spin_kd)
-        
+
         self.run_all_btn = QPushButton("▶ Run All")
         self.run_all_btn.setStyleSheet("font-size: 13px; font-weight: bold; padding: 4px 14px; background-color: #27ae60; color: white;")
         self.run_all_btn.clicked.connect(self._on_run_all)
         traj_layout.addWidget(self.run_all_btn)
         traj_layout.addStretch()
-        
+
         self.traj_bar.setLayout(traj_layout)
         layout.addWidget(self.traj_bar)
 
@@ -1247,11 +1637,11 @@ class Revo3MotorControlPanel(QWidget):
         vbox = QVBoxLayout()
         vbox.setSpacing(8)
         container.setLayout(vbox)
-        
+
         # MIT Global Top Bar
         mit_bar = QHBoxLayout()
         mit_bar.setContentsMargins(0, 0, 0, 0)
-        
+
         mit_bar.addWidget(QLabel("Global Kp:"))
         self.mit_global_kp = QDoubleSpinBox()
         self.mit_global_kp.setRange(*MIT_KP_RANGE[:2])
@@ -1259,7 +1649,7 @@ class Revo3MotorControlPanel(QWidget):
         self.mit_global_kp.setValue(1.0)
         self.mit_global_kp.setFixedWidth(65)
         mit_bar.addWidget(self.mit_global_kp)
-        
+
         mit_bar.addWidget(QLabel("Global Kd:"))
         self.mit_global_kd = QDoubleSpinBox()
         self.mit_global_kd.setRange(*MIT_KD_RANGE[:2])
@@ -1267,12 +1657,12 @@ class Revo3MotorControlPanel(QWidget):
         self.mit_global_kd.setValue(0.1)
         self.mit_global_kd.setFixedWidth(65)
         mit_bar.addWidget(self.mit_global_kd)
-        
+
         apply_btn = QPushButton("Apply Kp/Kd to All")
         apply_btn.clicked.connect(self._on_mit_apply_all_gains)
         mit_bar.addWidget(apply_btn)
         mit_bar.addStretch()
-        
+
         vbox.addLayout(mit_bar)
 
         grid = QGridLayout()
@@ -1379,14 +1769,14 @@ class Revo3MotorControlPanel(QWidget):
         if not self.device:
             return
         enabled = self.buzzer_cb.isChecked()
-        run_async(lambda: getattr(self.device, "revo3_set_buzzer_switch", lambda s, e: None)(self.slave_id, 1 if enabled else 0))
+        run_async(lambda: getattr(self.device, "revo3_set_buzzer_switch", lambda s, e: None)(self.slave_id, enabled))
         print(f"[Settings] Buzzer: {'enabled' if enabled else 'disabled'}")
 
     def _on_vibration_changed(self):
         if not self.device:
             return
         enabled = self.vibration_cb.isChecked()
-        run_async(lambda: getattr(self.device, "revo3_set_vibration_switch", lambda s, e: None)(self.slave_id, 1 if enabled else 0))
+        run_async(lambda: getattr(self.device, "revo3_set_vibration_switch", lambda s, e: None)(self.slave_id, enabled))
         print(f"[Settings] Vibration: {'enabled' if enabled else 'disabled'}")
 
     def _on_teaching_mode_changed(self):
@@ -1410,6 +1800,433 @@ class Revo3MotorControlPanel(QWidget):
         run_async(lambda: self.device.revo3_set_use_broadcast_id(self.slave_id, enabled))
         print(f"[Settings] Use broadcast ID: {'enabled' if enabled else 'disabled'}")
 
+    def _collision_enum_value(self, enum_name, value_name):
+        if sdk is None:
+            return value_name
+        enum = getattr(sdk, enum_name, None)
+        if enum is None:
+            return value_name
+        return getattr(enum, value_name, value_name)
+
+    def _build_collision_config(self):
+        if sdk is None or not hasattr(sdk, "CollisionProtectionConfig"):
+            return None
+        source_name = COLLISION_SOURCE_ITEMS[self.collision_source_combo.currentIndex()][1]
+        strategy_name = COLLISION_STRATEGY_ITEMS[self.collision_strategy_combo.currentIndex()][1]
+        return sdk.CollisionProtectionConfig(
+            enable=self.collision_enable_cb.isChecked(),
+            source=self._collision_enum_value("CollisionDetectionSource", source_name),
+            max_position_error=self.collision_error_spin.value(),
+            max_current=self.collision_current_spin.value(),
+            debounce_time_ms=self.collision_debounce_spin.value(),
+            max_cached_status_age_ms=self.collision_cache_spin.value(),
+            strategy=self._collision_enum_value("CollisionProtectionStrategy", strategy_name),
+            auto_clear_time_ms=self.collision_auto_clear_spin.value(),
+        )
+
+    def _update_collision_widgets_enabled(self, applying=False):
+        if not hasattr(self, "collision_enable_cb"):
+            return
+        enabled = self.collision_enable_cb.isChecked()
+        for widget in (
+            self.collision_source_combo,
+            self.collision_strategy_combo,
+            self.collision_label_err,
+            self.collision_error_spin,
+            self.collision_label_cur,
+            self.collision_current_spin,
+            self.collision_label_debounce,
+            self.collision_debounce_spin,
+            self.collision_label_cache,
+            self.collision_cache_spin,
+            self.collision_label_auto_clear,
+            self.collision_auto_clear_spin,
+        ):
+            widget.setEnabled(enabled and not applying)
+        self.collision_apply_btn.setEnabled(enabled and not applying)
+        self.collision_reset_btn.setEnabled(enabled and not applying)
+
+    def _on_collision_apply(self):
+        self._update_collision_widgets_enabled(applying=True)
+        device = self.device
+        if not device or not hasattr(device, "revo3_set_collision_protection_config"):
+            self._update_collision_widgets_enabled()
+            self.collision_status_label.setText(f"{tr('collision_status_prefix')}: {tr('collision_status_unsupported')}")
+            return
+        config = self._build_collision_config()
+        if config is None:
+            self._update_collision_widgets_enabled()
+            self.collision_status_label.setText(f"{tr('collision_status_prefix')}: {tr('collision_status_sdk_unsupported')}")
+            return
+        self.collision_enable_cb.setEnabled(False)
+        run_async(lambda: self._apply_collision_config_async(device, self.slave_id, config))
+        state = tr("collision_status_enabled") if self.collision_enable_cb.isChecked() else tr("collision_status_disabled")
+        self.collision_status_label.setText(f"{tr('collision_status_prefix')}: {state}")
+        self.collision_status_label.setStyleSheet(
+            f"color: {COLORS['success'] if self.collision_enable_cb.isChecked() else '#4a5568'}; font-size: 11px; font-weight: 600;"
+        )
+        eng_state = "enabled" if self.collision_enable_cb.isChecked() else "disabled"
+        eng_source = COLLISION_SOURCE_ITEMS[self.collision_source_combo.currentIndex()][1]
+        eng_strategy = COLLISION_STRATEGY_ITEMS[self.collision_strategy_combo.currentIndex()][1]
+        print(
+            f"[Collision] {eng_state}, source={eng_source}, "
+            f"strategy={eng_strategy}, "
+            f"debounce={self.collision_debounce_spin.value()}ms, "
+            f"cache={self.collision_cache_spin.value()}ms, "
+            f"auto_clear={self.collision_auto_clear_spin.value()}ms"
+        )
+
+    async def _apply_collision_config_async(self, device, slave_id, config):
+        try:
+            await self._await_collision_sdk(
+                "apply config",
+                lambda: device.revo3_set_collision_protection_config(slave_id, config),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[Collision] apply config timed out after %.1fs", COLLISION_SDK_TIMEOUT_S)
+        except Exception as e:
+            logger.warning("[Collision] apply config failed: %s", e)
+        finally:
+            self.sig_collision_apply_finished.emit()
+
+    def _finish_collision_apply(self):
+        self.collision_enable_cb.setEnabled(True)
+        if not self.collision_enable_cb.isChecked():
+            self._servo_drag_blocked_until_release.clear()
+            self._servo_drag_stall_counts.clear()
+            self._servo_drag_first_stall_at.clear()
+            self._servo_drag_first_stall_seq.clear()
+            self._collision_active = [False] * REVO3_MOTOR_COUNT
+        self._update_collision_widgets_enabled()
+        self._update_collision_status_label()
+        self._update_finger_collision_state()
+        self._update_motor_diagnostic_badges()
+        self._update_collision_ui_timer()
+
+    def _on_collision_reset(self):
+        device = self.device
+        if not device or not hasattr(device, "revo3_reset_collision_state"):
+            return
+        self.collision_reset_btn.setEnabled(False)
+        run_async(lambda: self._reset_collision_state_async(device, self.slave_id))
+        self._collision_active = [False] * REVO3_MOTOR_COUNT
+        self._servo_drag_blocked_until_release.clear()
+        self._servo_drag_stall_counts.clear()
+        self._servo_drag_first_stall_at.clear()
+        self._servo_drag_first_stall_seq.clear()
+        self._update_collision_status_label()
+        self._update_finger_collision_state()
+        self._update_motor_diagnostic_badges()
+        print("[Collision] State reset")
+
+    async def _reset_collision_state_async(self, device, slave_id):
+        try:
+            await self._await_collision_sdk(
+                "reset state",
+                lambda: device.revo3_reset_collision_state(slave_id),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[Collision] reset state timed out after %.1fs", COLLISION_SDK_TIMEOUT_S)
+        except Exception as e:
+            logger.warning("[Collision] reset state failed: %s", e)
+        finally:
+            self.sig_collision_reset_finished.emit()
+
+    def _finish_collision_reset(self):
+        self._update_collision_widgets_enabled()
+        self._update_collision_ui_timer()
+
+    def _update_collision_status_label(self):
+        active_ids = {i for i, flag in enumerate(self._collision_active) if flag}
+        active = [f"M{i:02d}" for i in sorted(active_ids)]
+        if active:
+            self.collision_status_label.setText(tr("collision_status_active") + ": " + ", ".join(active[:6]))
+            self.collision_status_label.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 11px;")
+        elif self._servo_drag_blocked_until_release:
+            guarded = [f"M{i:02d}" for i in sorted(self._servo_drag_blocked_until_release)]
+            self.collision_status_label.setText("Stall guard: " + ", ".join(guarded[:6]))
+            self.collision_status_label.setStyleSheet("color: #b7791f; font-weight: bold; font-size: 11px;")
+        else:
+            state = tr("collision_status_enabled") if self.collision_enable_cb.isChecked() else tr("collision_status_disabled")
+            color = COLORS['success'] if self.collision_enable_cb.isChecked() else "#4a5568"
+            self.collision_status_label.setText(f"{tr('collision_status_prefix')}: {state}")
+            self.collision_status_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600;")
+
+    def _should_fast_poll_collision_ui(self):
+        return (
+            bool(self._active_servo_drags)
+            or any(self._collision_active)
+            or bool(self._servo_drag_blocked_until_release)
+        )
+
+    def _update_collision_ui_timer(self):
+        if not hasattr(self, "collision_ui_timer"):
+            return
+        if not self.device:
+            self.collision_ui_timer.stop()
+            return
+        interval = COLLISION_UI_FAST_POLL_MS if self._should_fast_poll_collision_ui() else COLLISION_UI_IDLE_POLL_MS
+        if self.collision_ui_timer.interval() != interval:
+            self.collision_ui_timer.setInterval(interval)
+        if not self.collision_ui_timer.isActive():
+            self.collision_ui_timer.start()
+
+    def _refresh_collision_ui_realtime(self):
+        if not self.device:
+            self.collision_ui_timer.stop()
+            return
+        self._poll_collision_state(force=self._should_fast_poll_collision_ui())
+
+    def _update_finger_collision_state(self):
+        active_joints = {idx for idx, active in enumerate(self._collision_active) if active}
+        blocked_joints = set(self._servo_drag_blocked_until_release)
+        dragging_joints = set(self._active_servo_drags)
+        is_connected = self.device is not None
+        self._log_finger_state_transition(active_joints, blocked_joints, dragging_joints, is_connected)
+        for group in getattr(self, "finger_groups", {}).values():
+            group.update_state(
+                active_joints,
+                blocked_joints,
+                self._last_motor_online,
+                self._last_motor_temps,
+                self._last_motor_errors,
+                dragging_joints,
+                is_connected,
+            )
+        for group in getattr(self, "mit_groups", {}).values():
+            group.update_state(
+                active_joints,
+                blocked_joints,
+                self._last_motor_online,
+                self._last_motor_temps,
+                self._last_motor_errors,
+                dragging_joints,
+                is_connected,
+            )
+
+    def _update_motor_diagnostic_badges(self):
+        if self._last_motor_online is None:
+            return
+        temps = self._last_motor_temps or []
+        errors = self._last_motor_errors or []
+        blocked_joints = set(self._servo_drag_blocked_until_release) if hasattr(self, "_servo_drag_blocked_until_release") else set()
+        for group in getattr(self, "finger_groups", {}).values():
+            for mid, slider in group.motor_sliders.items():
+                is_online = (self._last_motor_online & (1 << mid)) != 0
+                temp_val = temps[mid] if mid < len(temps) else 0.0
+                err_val = errors[mid] if mid < len(errors) else 0
+                collision_active = mid < len(self._collision_active) and self._collision_active[mid]
+                stall_guard_active = mid in blocked_joints
+                slider.update_diagnostics(temp_val, is_online, err_val, collision_active, stall_guard_active)
+        for group in getattr(self, "mit_groups", {}).values():
+            for mid, row in group.motor_rows.items():
+                is_online = (self._last_motor_online & (1 << mid)) != 0
+                temp_val = temps[mid] if mid < len(temps) else 0.0
+                err_val = errors[mid] if mid < len(errors) else 0
+                collision_active = mid < len(self._collision_active) and self._collision_active[mid]
+                stall_guard_active = mid in blocked_joints
+                row.update_diagnostics(temp_val, is_online, err_val, collision_active, stall_guard_active)
+
+    def _log_motor_error_sample_debug(self, errors, status_sequence, is_new_sample):
+        faulted = tuple(
+            (idx, errors[idx], tuple(name for name in decode_motor_error(errors[idx]) if name != "Running"))
+            for idx in range(min(len(errors or []), REVO3_MOTOR_COUNT))
+            if [name for name in decode_motor_error(errors[idx]) if name != "Running"]
+        )
+        now = time.monotonic()
+        signature = faulted
+        should_log = faulted and now - self._last_motor_error_debug_log_time >= MOTOR_ERROR_DEBUG_LOG_INTERVAL_S
+        if not faulted:
+            if self._last_motor_error_debug_signature:
+                print("[MotorErrorDebug] cleared")
+            self._last_motor_error_debug_signature = None
+            self._last_motor_error_debug_log_time = now
+            return
+        if not should_log:
+            return
+        self._last_motor_error_debug_signature = signature
+        self._last_motor_error_debug_log_time = now
+        sample_age_ms = int((now - self._last_motor_status_sample_time) * 1000)
+        freq = getattr(self.shared_data, "motor_frequency", None) if self.shared_data else None
+        raw = ", ".join(
+            f"M{idx:02d}=0x{raw_val:04X}({'+'.join(names)})"
+            for idx, raw_val, names in faulted
+        )
+        freshness = "fresh" if is_new_sample else "reused"
+        print(
+            f"[MotorErrorDebug] {freshness} sample, age={sample_age_ms}ms, "
+            f"collector={freq if freq is not None else 'n/a'}Hz, "
+            f"seq={status_sequence}, faults={raw}"
+        )
+
+    def _current_finger_state_signature(self, active_joints, blocked_joints, dragging_joints, is_connected):
+        if not is_connected:
+            return None
+        stall_joints = set()
+        error_joints = set()
+        offline_joints = set()
+        errors = self._last_motor_errors or []
+        for mid in range(REVO3_MOTOR_COUNT):
+            err_val = errors[mid] if mid < len(errors) else 0
+            err_names = [name for name in decode_motor_error(err_val) if name != "Running"]
+            if "Stall" in err_names:
+                stall_joints.add(mid)
+            if [name for name in err_names if name != "Stall"]:
+                error_joints.add(mid)
+            if self._last_motor_online is not None and (self._last_motor_online & (1 << mid)) == 0:
+                offline_joints.add(mid)
+        return (
+            tuple(sorted(active_joints)),
+            tuple(sorted(blocked_joints)),
+            tuple(sorted(stall_joints)),
+            tuple(sorted(error_joints)),
+            tuple(sorted(offline_joints)),
+            tuple(sorted(dragging_joints)),
+        )
+
+    def _log_finger_state_transition(self, active_joints, blocked_joints, dragging_joints, is_connected):
+        signature = self._current_finger_state_signature(active_joints, blocked_joints, dragging_joints, is_connected)
+        if signature == self._last_finger_state_signature:
+            return
+        self._last_finger_state_signature = signature
+        if signature is None:
+            return
+        active, blocked, stall, errors, offline, dragging = (set(items) for items in signature)
+        reasons = []
+        if active:
+            reasons.append(f"collision_active={_format_motor_labels(active)}")
+        if blocked:
+            reasons.append(f"stall_guard={_format_motor_labels(blocked)}")
+        if stall:
+            reasons.append(f"stall_bit={_format_motor_labels(stall)}")
+        if errors:
+            reasons.append(f"errors={_format_motor_labels(errors)}")
+        if offline:
+            reasons.append(f"offline={_format_motor_labels(offline)}")
+        if not reasons:
+            if self._last_finger_state_log_signature is not None:
+                logger.info(
+                    "[FingerState] OK "
+                    f"(collision_toggle={self.collision_enable_cb.isChecked()}, "
+                    f"dragging={_format_motor_labels(dragging) if dragging else 'none'})"
+                )
+            self._last_finger_state_log_signature = None
+            self._last_finger_state_log_time = time.monotonic()
+            return
+
+        now = time.monotonic()
+        has_collision = bool(active)
+        should_log = (
+            has_collision
+            or signature != self._last_finger_state_log_signature
+            and now - self._last_finger_state_log_time >= FINGER_STATE_LOG_INTERVAL_S
+        )
+        if not should_log:
+            return
+
+        self._last_finger_state_log_signature = signature
+        self._last_finger_state_log_time = now
+        logger.info(
+            "[FingerState] State: "
+            + "; ".join(reasons)
+            + f"; collision_toggle={self.collision_enable_cb.isChecked()}; "
+            + f"dragging={_format_motor_labels(dragging) if dragging else 'none'}"
+        )
+
+    def _update_active_drag_stall_guard(self, advance=False, status_sequence=None):
+        if not hasattr(self, "collision_enable_cb") or not self.collision_enable_cb.isChecked():
+            self._servo_drag_stall_counts.clear()
+            self._servo_drag_first_stall_at.clear()
+            self._servo_drag_first_stall_seq.clear()
+            return
+        if not self._active_servo_drags and not self._servo_drag_starting:
+            self._servo_drag_stall_counts.clear()
+            self._servo_drag_first_stall_at.clear()
+            self._servo_drag_first_stall_seq.clear()
+            return
+        errors = self._last_motor_errors or []
+        dragging = set(self._active_servo_drags).union(self._servo_drag_starting)
+        for motor_id in list(self._servo_drag_stall_counts):
+            if motor_id not in dragging:
+                self._servo_drag_stall_counts.pop(motor_id, None)
+                self._servo_drag_first_stall_at.pop(motor_id, None)
+                self._servo_drag_first_stall_seq.pop(motor_id, None)
+        for motor_id in sorted(dragging):
+            stalled = motor_id < len(errors) and (errors[motor_id] & (1 << 8)) != 0
+            if not stalled:
+                self._servo_drag_stall_counts.pop(motor_id, None)
+                self._servo_drag_first_stall_at.pop(motor_id, None)
+                self._servo_drag_first_stall_seq.pop(motor_id, None)
+                continue
+            if advance:
+                now = time.monotonic()
+                if motor_id not in self._servo_drag_first_stall_at:
+                    self._servo_drag_first_stall_at[motor_id] = now
+                    self._servo_drag_first_stall_seq[motor_id] = status_sequence
+                    drag_started_at = self._servo_drag_started_at.get(motor_id)
+                    drag_elapsed_ms = int((now - drag_started_at) * 1000) if drag_started_at else -1
+                    logger.info(
+                        "[Collision] GUI first firmware Stall sample "
+                        f"M{motor_id:02d}, drag_elapsed={drag_elapsed_ms}ms, "
+                        f"seq={status_sequence}, raw=0x{errors[motor_id]:04X}"
+                    )
+                self._servo_drag_stall_counts[motor_id] = self._servo_drag_stall_counts.get(motor_id, 0) + 1
+            count = self._servo_drag_stall_counts.get(motor_id, 0)
+            if count < GUI_STALL_BLOCK_CONSECUTIVE_SAMPLES:
+                continue
+            if motor_id not in self._servo_drag_blocked_until_release:
+                now = time.monotonic()
+                drag_started_at = self._servo_drag_started_at.get(motor_id)
+                first_stall_at = self._servo_drag_first_stall_at.get(motor_id)
+                drag_elapsed_ms = int((now - drag_started_at) * 1000) if drag_started_at else -1
+                stall_elapsed_ms = int((now - first_stall_at) * 1000) if first_stall_at else -1
+                logger.info(
+                    f"[Collision] GUI blocking drag M{motor_id:02d} after "
+                    f"{count} consecutive firmware Stall samples, "
+                    f"drag_elapsed={drag_elapsed_ms}ms, stall_elapsed={stall_elapsed_ms}ms, "
+                    f"first_seq={self._servo_drag_first_stall_seq.get(motor_id)}, "
+                    f"seq={status_sequence}"
+                )
+            self._block_servo_drag_until_release(motor_id)
+            self._cancel_servo_drag_locally(motor_id, cancel_sdk_stream=False, restore_control_priority=False)
+
+    def _apply_collision_active(self, active):
+        self._collision_active = active
+        active_set = {idx for idx, flag in enumerate(active) if flag}
+        affected_drags = self._active_servo_drags.intersection(active_set)
+        for motor_id in list(affected_drags):
+            print(f"[Collision] GUI stopping local drag state for M{motor_id:02d} because collision is active")
+            self._block_servo_drag_until_release(motor_id)
+            self._cancel_servo_drag_locally(motor_id)
+        self._update_collision_status_label()
+        self._update_finger_collision_state()
+        self._update_motor_diagnostic_badges()
+        self._update_collision_ui_timer()
+
+    def _poll_collision_state(self, force=False):
+        """Synchronous shared snapshot read; no worker thread needed."""
+        device = self.device
+        if not device:
+            return
+        has_batch = hasattr(device, "revo3_get_all_collision_active")
+        if not has_batch:
+            return
+        try:
+            active_raw = device.revo3_get_all_collision_active(self.slave_id)
+            active = [bool(v) for v in active_raw]
+            self._apply_collision_active(active)
+        except Exception as e:
+            print(f"[Collision] Poll active state failed: {e}")
+
+    async def _await_collision_sdk(self, label, call_fn):
+        def call_sync():
+            result = call_fn()
+            if inspect.isawaitable(result):
+                raise RuntimeError(f"{label} unexpectedly returned an awaitable")
+            return result
+
+        return await asyncio.wait_for(asyncio.to_thread(call_sync), timeout=COLLISION_SDK_TIMEOUT_S)
+
     def _on_read_diagnostics(self):
         async def fetch_diag():
             device = self.device
@@ -1421,7 +2238,7 @@ class Revo3MotorControlPanel(QWidget):
                 temps = await device.revo3_get_all_motor_temperatures(self.slave_id)
                 errors = await device.revo3_get_all_motor_errors(self.slave_id)
                 self.sig_diag_fetched.emit(True, hw, online, temps, errors)
-                
+
                 async def _get(func_name, fallback):
                     func = getattr(device, func_name, None)
                     if not callable(func):
@@ -1451,9 +2268,34 @@ class Revo3MotorControlPanel(QWidget):
     def _update_diag_ui(self, success, hw, online, temps, errors):
         if True:
             if success:
-                self.diag_consecutive_failures = 0
                 total = 21
                 online_count = bin(online).count('1')
+                if online_count == 0:
+                    self.diag_consecutive_failures += 1
+                    self._last_motor_online = online
+                    self._last_motor_temps = []
+                    self._last_motor_errors = []
+                    self._servo_drag_stall_counts.clear()
+                    self._servo_drag_first_stall_at.clear()
+                    self._servo_drag_first_stall_seq.clear()
+                    self._update_finger_collision_state()
+                    self._update_motor_diagnostic_badges()
+                    msg = f"FW: N/A | HW: {hw} | ⚠ 0/{total} Online"
+                    self.lbl_diag_result.setStyleSheet("color: red; font-weight: bold;")
+                    if self.diag_consecutive_failures >= 2:
+                        logger.warning("[MotorControl] All motors offline. Connection might be lost.")
+                        self.diag_timer.stop()
+                        if self.shared_data:
+                            self.shared_data.connection_lost.emit()
+                    self.lbl_diag_result.setText(msg)
+                    for panel in [self.info_panel, self.mit_info_panel, self.cart_info_panel]:
+                        panel.update_info(hw=hw, online=online, temps=[], errors=[])
+                    return
+
+                self.diag_consecutive_failures = 0
+                self._last_motor_online = online
+                self._last_motor_temps = temps or []
+                self._last_motor_errors = errors or []
 
                 # Build offline motor ID list
                 offline_ids = [f"M{i:02d}" for i in range(total) if not (online & (1 << i))]
@@ -1511,19 +2353,9 @@ class Revo3MotorControlPanel(QWidget):
                     self.lbl_diag_result.setStyleSheet(f"color: {COLORS['primary']};")
 
                 # Update individual motor UI badges
-                for group in self.finger_groups.values():
-                    for mid, slider in group.motor_sliders.items():
-                        is_online = (online & (1 << mid)) != 0
-                        temp_val = temps[mid] if mid < len(temps) else 0.0
-                        err_val = errors[mid] if errors and mid < len(errors) else 0
-                        slider.update_diagnostics(temp_val, is_online, err_val)
+                self._update_motor_diagnostic_badges()
 
-                for group in self.mit_groups.values():
-                    for mid, row in group.motor_rows.items():
-                        is_online = (online & (1 << mid)) != 0
-                        temp_val = temps[mid] if mid < len(temps) else 0.0
-                        err_val = errors[mid] if errors and mid < len(errors) else 0
-                        row.update_diagnostics(temp_val, is_online, err_val)
+                self._update_finger_collision_state()
 
             else:
                 msg = hw  # error message is in hw
@@ -1563,7 +2395,7 @@ class Revo3MotorControlPanel(QWidget):
         self.software_e_stop_cb.setText(tr("v3_software_e_stop"))
         self.use_broadcast_id_cb.setText(tr("v3_use_broadcast_id"))
         self.btn_read_diag.setText(tr("v3_diag_read"))
-        
+
         if hasattr(self, 'lbl_speed_or'):
             self.lbl_speed_or.setText(tr("or_speed") + "(rpm):")
         if hasattr(self, 'spin_speed'):
@@ -1579,6 +2411,24 @@ class Revo3MotorControlPanel(QWidget):
             if hasattr(panel, 'update_texts'):
                 panel.update_texts()
 
+        # Update collision protection texts
+        if hasattr(self, 'collision_enable_cb'):
+            self.collision_enable_cb.setText(tr("collision_protection"))
+            self.collision_label_err.setText(tr("collision_err_deg"))
+            self.collision_label_cur.setText(tr("collision_cur_ma"))
+            self.collision_label_debounce.setText(tr("collision_debounce"))
+            self.collision_label_cache.setText(tr("collision_cache"))
+            self.collision_label_auto_clear.setText(tr("collision_auto_clear"))
+            self.collision_apply_btn.setText(tr("btn_apply"))
+            self.collision_reset_btn.setText(tr("btn_reset_collision"))
+
+            for i, (key, _) in enumerate(COLLISION_SOURCE_ITEMS):
+                self.collision_source_combo.setItemText(i, tr(key))
+            for i, (key, _) in enumerate(COLLISION_STRATEGY_ITEMS):
+                self.collision_strategy_combo.setItemText(i, tr(key))
+
+            self._update_collision_status_label()
+
     # ========================================================================
     # Mode switching
     # ========================================================================
@@ -1587,13 +2437,13 @@ class Revo3MotorControlPanel(QWidget):
         if index != MODE_POSITION:
             self._stop_all_servo_drags()
         self.current_mode = index
-        
+
         if hasattr(self, 'traj_bar'):
             if index == MODE_TRAJECTORY:
                 self.traj_bar.show()
             else:
                 self.traj_bar.hide()
-            
+
         if index <= MODE_DAMPING or index == MODE_TRAJECTORY:
             # Position / Current / Impedance / Damping / Trajectory -> motor slider page
             self.stack.setCurrentIndex(0)
@@ -1607,7 +2457,7 @@ class Revo3MotorControlPanel(QWidget):
                 for slider in group.motor_sliders.values():
                     slider.live_update = not is_traj
                     slider.run_btn.setVisible(is_traj)
-                    
+
             # Show open/close/fraction buttons only in position or trajectory mode
             is_pos_or_traj = index in (MODE_POSITION, MODE_TRAJECTORY)
             self.open_all_btn.setVisible(is_pos_or_traj)
@@ -1664,6 +2514,18 @@ class Revo3MotorControlPanel(QWidget):
     def _is_servo_drag_token_current(self, motor_id, token):
         return self._servo_drag_tokens.get(motor_id) == token
 
+    def _clear_servo_drag_timing(self, motor_id):
+        self._servo_drag_started_at.pop(motor_id, None)
+        self._servo_drag_stall_counts.pop(motor_id, None)
+        self._servo_drag_first_stall_at.pop(motor_id, None)
+        self._servo_drag_first_stall_seq.pop(motor_id, None)
+
+    async def _await_servo_drag_sdk(self, label, call_fn):
+        result = call_fn()
+        if inspect.isawaitable(result):
+            return await asyncio.wait_for(result, timeout=SERVO_DRAG_SDK_TIMEOUT_S)
+        return result
+
     def _run_servo_drag_async(self, motor_id, coro_fn):
         return run_control_async(lambda: self._run_servo_drag_locked(motor_id, coro_fn))
 
@@ -1678,16 +2540,24 @@ class Revo3MotorControlPanel(QWidget):
     def _start_servo_drag(self, motor_id, value):
         if self.current_mode != MODE_POSITION or not self.device:
             return
+        if motor_id in self._servo_drag_blocked_until_release:
+            return
+        if motor_id < len(self._collision_active) and self._collision_active[motor_id]:
+            return
         token = self._next_servo_drag_token()
         self._servo_drag_tokens[motor_id] = token
         was_idle = not self._active_servo_drags
         self._active_servo_drags.add(motor_id)
         if was_idle:
             self._begin_servo_drag_control_priority()
+        self._update_finger_collision_state()
+        self._update_collision_ui_timer()
         self._servo_drag_starting.add(motor_id)
         self._servo_drag_latest_targets[motor_id] = value
-        self._servo_drag_last_sent_targets[motor_id] = value
-        self._servo_drag_last_refresh_ms[motor_id] = int(time.monotonic() * 1000)
+        self._servo_drag_started_at[motor_id] = time.monotonic()
+        self._servo_drag_stall_counts.pop(motor_id, None)
+        self._servo_drag_first_stall_at.pop(motor_id, None)
+        self._servo_drag_first_stall_seq.pop(motor_id, None)
         p = self._get_servo_drag_params()
         device = self.device
         slave_id = self.slave_id
@@ -1698,130 +2568,117 @@ class Revo3MotorControlPanel(QWidget):
 
     async def _start_servo_drag_task(self, device, slave_id, motor_id, value, params, token):
         try:
-            await device.revo3_start_servo_drag(
-                slave_id,
-                motor_id,
-                value,
-                params["kp"],
-                params["kd"],
-                params["vel_cap"],
-                params["interval_ms"],
-                params["idle_timeout_ms"],
-                params["filter_mode"],
-                params["omega"],
+            await self._await_servo_drag_sdk(
+                f"start M{motor_id:02d}",
+                lambda: device.revo3_start_servo_drag(
+                    slave_id,
+                    motor_id,
+                    value,
+                    params["kp"],
+                    params["kd"],
+                    params["vel_cap"],
+                    params["interval_ms"],
+                    params["idle_timeout_ms"],
+                    params["filter_mode"],
+                    params["omega"],
+                ),
             )
-        except Exception:
+        except asyncio.TimeoutError:
+            print(f"[ServoDrag] start M{motor_id:02d} timed out; clearing local drag state")
+            self.sig_servo_drag_inactive.emit(motor_id)
+            return
+        except Exception as e:
             if not self._is_servo_drag_token_current(motor_id, token):
                 raise
+            if "collision protection is active" in str(e):
+                self._block_servo_drag_until_release(motor_id)
             was_last_drag = len(self._active_servo_drags) == 1 and motor_id in self._active_servo_drags
             self._active_servo_drags.discard(motor_id)
             self._servo_drag_starting.discard(motor_id)
             self._servo_drag_latest_targets.pop(motor_id, None)
-            self._servo_drag_last_sent_targets.pop(motor_id, None)
-            self._servo_drag_last_refresh_ms.pop(motor_id, None)
-            self._servo_drag_update_inflight.discard(motor_id)
+            self._clear_servo_drag_timing(motor_id)
             self._servo_drag_tokens.pop(motor_id, None)
+            self._servo_drag_pending_stop.pop(motor_id, None)
             if was_last_drag:
                 self._end_servo_drag_control_priority()
+            self.sig_collision_active_fetched.emit(list(self._collision_active))
             raise
 
         if not self._is_servo_drag_token_current(motor_id, token):
-            await device.revo3_stop_servo_drag(slave_id, motor_id, value)
+            try:
+                await self._call_cancel_servo_drag(device, slave_id, motor_id)
+            except asyncio.TimeoutError:
+                print(f"[ServoDrag] stale cancel M{motor_id:02d} timed out")
             return
 
         latest = self._servo_drag_latest_targets.get(motor_id, value)
         self._servo_drag_starting.discard(motor_id)
-        if motor_id not in self._active_servo_drags:
-            await device.revo3_stop_servo_drag(slave_id, motor_id, latest)
+        pending_stop = self._servo_drag_pending_stop.pop(motor_id, None)
+        if pending_stop is not None:
+            self._active_servo_drags.discard(motor_id)
+            try:
+                await self._await_servo_drag_sdk(
+                    f"stop pending M{motor_id:02d}",
+                    lambda: device.revo3_stop_servo_drag(slave_id, motor_id, pending_stop),
+                )
+            except asyncio.TimeoutError:
+                print(f"[ServoDrag] pending stop M{motor_id:02d} timed out; clearing local drag state")
             if self._is_servo_drag_token_current(motor_id, token):
                 self._servo_drag_latest_targets.pop(motor_id, None)
-                self._servo_drag_last_sent_targets.pop(motor_id, None)
-                self._servo_drag_last_refresh_ms.pop(motor_id, None)
-                self._servo_drag_update_inflight.discard(motor_id)
+                self._clear_servo_drag_timing(motor_id)
                 self._servo_drag_tokens.pop(motor_id, None)
+                if not self._active_servo_drags:
+                    self._end_servo_drag_control_priority()
+            self.sig_collision_active_fetched.emit(list(self._collision_active))
+            return
+        if motor_id not in self._active_servo_drags:
+            try:
+                await self._await_servo_drag_sdk(
+                    f"stop inactive M{motor_id:02d}",
+                    lambda: device.revo3_stop_servo_drag(slave_id, motor_id, latest),
+                )
+            except asyncio.TimeoutError:
+                print(f"[ServoDrag] inactive stop M{motor_id:02d} timed out; clearing local drag state")
+            if self._is_servo_drag_token_current(motor_id, token):
+                self._servo_drag_latest_targets.pop(motor_id, None)
+                self._clear_servo_drag_timing(motor_id)
+                self._servo_drag_tokens.pop(motor_id, None)
+                self._servo_drag_pending_stop.pop(motor_id, None)
             return
         if latest != value:
-            await device.revo3_update_servo_drag(slave_id, motor_id, latest)
-            self._servo_drag_last_sent_targets[motor_id] = latest
-            self._servo_drag_last_refresh_ms[motor_id] = int(time.monotonic() * 1000)
-        if self._active_servo_drags and not self._servo_drag_update_timer.isActive():
-            self._servo_drag_update_timer.start()
+            # Sync call; no await needed, writes directly to the shared cache.
+            if not self._try_update_servo_drag(device, slave_id, motor_id, latest):
+                return
+        # No timer needed; SDK worker handles timing.
+
+    def _try_update_servo_drag(self, device, slave_id, motor_id, value):
+        try:
+            device.revo3_update_servo_drag(slave_id, motor_id, value)
+            return True
+        except Exception as e:
+            msg = str(e)
+            if "servo_drag is not active" in msg or "not active" in msg:
+                print(f"[ServoDrag] update M{motor_id:02d} ignored because SDK stream is inactive")
+            else:
+                print(f"[ServoDrag] update M{motor_id:02d} failed: {e}")
+            self.sig_servo_drag_inactive.emit(motor_id)
+            return False
 
     def _update_servo_drag_target(self, motor_id, value):
+        """Direct sync write to the SDK shared cache."""
         if self.current_mode != MODE_POSITION or not self.device:
+            return
+        if motor_id in self._servo_drag_blocked_until_release:
+            return
+        if motor_id < len(self._collision_active) and self._collision_active[motor_id]:
+            self._handle_servo_drag_inactive(motor_id)
             return
         if motor_id not in self._active_servo_drags:
             return
         self._servo_drag_latest_targets[motor_id] = value
         if motor_id in self._servo_drag_starting:
             return
-        if self._servo_drag_last_sent_targets.get(motor_id) != value:
-            self._send_servo_drag_update(motor_id)
-        if not self._servo_drag_update_timer.isActive():
-            self._servo_drag_update_timer.start()
-
-    def _flush_servo_drag_updates(self):
-        if self.current_mode != MODE_POSITION or not self.device:
-            self._servo_drag_update_timer.stop()
-            return
-
-        now_ms = int(time.monotonic() * 1000)
-        for motor_id in list(self._active_servo_drags):
-            if motor_id in self._servo_drag_starting:
-                continue
-            latest = self._servo_drag_latest_targets.get(motor_id)
-            if latest is None:
-                continue
-            target_changed = self._servo_drag_last_sent_targets.get(motor_id) != latest
-            last_refresh_ms = self._servo_drag_last_refresh_ms.get(motor_id, 0)
-            refresh_due = now_ms - last_refresh_ms >= SERVO_DRAG_KEEPALIVE_MS
-            if not target_changed and not refresh_due:
-                continue
-            self._send_servo_drag_update(motor_id)
-
-        if not self._active_servo_drags:
-            self._servo_drag_update_timer.stop()
-
-    def _send_servo_drag_update(self, motor_id):
-        if motor_id in self._servo_drag_update_inflight:
-            return
-        latest = self._servo_drag_latest_targets.get(motor_id)
-        if latest is None:
-            return
-        self._servo_drag_update_inflight.add(motor_id)
-        self._servo_drag_last_refresh_ms[motor_id] = int(time.monotonic() * 1000)
-        token = self._servo_drag_tokens.get(motor_id)
-        device = self.device
-        slave_id = self.slave_id
-        self._run_servo_drag_async(
-            motor_id,
-            lambda: self._send_servo_drag_update_task(device, slave_id, motor_id, latest, token),
-        )
-
-    async def _send_servo_drag_update_task(self, device, slave_id, motor_id, value, token):
-        try:
-            if self._is_servo_drag_token_current(motor_id, token):
-                await device.revo3_update_servo_drag(slave_id, motor_id, value)
-                if self._is_servo_drag_token_current(motor_id, token):
-                    self._servo_drag_last_sent_targets[motor_id] = value
-                    self._servo_drag_last_refresh_ms[motor_id] = int(time.monotonic() * 1000)
-        finally:
-            self._servo_drag_update_inflight.discard(motor_id)
-
-        if (
-            not self._is_servo_drag_token_current(motor_id, token)
-            or motor_id not in self._active_servo_drags
-            or motor_id in self._servo_drag_starting
-        ):
-            return
-        latest = self._servo_drag_latest_targets.get(motor_id)
-        if latest is None:
-            return
-        now_ms = int(time.monotonic() * 1000)
-        target_changed = self._servo_drag_last_sent_targets.get(motor_id) != latest
-        refresh_due = now_ms - self._servo_drag_last_refresh_ms.get(motor_id, 0) >= SERVO_DRAG_KEEPALIVE_MS
-        if target_changed or refresh_due:
-            self._send_servo_drag_update(motor_id)
+        self._try_update_servo_drag(self.device, self.slave_id, motor_id, value)
 
     def _stop_servo_drag(self, motor_id, value):
         if self.current_mode != MODE_POSITION or not self.device:
@@ -1831,9 +2688,10 @@ class Revo3MotorControlPanel(QWidget):
         final_value = value
         was_last_drag = len(self._active_servo_drags) == 1
         self._servo_drag_latest_targets[motor_id] = final_value
-        self._servo_drag_last_sent_targets[motor_id] = final_value
-        self._servo_drag_last_refresh_ms[motor_id] = int(time.monotonic() * 1000)
+        self._servo_drag_pending_stop[motor_id] = final_value
         self._active_servo_drags.discard(motor_id)
+        self._update_finger_collision_state()
+        self._update_collision_ui_timer()
         token = self._servo_drag_tokens.get(motor_id)
         if was_last_drag:
             self._end_servo_drag_control_priority()
@@ -1846,18 +2704,99 @@ class Revo3MotorControlPanel(QWidget):
             lambda: self._stop_servo_drag_task(device, slave_id, motor_id, final_value, token),
         )
 
-    async def _stop_servo_drag_task(self, device, slave_id, motor_id, value, token):
-        if not self._is_servo_drag_token_current(motor_id, token):
+    def _get_servo_drag_stop_target(self, motor_id):
+        target = self._servo_drag_latest_targets.get(motor_id)
+        if target is not None:
+            return target
+        for group in getattr(self, "finger_groups", {}).values():
+            slider = group.motor_sliders.get(motor_id)
+            if slider is not None:
+                return slider.spin.value()
+        return 0.0
+
+    def _cancel_servo_drag_locally(self, motor_id, cancel_sdk_stream=False, restore_control_priority=True):
+        if motor_id not in self._active_servo_drags and motor_id not in self._servo_drag_starting:
             return
-        await device.revo3_stop_servo_drag(slave_id, motor_id, value)
+        final_value = self._get_servo_drag_stop_target(motor_id)
+        token = self._servo_drag_tokens.get(motor_id)
+        was_last_drag = len(self._active_servo_drags) == 1 and motor_id in self._active_servo_drags
+        self._active_servo_drags.discard(motor_id)
+        self._servo_drag_starting.discard(motor_id)
+        self._servo_drag_latest_targets.pop(motor_id, None)
+        self._clear_servo_drag_timing(motor_id)
+        self._servo_drag_tokens.pop(motor_id, None)
+        self._servo_drag_pending_stop.pop(motor_id, None)
+        if was_last_drag and restore_control_priority:
+            self._end_servo_drag_control_priority()
+        self._update_finger_collision_state()
+        self._update_collision_ui_timer()
+        if cancel_sdk_stream and self.device and token is not None:
+            device = self.device
+            slave_id = self.slave_id
+            self._run_servo_drag_async(
+                motor_id,
+                lambda: self._cancel_servo_drag_task(device, slave_id, motor_id, token),
+            )
+
+    def _block_servo_drag_until_release(self, motor_id):
+        self._servo_drag_blocked_until_release.add(motor_id)
+
+    def _release_servo_drag_block(self, motor_id):
+        self._servo_drag_blocked_until_release.discard(motor_id)
+
+    def _handle_servo_drag_inactive(self, motor_id):
+        if motor_id not in self._active_servo_drags and motor_id not in self._servo_drag_starting:
+            self._poll_collision_state(force=True)
+            return
+        self._block_servo_drag_until_release(motor_id)
+        self._cancel_servo_drag_locally(motor_id)
+        self._poll_collision_state(force=True)
+
+    def _handle_servo_drag_stopped(self, motor_id, token):
         if not self._is_servo_drag_token_current(motor_id, token):
             return
         self._servo_drag_starting.discard(motor_id)
         self._servo_drag_latest_targets.pop(motor_id, None)
-        self._servo_drag_last_sent_targets.pop(motor_id, None)
-        self._servo_drag_last_refresh_ms.pop(motor_id, None)
-        self._servo_drag_update_inflight.discard(motor_id)
+        self._clear_servo_drag_timing(motor_id)
         self._servo_drag_tokens.pop(motor_id, None)
+        self._servo_drag_pending_stop.pop(motor_id, None)
+        self._update_finger_collision_state()
+        self._update_collision_ui_timer()
+        self._poll_collision_state(force=True)
+
+    async def _stop_servo_drag_task(self, device, slave_id, motor_id, value, token):
+        current_token = self._servo_drag_tokens.get(motor_id)
+        if current_token is not None and current_token != token:
+            return
+        try:
+            await self._await_servo_drag_sdk(
+                f"stop M{motor_id:02d}",
+                lambda: device.revo3_stop_servo_drag(slave_id, motor_id, value),
+            )
+        except asyncio.TimeoutError:
+            print(f"[ServoDrag] stop M{motor_id:02d} timed out; clearing local drag state")
+        self.sig_servo_drag_stopped.emit(motor_id, token)
+
+    async def _cancel_servo_drag_task(self, device, slave_id, motor_id, token):
+        try:
+            await self._call_cancel_servo_drag(device, slave_id, motor_id)
+        except asyncio.TimeoutError:
+            print(f"[ServoDrag] cancel M{motor_id:02d} timed out; local drag state already cleared")
+        except Exception as e:
+            logger.warning("[ServoDrag] cancel M%02d failed after local state cleared: %s", motor_id, e)
+
+    async def _call_cancel_servo_drag(self, device, slave_id, motor_id):
+        cancel_fn = getattr(device, "revo3_cancel_servo_drag", None)
+        if not callable(cancel_fn):
+            logger.info(
+                "[ServoDrag] cancel M%02d requested, but SDK has no revo3_cancel_servo_drag",
+                motor_id,
+            )
+            return
+        await self._await_servo_drag_sdk(
+            f"cancel M{motor_id:02d}",
+            lambda: cancel_fn(slave_id, motor_id),
+        )
 
     def _stop_all_servo_drags(self):
         for motor_id in list(self._active_servo_drags):
@@ -1868,15 +2807,46 @@ class Revo3MotorControlPanel(QWidget):
                     break
             self._stop_servo_drag(motor_id, target)
         self._active_servo_drags.clear()
-        self._servo_drag_update_timer.stop()
+        self._servo_drag_starting.clear()
+        self._servo_drag_pending_stop.clear()
+        self._servo_drag_blocked_until_release.clear()
+        self._servo_drag_stall_counts.clear()
+        self._servo_drag_started_at.clear()
+        self._servo_drag_first_stall_at.clear()
+        self._servo_drag_first_stall_seq.clear()
+        self._update_finger_collision_state()
+        self._update_collision_ui_timer()
 
     def _begin_servo_drag_control_priority(self):
+        if self.collision_enable_cb.isChecked():
+            return
+        motor_freq = None
+        if threading.current_thread() is not threading.main_thread():
+            self.sig_control_priority.emit(True, motor_freq or 0)
+            return
         if self.shared_data and hasattr(self.shared_data, "begin_control_priority"):
-            self.shared_data.begin_control_priority()
+            if motor_freq is not None:
+                self.shared_data.begin_control_priority(motor_freq=motor_freq)
+            else:
+                self.shared_data.begin_control_priority()
 
     def _end_servo_drag_control_priority(self):
+        if threading.current_thread() is not threading.main_thread():
+            self.sig_control_priority.emit(False, 0)
+            return
         if self.shared_data and hasattr(self.shared_data, "end_control_priority"):
             self.shared_data.end_control_priority()
+
+    def _set_servo_drag_control_priority(self, enabled, motor_freq=0):
+        if enabled:
+            if self.shared_data and hasattr(self.shared_data, "begin_control_priority"):
+                if motor_freq > 0:
+                    self.shared_data.begin_control_priority(motor_freq=motor_freq)
+                else:
+                    self.shared_data.begin_control_priority()
+        else:
+            if self.shared_data and hasattr(self.shared_data, "end_control_priority"):
+                self.shared_data.end_control_priority()
 
     async def _send_motor_command(self, motor_id, value):
         try:
@@ -1955,6 +2925,17 @@ class Revo3MotorControlPanel(QWidget):
             status = self.shared_data.get_latest_revo3_motor()
             if not status:
                 return
+            if self._last_motor_online == 0:
+                return
+            status_sequence = (
+                self.shared_data.get_latest_revo3_motor_sequence()
+                if hasattr(self.shared_data, "get_latest_revo3_motor_sequence")
+                else 0
+            )
+            is_new_sample = status_sequence != self._last_motor_status_sequence
+            if is_new_sample:
+                self._last_motor_status_sequence = status_sequence
+                self._last_motor_status_sample_time = time.monotonic()
 
             # Choose values based on mode
             if self.current_mode == MODE_POSITION:
@@ -1967,6 +2948,17 @@ class Revo3MotorControlPanel(QWidget):
                 values = status.positions
             else:
                 values = []
+
+            status_errors = getattr(status, "errors", None)
+            status_codes = getattr(status, "statuses", None)
+            latest_errors = status_errors if status_errors else status_codes
+            if latest_errors:
+                self._last_motor_errors = list(latest_errors)
+                self._log_motor_error_sample_debug(self._last_motor_errors, status_sequence, is_new_sample)
+                self._update_active_drag_stall_guard(advance=is_new_sample, status_sequence=status_sequence)
+                self._update_finger_collision_state()
+                self._update_motor_diagnostic_badges()
+                self._update_collision_ui_timer()
 
             # Update motor slider groups (Position/Velocity/Current)
             if self.current_mode <= MODE_CURRENT:
@@ -1981,6 +2973,8 @@ class Revo3MotorControlPanel(QWidget):
                     for mid in get_revo3_finger_motors().get(name, []):
                         if mid < len(values):
                             group.update_motor_status(mid, values[mid])
+
+            self._poll_collision_state()
 
         except Exception as e:
             print(f"[Motor] Update status failed: {e}")
@@ -1998,12 +2992,22 @@ class Revo3MotorControlPanel(QWidget):
         self.diag_consecutive_failures = 0
         if device and shared_data:
             self.update_timer.start()
+            self._update_collision_ui_timer()
             # Populate FW/SN from device_info into info panels
             if device_info:
                 fw = getattr(device_info, 'firmware_version', '') or ''
                 sn = getattr(device_info, 'serial_number', '') or ''
+                hw_type = getattr(device_info, 'hardware_type', None)
+                sku = getattr(device_info, 'sku_type', None)
+                touch_vendor = getattr(device, 'touch_vendor', None)
                 for panel in [self.info_panel, self.mit_info_panel, self.cart_info_panel]:
-                    panel.update_info(fw=fw, sn=sn)
+                    panel.update_info(
+                        fw=fw,
+                        sn=sn,
+                        hw_type=hw_type,
+                        sku=sku,
+                        touch_vendor=touch_vendor,
+                    )
             # Initial diagnostics read + start periodic refresh
             QTimer.singleShot(500, self._on_read_diagnostics)
             self.diag_timer.start()
@@ -2012,7 +3016,7 @@ class Revo3MotorControlPanel(QWidget):
             async def fetch_toggles():
                 if not self.device:
                     return
-                
+
                 async def _get(func_name, fallback):
                     func = getattr(self.device, func_name, None)
                     if not callable(func):
@@ -2038,12 +3042,31 @@ class Revo3MotorControlPanel(QWidget):
         else:
             self.update_timer.stop()
             self.diag_timer.stop()
+            self.collision_ui_timer.stop()
 
     def clear_device(self):
         self._stop_all_servo_drags()
         self.update_timer.stop()
         self.diag_timer.stop()
+        self.collision_ui_timer.stop()
         self.diag_consecutive_failures = 0
+        self._collision_active = [False] * REVO3_MOTOR_COUNT
+        self._servo_drag_stall_counts.clear()
+        self._servo_drag_started_at.clear()
+        self._servo_drag_first_stall_at.clear()
+        self._servo_drag_first_stall_seq.clear()
+        self._last_motor_online = None
+        self._last_motor_temps = []
+        self._last_motor_errors = []
+        self._last_finger_state_signature = None
+        self._last_finger_state_log_signature = None
+        self._last_finger_state_log_time = 0.0
+        self._last_motor_status_sequence = 0
+        self._last_motor_status_sample_time = 0.0
+        self._last_motor_error_debug_signature = None
+        self._last_motor_error_debug_log_time = 0.0
+        self._update_collision_status_label()
+        self._update_finger_collision_state()
         self.shared_data = None
         self._device = None
         # Clear all info panels
@@ -2058,7 +3081,7 @@ class Revo3MotorControlPanel(QWidget):
         self.teaching_mode_cb.blockSignals(True)
         self.software_e_stop_cb.blockSignals(True)
         self.use_broadcast_id_cb.blockSignals(True)
-        
+
         self.auto_calib_cb.setChecked(ac)
         self.touch_screen_cb.setChecked(ts)
         self.buzzer_cb.setChecked(bz)
@@ -2066,7 +3089,7 @@ class Revo3MotorControlPanel(QWidget):
         self.teaching_mode_cb.setChecked(tm)
         self.software_e_stop_cb.setChecked(es)
         self.use_broadcast_id_cb.setChecked(ub)
-        
+
         self.auto_calib_cb.blockSignals(False)
         self.touch_screen_cb.blockSignals(False)
         self.buzzer_cb.blockSignals(False)
@@ -2105,7 +3128,7 @@ class Revo3MotorControlPanel(QWidget):
         """Move all motors to a specific ratio of their max position (0.0=open, 1.0=close)"""
         if not self.device or self.current_mode not in (MODE_POSITION, MODE_TRAJECTORY):
             return
-            
+
         targets = [0.0] * get_revo3_motor_count()
         for name, group in self.finger_groups.items():
             for mid, slider in group.motor_sliders.items():
@@ -2114,7 +3137,7 @@ class Revo3MotorControlPanel(QWidget):
                 target = open_pos + (close_pos - open_pos) * ratio
                 targets[mid] = target
                 slider.set_value_silent(target)
-                
+
         if self.current_mode == MODE_POSITION:
             run_async(lambda: self.device.revo3_set_all_motor_positions(self.slave_id, targets))
         elif self.current_mode == MODE_TRAJECTORY:
@@ -2130,10 +3153,12 @@ class Revo3MotorControlPanel(QWidget):
 
     def _open_all(self):
         """Open hand: flexion joints → 0°, abduction/rotation → neutral (0°)"""
+        print("[MotorControlPanel] 'Open All' (全部张开) clicked")
         self._move_all_to_ratio(0.0)
 
     def _close_all(self):
         """Close hand: flexion joints → max, abduction/rotation → neutral (0°)"""
+        print("[MotorControlPanel] 'Close All' (全部闭合) clicked")
         self._move_all_to_ratio(1.0)
 
     def _default_gesture(self):
@@ -2180,7 +3205,7 @@ class Revo3MotorControlPanel(QWidget):
     # ========================================================================
     # Trajectory Execution
     # ========================================================================
-    
+
     def _get_traj_params(self):
         """Helper to get global trajectory params"""
         return {
@@ -2190,7 +3215,7 @@ class Revo3MotorControlPanel(QWidget):
             'kp': self.spin_kp.value(),
             'kd': self.spin_kd.value()
         }
-        
+
     def _on_run_motor_trajectory(self, motor_id, target):
         if not self.device: return
         p = self._get_traj_params()
@@ -2202,11 +3227,11 @@ class Revo3MotorControlPanel(QWidget):
             self.device.revo3_move_joint_with_gains(
                 self.slave_id, motor_id, target, p['T'], p['dt'], p['kp'], p['kd']
             )
-        
+
     def _on_run_finger_trajectory(self, finger_name, targets_dict):
         if not self.device: return
         p = self._get_traj_params()
-        
+
         # Build global targets list
         targets = [0.0] * get_revo3_motor_count()
         # Read current shared data positions to avoid moving other fingers to 0
@@ -2214,11 +3239,11 @@ class Revo3MotorControlPanel(QWidget):
         if status:
             for i in range(get_revo3_motor_count()):
                 targets[i] = status.positions[i]
-                
+
         # Override with finger targets
         for mid, val in targets_dict.items():
             targets[mid] = val
-            
+
         if p['speed'] > 0:
             self.device.revo3_move_hand_with_speed_and_gains(
                 self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
@@ -2227,7 +3252,7 @@ class Revo3MotorControlPanel(QWidget):
             self.device.revo3_move_hand_with_gains(
                 self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
             )
-        
+
     def _on_run_all(self):
         if not self.device or self.current_mode != MODE_TRAJECTORY:
             return
@@ -2236,7 +3261,7 @@ class Revo3MotorControlPanel(QWidget):
         for group in self.finger_groups.values():
             for mid, slider in group.motor_sliders.items():
                 targets[mid] = slider.spin.value()
-                
+
         if p['speed'] > 0:
             self.device.revo3_move_hand_with_speed_and_gains(
                 self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']

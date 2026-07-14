@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from .touch_panel_force import ForceTorqueFingerChart
+from .touch_chart_force6d import Force6DChart
 from .touch_common import COLORS
 
 class VisionTouchMockPanel(QWidget):
@@ -44,7 +44,7 @@ class VisionTouchMockPanel(QWidget):
 
         # Layout: 2 rows. Top row: 3 fingers, Bottom row: 2 fingers
         for i in range(5):
-            chart = ForceTorqueFingerChart(f"{f_names[i]} Tip", f_colors[i])
+            chart = Force6DChart(f"{f_names[i]} Tip", components=6, accent_color=f_colors[i])
             self.finger_charts.append(chart)
             row = i // 3
             col = i % 3

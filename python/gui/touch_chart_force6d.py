@@ -9,7 +9,8 @@ Can be configured for:
 Used by:
 - touch_global_force_widget.py (GlobalForceWidget)
 - touch_per_finger_force_widget.py (PerFingerForceWidget)
-- touch_panel_force.py (ForceTouchSubPanel) - optional migration
+- vision_touch_window.py (VisionTouch force display)
+- vision_touch_mock_panel.py (VisionTouch mock force display)
 """
 
 from collections import deque

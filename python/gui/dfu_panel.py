@@ -185,7 +185,7 @@ class DfuPanel(QWidget):
         last_dir = self.settings.value("dfu_last_dir", "")
         if not isinstance(last_dir, str):
             last_dir = ""
-        path, _ = QFileDialog.getOpenFileName(self, tr("firmware_file"), last_dir, "Firmware (*.bin *.ota);;All (*)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("firmware_file"), last_dir, "Bin Files (*.bin);;Hex Files (*.hex);;OTA Files (*.ota);;All Files (*)")
         if path:
             self.file_path_edit.setText(path)
             self.settings.setValue("dfu_last_path", path)

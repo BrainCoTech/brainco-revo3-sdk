@@ -130,7 +130,16 @@ TRANSLATIONS_EN = {
     "btn_enable_touch": "Enable Touch",
     "btn_calibrate": "Calibrate",
     "btn_reset": "Reset",
+    "btn_read_touch_settings": "Read Enable State",
+    "btn_read_matrix_module_sns": "Read SN",
+    "btn_read_matrix_point_counts": "Read Points",
+    "btn_read_matrix_output_mode": "Read Module Value Type",
+    "btn_read_matrix_tare_status": "Read Tare State",
     "btn_touch_zero_calibrate": "Zero Calibration",
+    "btn_touch_zero_cancel": "Zero Cancel",
+    "btn_pressure_zero": "Pressure Zero",
+    "btn_pressure_force_clear": "Regional Force Zero",
+    "btn_pressure_force_restore": "Restore Regional Force",
     "finger_selection": "Finger Selection",
     "touch_data": "Touch Data",
     "pressure_touch": "Pressure Touch",
@@ -158,6 +167,15 @@ TRANSLATIONS_EN = {
         "• Clears all calibration data\n"
         "• Restores default sensor parameters\n"
         "• May require re-calibration after reset\n\n"
+        "This operation cannot be undone."
+    ),
+    "dialog_pressure_force_restore_title": "Confirm Regional Force Restore",
+    "dialog_pressure_force_restore_all_message": (
+        "Restore regional force factory settings for all Pressure Touch modules?\n\n"
+        "This operation cannot be undone."
+    ),
+    "dialog_pressure_force_restore_module_message": (
+        "Restore regional force factory settings for Pressure Touch module {module_id}?\n\n"
         "This operation cannot be undone."
     ),
 
@@ -427,9 +445,12 @@ TRANSLATIONS_EN = {
     "btn_open": "Open",
     "btn_close": "Close",
     "btn_run_finger": "▶ Run Finger",
+    "v3_hw_type": "Hardware Type",
     "v3_hw": "Hardware",
     "v3_fw": "Firmware",
     "v3_sn": "Serial No.",
+    "v3_sku": "SKU",
+    "v3_touch_vendor": "Touch Vendor",
     "v3_online": "Online Nodes",
     "v3_offline": "Offline Nodes",
     "v3_temp": "Max Temp",
@@ -506,6 +527,36 @@ TRANSLATIONS_EN = {
     "teaching_state_recording": "Recording...",
     "teaching_state_playing": "Playing...",
     "teaching_trajectory_info": "Trajectory Info",
+
+    # Collision Protection
+    "collision_protection": "Collision Protection",
+    "collision_src_hybrid": "Hybrid",
+    "collision_src_hardware": "Hardware Only",
+    "collision_src_software": "Software Only",
+    "collision_strat_softstop": "Soft Stop",
+    "collision_strat_zeroforce": "Zero Force",
+    "collision_strat_holdactual": "Hold Position",
+    "collision_err_deg": "Err(deg):",
+    "collision_cur_ma": "Cur(mA):",
+    "collision_debounce": "Debounce:",
+    "collision_cache": "Cache:",
+    "collision_auto_clear": "Auto clear:",
+    "btn_apply": "Apply",
+    "btn_reset_collision": "Reset Collision",
+    "collision_status_prefix": "Collision",
+    "collision_status_enabled": "enabled",
+    "collision_status_disabled": "disabled",
+    "collision_status_unsupported": "unsupported",
+    "collision_status_sdk_unsupported": "SDK unsupported",
+    "collision_status_active": "Collision active",
+    "vision_touch_tab": "VisionTouch",
+    "vision_touch_sensor": "VisionTouch Sensor",
+    "vts_overview": "Overview",
+    "vts_depth_map": "Depth Map",
+    "vts_3d_view": "3D View",
+    "vts_marker": "Marker",
+    "vts_images": "Images",
+    "vts_slip_detection": "Slip Detection",
 }
 
 
@@ -592,7 +643,16 @@ TRANSLATIONS_ZH = {
     "btn_enable_touch": "启用触觉",
     "btn_calibrate": "校准",
     "btn_reset": "复位",
+    "btn_read_touch_settings": "读取使能状态",
+    "btn_read_matrix_module_sns": "读取SN",
+    "btn_read_matrix_point_counts": "读取点数",
+    "btn_read_matrix_output_mode": "读取模块值类型",
+    "btn_read_matrix_tare_status": "读取零漂状态",
     "btn_touch_zero_calibrate": "校准零漂",
+    "btn_touch_zero_cancel": "取消零漂",
+    "btn_pressure_zero": "压力清零",
+    "btn_pressure_force_clear": "区域合力清零",
+    "btn_pressure_force_restore": "区域合力恢复出厂",
     "finger_selection": "手指选择",
     "touch_data": "触觉数据",
     "pressure_touch": "压力触觉",
@@ -620,6 +680,15 @@ TRANSLATIONS_ZH = {
         "• 清除所有校准数据\n"
         "• 恢复默认传感器参数\n"
         "• 复位后可能需要重新校准\n\n"
+        "此操作无法撤销。"
+    ),
+    "dialog_pressure_force_restore_title": "确认区域合力恢复出厂",
+    "dialog_pressure_force_restore_all_message": (
+        "确定要恢复所有模量 Pressure Touch 模块的区域合力出厂设置吗？\n\n"
+        "此操作无法撤销。"
+    ),
+    "dialog_pressure_force_restore_module_message": (
+        "确定要恢复模量 Pressure Touch 模块 {module_id} 的区域合力出厂设置吗？\n\n"
         "此操作无法撤销。"
     ),
 
@@ -889,9 +958,12 @@ TRANSLATIONS_ZH = {
     "btn_open": "张开",
     "btn_close": "闭合",
     "btn_run_finger": "▶ 运行手指",
+    "v3_hw_type": "硬件类型",
     "v3_hw": "硬件版本",
     "v3_fw": "固件版本",
     "v3_sn": "设备序列号",
+    "v3_sku": "SKU",
+    "v3_touch_vendor": "触觉类型",
     "v3_online": "在线节点",
     "v3_offline": "离线节点",
     "v3_temp": "最高温度",
@@ -968,6 +1040,36 @@ TRANSLATIONS_ZH = {
     "teaching_state_recording": "录制中...",
     "teaching_state_playing": "回放中...",
     "teaching_trajectory_info": "轨迹信息",
+
+    # Collision Protection
+    "collision_protection": "碰撞保护",
+    "collision_src_hybrid": "混合检测",
+    "collision_src_hardware": "仅硬件检测",
+    "collision_src_software": "仅软件检测",
+    "collision_strat_softstop": "软停止",
+    "collision_strat_zeroforce": "零阻力释放",
+    "collision_strat_holdactual": "锁定当前位置",
+    "collision_err_deg": "误差(度):",
+    "collision_cur_ma": "电流(mA):",
+    "collision_debounce": "防抖时间:",
+    "collision_cache": "缓存时间:",
+    "collision_auto_clear": "自动释放:",
+    "btn_apply": "应用",
+    "btn_reset_collision": "复位碰撞",
+    "collision_status_prefix": "碰撞状态",
+    "collision_status_enabled": "已开启",
+    "collision_status_disabled": "已关闭",
+    "collision_status_unsupported": "设备不支持",
+    "collision_status_sdk_unsupported": "SDK不支持",
+    "collision_status_active": "碰撞保护生效中",
+    "vision_touch_tab": "视触觉",
+    "vision_touch_sensor": "视触觉传感器",
+    "vts_overview": "总览",
+    "vts_depth_map": "深度图",
+    "vts_3d_view": "3D 云图",
+    "vts_marker": "标记点",
+    "vts_images": "红外图像",
+    "vts_slip_detection": "防滑检测",
 }
 
 

@@ -12,12 +12,39 @@ from common_imports import has_touch, sdk
 
 REVO3_MOTOR_COUNT = 21
 
+# Matrix Touch force range upper limit in raw units.
+# Raw unit: 0.0001 N. Convert raw -> N by dividing by 10000,
+# or raw -> mN by dividing by 10.
+MATRIX_FORCE_LIMITS = [
+    800000,  # 0: Palm
+    300000,  # 1: ThumbTip
+    200000,  # 2: ThumbPad
+    400000,  # 3: IndexTip
+    300000,  # 4: IndexPad
+    400000,  # 5: MiddleTip
+    300000,  # 6: MiddlePad
+    400000,  # 7: RingTip
+    300000,  # 8: RingPad
+    400000,  # 9: PinkyTip
+    300000,  # 10: PinkyPad
+]
+
+PRESSURE_FORCE_LIMIT_MN = 20000.0
+
 
 def _sdk_attr(enum_name: str, fallback):
     if sdk is None:
         return fallback
     enum = getattr(sdk, enum_name, None)
     return enum if enum is not None else fallback
+
+
+TouchVendor = _sdk_attr("TouchVendor", None)
+if TouchVendor is None:
+    class TouchVendor:
+        Unknown = 0
+        Pressure = 1
+        Matrix = 2
 
 
 def mock_hardware_type(mock_type):
@@ -30,11 +57,13 @@ def mock_hardware_type(mock_type):
         return sdk.StarkHardwareType.Revo3UltraVisionTouch
     if kind in ("revo3-pro", "pro"):
         return sdk.StarkHardwareType.Revo3Pro
-    if kind in ("revo3-pro-touch", "pro-touch"):
+    if kind in ("revo3-matrix-touch", "matrix-touch"):
+        return sdk.StarkHardwareType.Revo3UltraTouch
+    if kind in ("revo3-pro-touch", "pro-touch", "revo3-pro-matrix-touch", "pro-matrix-touch"):
         return sdk.StarkHardwareType.Revo3ProTouch
     if kind in ("revo3-basic", "basic"):
         return sdk.StarkHardwareType.Revo3Basic
-    if kind in ("revo3-basic-touch", "basic-touch"):
+    if kind in ("revo3-basic-touch", "basic-touch", "revo3-basic-matrix-touch", "basic-matrix-touch"):
         return sdk.StarkHardwareType.Revo3BasicTouch
     return sdk.StarkHardwareType.Revo3UltraTouch
 
@@ -77,23 +106,51 @@ class MockRevo3MotorStatusData:
 
 
 class MockRevo3TouchData:
-    def __init__(self, tick: float = 0.0, data_type: int = 0):
-        module_sizes = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
+    def __init__(self, tick: float = 0.0, data_type: int = 0, touch_vendor: int = 2):
+        physical_sizes = [53, 56, 22, 22, 27, 22, 27, 22, 27, 22, 27] if int(touch_vendor) == TouchVendor.Matrix else [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
+        module_sizes = [60] * 11 if int(touch_vendor) == TouchVendor.Matrix else physical_sizes
         
         TouchDataMode = _sdk_attr("TouchDataMode", None)
         force_summary_val = int(TouchDataMode.ForceSummary) if TouchDataMode is not None else 1
         
         if int(data_type) == force_summary_val:
-            self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(42)]
+            self.summary = [
+                int(PRESSURE_FORCE_LIMIT_MN * (0.08 + 0.72 * abs(math.sin(tick + i * 0.31))))
+                for i in range(42)
+            ]
             self.modules = [[0] * size for size in module_sizes]
         else:
-            self.summary = [int(1200 + 800 * abs(math.sin(tick + i * 0.31))) for i in range(42)]
+            self.summary = [int(120 + 80 * abs(math.sin(tick + i * 0.31))) for i in range(42)]
             self.modules = []
             for module_index, size in enumerate(module_sizes):
-                self.modules.append([
-                    int(900 + 700 * abs(math.sin(tick * 0.8 + module_index * 0.4 + i * 0.17)))
-                    for i in range(size)
-                ])
+                # Calculate limit dynamically based on vendor and data type to perfectly fit ranges
+                if int(touch_vendor) == TouchVendor.Matrix:
+                    p_size = physical_sizes[module_index]
+                    limit_raw = (MATRIX_FORCE_LIMITS[module_index] / p_size) if module_index < len(MATRIX_FORCE_LIMITS) else 3000.0
+                else:
+                    limit_raw = 255.0 if int(data_type) == 0 else PRESSURE_FORCE_LIMIT_MN
+
+                if int(touch_vendor) == TouchVendor.Matrix:
+                    # Matrix mode: fill the active physical part with simulated values, 
+                    # and pad the rest up to 60 with zeros.
+                    p_size = physical_sizes[module_index]
+                    active_part = []
+                    for i in range(p_size):
+                        # High quality randomized wave using double frequency sines to simulate vibration/jitter
+                        base_ratio = 0.35 + 0.25 * math.sin(tick * 0.6 + module_index * 1.3)
+                        grid_noise = 0.08 * math.sin(tick * 4.7 + i * 2.9) + 0.04 * math.cos(tick * 9.3 - i * 4.3)
+                        ratio = max(0.01, min(0.78, base_ratio + grid_noise))
+                        active_part.append(int(limit_raw * ratio))
+                    inactive_part = [0] * (60 - p_size)
+                    self.modules.append(active_part + inactive_part)
+                else:
+                    pts_val = []
+                    for i in range(size):
+                        base_ratio = 0.35 + 0.25 * math.sin(tick * 0.6 + module_index * 1.3)
+                        grid_noise = 0.08 * math.sin(tick * 4.7 + i * 2.9) + 0.04 * math.cos(tick * 9.3 - i * 4.3)
+                        ratio = max(0.01, min(0.78, base_ratio + grid_noise))
+                        pts_val.append(int(limit_raw * ratio))
+                    self.modules.append(pts_val)
 
 
 class MockDeviceContext:
@@ -104,10 +161,14 @@ class MockDeviceContext:
     def __init__(self, mock_type=None):
         self.mock_type = mock_type or "revo3-touch"
         self.hw_type = mock_hardware_type(self.mock_type)
+        self.touch_vendor = 2 if "matrix" in (self.mock_type or "").lower() else 1
         self.start_time = time.time()
         self.positions = [0.0] * REVO3_MOTOR_COUNT
         self.velocities = [0.0] * REVO3_MOTOR_COUNT
         self.currents = [0.0] * REVO3_MOTOR_COUNT
+        self.servo_drags = {}
+        self.collision_config = None
+        self.collision_active = [False] * REVO3_MOTOR_COUNT
         self.flags = {
             "auto_calibration": True,
             "touch_screen": has_touch(self.hw_type),
@@ -132,7 +193,11 @@ class MockDeviceContext:
             hardware_type=self.hw_type,
             sku_type=sku,
             hand_type=hand,
-            serial_number=f"MOCK-{str(self.hw_type).upper()}",
+            serial_number=(
+                "BCUTL40000000000"
+                if self.touch_vendor == TouchVendor.Matrix
+                else f"MOCK-{str(self.hw_type).upper()}"
+            ),
             firmware_version="mock-3.0.0",
             hardware_version="mock-hw-1.0",
         )
@@ -151,6 +216,22 @@ class MockDeviceContext:
 
     async def revo3_get_device_info(self, _slave_id):
         return self._device_info()
+
+    async def get_touch_vendor(self, _slave_id):
+        TouchVendor = _sdk_attr("TouchVendor", None)
+        if TouchVendor is not None:
+            return TouchVendor(self.touch_vendor)
+        return self.touch_vendor
+
+    async def revo3_get_touch_vendor(self, _slave_id):
+        TouchVendor = _sdk_attr("TouchVendor", None)
+        if TouchVendor is not None:
+            return TouchVendor(self.touch_vendor)
+        return self.touch_vendor
+
+    async def revo3_set_touch_vendor(self, _slave_id, vendor):
+        self.touch_vendor = int(vendor)
+        return True
 
     async def revo3_get_hardware_version(self, _slave_id):
         return "mock-hw-1.0"
@@ -225,6 +306,26 @@ class MockDeviceContext:
         self.positions[int(motor_id)] = float(position)
         self.velocities[int(motor_id)] = float(velocity)
 
+    async def revo3_start_servo_drag(self, _slave_id, motor_id, target_pos, *_args):
+        motor_id = int(motor_id)
+        self.servo_drags[motor_id] = float(target_pos)
+        self.positions[motor_id] = float(target_pos)
+
+    def revo3_update_servo_drag(self, _slave_id, motor_id, target_pos):
+        motor_id = int(motor_id)
+        if motor_id not in self.servo_drags:
+            raise RuntimeError(f"servo_drag is not active for joint {motor_id}")
+        self.servo_drags[motor_id] = float(target_pos)
+        self.positions[motor_id] = float(target_pos)
+
+    async def revo3_cancel_servo_drag(self, _slave_id, motor_id):
+        self.servo_drags.pop(int(motor_id), None)
+
+    async def revo3_stop_servo_drag(self, _slave_id, motor_id, final_pos):
+        motor_id = int(motor_id)
+        self.servo_drags.pop(motor_id, None)
+        self.positions[motor_id] = float(final_pos)
+
     async def revo3_single_joint_control(self, _slave_id, motor_id, mode, value):
         if int(mode) in (0, 4, 5):
             self.positions[int(motor_id)] = float(value) / (100.0 if int(mode) in (4, 5) else 1.0)
@@ -237,6 +338,23 @@ class MockDeviceContext:
     ):
         self.positions = self._pad(positions)
         self.velocities = self._pad(velocities)
+
+    def revo3_set_collision_protection_config(self, _slave_id, config):
+        self.collision_config = config
+        return True
+
+    def revo3_get_collision_protection_config(self, _slave_id):
+        return self.collision_config
+
+    def revo3_is_collision_active(self, _slave_id, joint_id):
+        return self.collision_active[int(joint_id)]
+
+    def revo3_get_all_collision_active(self, _slave_id):
+        return list(self.collision_active)
+
+    def revo3_reset_collision_state(self, _slave_id):
+        self.collision_active = [False] * REVO3_MOTOR_COUNT
+        return True
 
     async def revo3_move_joint_with_gains(self, slave_id, motor_id, position, *_args):
         await self.revo3_set_motor_position(slave_id, motor_id, position)
@@ -315,7 +433,11 @@ class MockDeviceContext:
 
     async def revo3_get_all_touch_data(self, _slave_id):
         data_type = self.flags.get("touch_data_type", 0)
-        return MockRevo3TouchData(time.time() - self.start_time, data_type=data_type)
+        return MockRevo3TouchData(
+            time.time() - self.start_time,
+            data_type=data_type,
+            touch_vendor=self.touch_vendor,
+        )
 
     async def revo3_get_touch_data_type(self, _slave_id):
         return self.flags.get("touch_data_type", 0)
@@ -338,10 +460,100 @@ class MockDeviceContext:
         self.flags["touch_modules_enabled"] = int(enabled_mask)
         return True
 
-    async def revo3_calibrate_touch_zero(self, _slave_id):
+    async def revo3_get_touch_module_enabled(self, _slave_id, module_id):
+        mask = self.flags.get("touch_modules_enabled", 0x7FF)
+        return bool(mask & (1 << int(module_id)))
+
+    async def revo3_set_touch_module_enabled(self, _slave_id, module_id, enabled):
+        mask = self.flags.get("touch_modules_enabled", 0x7FF)
+        if enabled:
+            mask |= (1 << int(module_id))
+        else:
+            mask &= ~(1 << int(module_id))
+        self.flags["touch_modules_enabled"] = mask
         return True
 
-    async def revo3_calibrate_touch_zero_single(self, _slave_id, _module_id):
+    async def revo3_get_touch_module_data(self, _slave_id, module_id):
+        data = await self.revo3_get_all_touch_data(_slave_id)
+        if int(module_id) < len(data.modules):
+            return data.modules[int(module_id)]
+        return [0] * 60
+
+    async def revo3_calibrate_touch_zero(self, _slave_id):
+        self.flags["matrix_touch_tare_status"] = 1
+        return True
+
+    async def revo3_calibrate_touch_zero_single(self, _slave_id, module_id):
+        # Mark as tared
+        self.flags[f"matrix_touch_tare_status_{int(module_id)}"] = 1
+        return True
+
+    async def revo3_calibrate_pressure_touch_zero(self, _slave_id):
+        self.flags["pressure_touch_zero"] = True
+        return True
+
+    async def revo3_calibrate_pressure_touch_module_zero(self, _slave_id, module_id):
+        self.flags[f"pressure_touch_zero_{int(module_id)}"] = True
+        return True
+
+    async def revo3_set_pressure_touch_force_tare(self, _slave_id, command):
+        self.flags["pressure_touch_force_tare"] = int(command)
+        return True
+
+    async def revo3_set_pressure_touch_module_force_tare(self, _slave_id, module_id, command):
+        self.flags[f"pressure_touch_force_tare_{int(module_id)}"] = int(command)
+        return True
+
+    async def revo3_get_all_matrix_touch_module_serial_numbers(self, _slave_id):
+        return [f"MATRIX-MOCK-{i:02d}" for i in range(11)]
+
+    async def revo3_get_matrix_touch_module_serial_number(self, _slave_id, module_id):
+        return f"MATRIX-MOCK-{int(module_id):02d}"
+
+    async def revo3_restart_matrix_touch_modules(self, _slave_id):
+        return True
+
+    async def revo3_restart_matrix_touch_module(self, _slave_id, module_id):
+        self.flags[f"matrix_touch_tare_status_{int(module_id)}"] = 0
+        return True
+
+    async def revo3_get_all_matrix_touch_module_point_counts(self, _slave_id):
+        return [60] * 11
+
+    async def revo3_get_matrix_touch_output_mode(self, _slave_id):
+        MatrixTouchOutputMode = _sdk_attr("MatrixTouchOutputMode", None)
+        value = self.flags.get("matrix_touch_output_mode", 1)
+        return MatrixTouchOutputMode(value) if MatrixTouchOutputMode is not None else value
+
+    async def revo3_set_matrix_touch_output_mode(self, _slave_id, mode):
+        self.flags["matrix_touch_output_mode"] = int(mode)
+        return True
+
+    async def revo3_get_matrix_touch_module_output_mode(self, _slave_id, module_id):
+        MatrixTouchOutputMode = _sdk_attr("MatrixTouchOutputMode", None)
+        value = self.flags.get(f"matrix_touch_output_mode_{int(module_id)}", 1)
+        return MatrixTouchOutputMode(value) if MatrixTouchOutputMode is not None else value
+
+    async def revo3_set_matrix_touch_module_output_mode(self, _slave_id, module_id, mode):
+        self.flags[f"matrix_touch_output_mode_{int(module_id)}"] = int(mode)
+        return True
+
+    async def revo3_get_matrix_touch_tare_status(self, _slave_id):
+        MatrixTouchTareStatus = _sdk_attr("MatrixTouchTareStatus", None)
+        value = self.flags.get("matrix_touch_tare_status", 1)
+        return MatrixTouchTareStatus(value) if MatrixTouchTareStatus is not None else value
+
+    async def revo3_set_matrix_touch_tare(self, _slave_id, command):
+        self.flags["matrix_touch_tare_status"] = 1 if int(command) == 1 else 0
+        return True
+
+    async def revo3_get_matrix_touch_module_tare_status(self, _slave_id, module_id):
+        MatrixTouchTareStatus = _sdk_attr("MatrixTouchTareStatus", None)
+        value = self.flags.get(f"matrix_touch_tare_status_{int(module_id)}", 1)
+        return MatrixTouchTareStatus(value) if MatrixTouchTareStatus is not None else value
+
+    async def revo3_set_matrix_touch_module_tare(self, _slave_id, module_id, command):
+        self.flags[f"matrix_touch_tare_status_{int(module_id)}"] = 1 if int(command) == 1 else 0
         return True
 
     async def revo3_reboot(self, _slave_id):

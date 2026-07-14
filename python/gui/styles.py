@@ -582,3 +582,342 @@ CARD_STYLE = f"""
     border-radius: 12px;
     padding: 16px;
 """
+
+def is_dark_mode() -> bool:
+    """Detect if the system is currently in Dark Mode by querying OS-level themes first."""
+    import sys
+    import subprocess
+
+    # 1. macOS specific system defaults query
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True,
+                text=True
+            )
+            if "Dark" in result.stdout:
+                return True
+        except Exception:
+            pass
+
+    # 2. Windows specific registry query
+    elif sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            )
+            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return val == 0
+        except Exception:
+            pass
+
+    # 3. Linux / GNOME specific color-scheme query
+    elif sys.platform.startswith("linux"):
+        try:
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                capture_output=True,
+                text=True
+            )
+            if "dark" in result.stdout.lower():
+                return True
+        except Exception:
+            pass
+
+    # 4. Fallback: check PySide6 style hints
+    try:
+        from PySide6.QtGui import QGuiApplication, Qt
+        scheme = QGuiApplication.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Dark:
+            return True
+        elif scheme == Qt.ColorScheme.Light:
+            return False
+    except Exception:
+        pass
+
+    # 5. Fallback: check window background lightness
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QPalette
+        app = QApplication.instance()
+        if app:
+            return app.palette().color(QPalette.Window).lightness() < 128
+    except Exception:
+        pass
+
+    return False
+
+def get_theme_stylesheet(is_dark: bool) -> str:
+    """Get optimized application-wide stylesheet depending on Dark/Light appearance."""
+    if is_dark:
+        return f"""
+        QMainWindow {{
+            background-color: {COLORS['bg_dark']};
+        }}
+        QWidget {{
+            color: {COLORS['text_primary']};
+        }}
+        QGroupBox {{
+            background-color: {COLORS['bg_card']};
+            border: 1px solid {COLORS['border']};
+            border-radius: 12px;
+            margin-top: 16px;
+            padding: 16px;
+            font-weight: 600;
+            color: {COLORS['text_primary']};
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 16px;
+            padding: 0 8px;
+            color: {COLORS['text_primary']};
+            background-color: transparent;
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QGroupBox QLabel {{
+            color: {COLORS['text_primary']};
+            background-color: transparent;
+        }}
+        QLabel {{
+            color: {COLORS['text_primary']};
+            background-color: transparent;
+        }}
+        QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+            background-color: #1e2633;
+            color: {COLORS['text_primary']};
+            border: 1px solid #34495e;
+            border-radius: 8px;
+            padding: 6px 10px;
+        }}
+        QSpinBox::up-button, QSpinBox::down-button,
+        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+            background-color: transparent;
+            border: none;
+            width: 16px;
+        }}
+        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
+            border-color: #3498db;
+        }}
+        QPushButton {{
+            background-color: #3498db;
+            color: white;
+            border: 1px solid #3498db;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-weight: 600;
+            min-width: 60px;
+        }}
+        QPushButton:hover {{
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }}
+        QPushButton:pressed {{
+            background-color: #1f6dad;
+            border-color: #1f6dad;
+        }}
+        QPushButton:checked {{
+            background-color: #3498db;
+            color: white;
+            border: 1px solid #3498db;
+        }}
+        QPushButton:checked:hover {{
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }}
+        QPushButton:checked:pressed {{
+            background-color: #1f6dad;
+            border-color: #1f6dad;
+        }}
+        QPushButton[checkable="true"]:!checked {{
+            background-color: #2c3e50;
+            color: #bdc3c7;
+            border: 1px solid #34495e;
+        }}
+        QPushButton[checkable="true"]:!checked:hover {{
+            background-color: #3d4a5c;
+            border-color: #4a6785;
+        }}
+        QPushButton:disabled {{
+            background-color: #1a1a2e;
+            color: #7f8c8d;
+            border: 1px solid #2c3e50;
+        }}
+        QScrollArea {{
+            background-color: transparent;
+            border: none;
+        }}
+        """
+    else:
+        return """
+        QMainWindow {
+            background-color: #f8f9fa;
+        }
+        QWidget {
+            color: #2c3e50;
+        }
+        QGroupBox {
+            background-color: #ffffff;
+            border: 1px solid #cfd4d9;
+            border-radius: 12px;
+            margin-top: 16px;
+            padding: 16px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 16px;
+            padding: 0 8px;
+            color: #2c3e50;
+            background-color: transparent;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QGroupBox QLabel {
+            color: #2c3e50;
+            background-color: transparent;
+        }
+        QLabel {
+            color: #2c3e50;
+            background-color: transparent;
+        }
+        QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+            background-color: #ffffff;
+            color: #2c3e50;
+            border: 1px solid #cfd4d9;
+            border-radius: 8px;
+            padding: 6px 10px;
+        }
+        QSpinBox::up-button, QSpinBox::down-button,
+        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+            background-color: transparent;
+            border: none;
+            width: 16px;
+        }
+        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+            border-color: #5D9CEC;
+        }
+        QPushButton {
+            background-color: #5D9CEC;
+            color: white;
+            border: 1px solid #5D9CEC;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-weight: 600;
+            min-width: 60px;
+        }
+        QPushButton:hover {
+            background-color: #4a8cd9;
+            border-color: #4a8cd9;
+        }
+        QPushButton:pressed {
+            background-color: #3b7cbd;
+            border-color: #3b7cbd;
+        }
+        QPushButton:checked {
+            background-color: #5D9CEC;
+            color: white;
+            border: 1px solid #5D9CEC;
+        }
+        QPushButton:checked:hover {
+            background-color: #4a8cd9;
+            border-color: #4a8cd9;
+        }
+        QPushButton:checked:pressed {
+            background-color: #3b7cbd;
+            border-color: #3b7cbd;
+        }
+        QPushButton[checkable="true"]:!checked {
+            background-color: #f1f3f5;
+            color: #495057;
+            border: 1px solid #ced4da;
+        }
+        QPushButton[checkable="true"]:!checked:hover {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+        QPushButton:disabled {
+            background-color: #e9ecef;
+            color: #9eb1c2;
+            border: 1px solid #dee2e6;
+        }
+        QScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+        """
+
+def get_tab_stylesheet(is_dark: bool) -> str:
+    """Get theme-optimized stylesheet for main QTabWidget and QTabBar."""
+    if is_dark:
+        return f"""
+        QTabBar::tab {{
+            font-size: 13px;
+            font-weight: bold;
+            padding: 10px 18px;
+            margin-right: 2px;
+            border: 1px solid {COLORS['border']};
+            border-bottom: none;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            background-color: {COLORS['bg_medium']};
+            color: {COLORS['text_secondary']};
+        }}
+        QTabBar::tab:selected {{
+            background-color: {COLORS['bg_dark']};
+            border: 2px solid {COLORS['primary']};
+            border-bottom: 2px solid {COLORS['bg_dark']};
+            color: {COLORS['primary']};
+        }}
+        QTabBar::tab:hover:!selected {{
+            background-color: {COLORS['bg_light']};
+        }}
+        QTabWidget::pane {{
+            border: 2px solid {COLORS['primary']};
+            border-radius: 6px;
+            border-top-left-radius: 0px;
+            border-top-right-radius: 6px;
+            top: -2px;
+            background-color: {COLORS['bg_dark']};
+        }}
+        """
+    else:
+        return """
+        QTabBar::tab {
+            font-size: 13px;
+            font-weight: bold;
+            padding: 10px 18px;
+            margin-right: 2px;
+            border: 1px solid #cfd4d9;
+            border-bottom: none;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            background-color: #e9ecef;
+            color: #495057;
+        }
+        QTabBar::tab:selected {
+            background-color: #ffffff;
+            border: 2px solid #5D9CEC;
+            border-bottom: 2px solid #ffffff;
+            color: #5D9CEC;
+        }
+        QTabBar::tab:hover:!selected {
+            background-color: #f8f9fa;
+        }
+        QTabWidget::pane {
+            border: 2px solid #5D9CEC;
+            border-radius: 6px;
+            border-top-left-radius: 0px;
+            border-top-right-radius: 6px;
+            top: -2px;
+            background-color: #ffffff;
+        }
+        """
+
+

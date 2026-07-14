@@ -674,9 +674,9 @@ class TeachingPanel(QWidget):
         if self._collector_paused_for_playback:
             return
         try:
-            self.shared_data.data_collector.stop()
-            self._collector_paused_for_playback = True
-            self._log("DataCollector paused for playback")
+            if self.shared_data.pause_collector():
+                self._collector_paused_for_playback = True
+                self._log("DataCollector pause requested for playback")
         except Exception as e:
             self._log(f"DataCollector pause skipped: {e}")
 
@@ -684,9 +684,8 @@ class TeachingPanel(QWidget):
         if not self.shared_data or not self._collector_paused_for_playback:
             return
         try:
-            if self.shared_data.data_collector:
-                self.shared_data.data_collector.start()
-            self.sig_playback_log.emit("DataCollector resumed")
+            if self.shared_data.resume_collector():
+                self.sig_playback_log.emit("DataCollector resume requested")
         except Exception as e:
             self.sig_playback_log.emit(f"DataCollector resume skipped: {e}")
         finally:
