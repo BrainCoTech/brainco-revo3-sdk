@@ -101,15 +101,17 @@ class MainWindow(QMainWindow):
         touch_vendor=None,
         vts_force_model_dir=None,
         vts_force_model_mode="none",
+        canfd=None,
     ):
         super().__init__()
         self.i18n = get_i18n()
         self.i18n.language_changed.connect(self._on_language_changed)
         self.device = None
-        self.slave_id = 1
+        self.slave_id = 126
         self.protocol = None
         self.revo3_modbus = revo3_modbus
         self.mock_type = mock_type
+        self.canfd_arg = canfd
         self.touch_vendor_arg = touch_vendor
         self.vts_force_model_dir = vts_force_model_dir
         self.vts_force_model_mode = vts_force_model_mode
@@ -137,7 +139,11 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(16, 16, 16, 16)
         main_layout.setSpacing(16)
 
-        self.connection_panel = ConnectionPanel(revo3_modbus=self.revo3_modbus, mock_type=self.mock_type)
+        self.connection_panel = ConnectionPanel(
+            revo3_modbus=self.revo3_modbus,
+            mock_type=self.mock_type,
+            canfd=self.canfd_arg,
+        )
         self.connection_panel.connected.connect(self._on_connected)
         self.connection_panel.about_to_disconnect.connect(self._on_about_to_disconnect)
         self.connection_panel.disconnected.connect(self._on_disconnected)
@@ -419,7 +425,7 @@ class MainWindow(QMainWindow):
         self.shared_data.clear_device()
         self.device = None
         self.current_touch_vendor = None
-        self.slave_id = 1
+        self.slave_id = 126
         self.protocol = None
         for panel in [
             self.motor_panel_revo3,

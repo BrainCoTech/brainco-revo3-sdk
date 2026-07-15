@@ -268,7 +268,7 @@ class ConnectionPanel(QWidget):
     disconnected = Signal()
     about_to_disconnect = Signal()
 
-    def __init__(self, revo3_modbus=False, mock_type=None):
+    def __init__(self, revo3_modbus=False, mock_type=None, canfd=None):
         super().__init__()
         self.ctx = None
         self.slave_id = None
@@ -282,11 +282,17 @@ class ConnectionPanel(QWidget):
         self._last_connect_succeeded = False
         self.revo3_modbus = revo3_modbus
         self.mock_type = mock_type
+        self.canfd_arg = canfd
         self._thread = None
         self.worker = None
         self._setup_ui()
         if self.mock_type:
             QTimer.singleShot(0, self._connect_mock)
+        elif self.canfd_arg is not None:
+            # Pre-select CANFD protocol
+            idx = self.protocol_combo.findData(PROTO_CANFD)
+            if idx >= 0:
+                self.protocol_combo.setCurrentIndex(idx)
         else:
             QTimer.singleShot(100, self._on_auto_detect)
 
@@ -333,7 +339,7 @@ class ConnectionPanel(QWidget):
         modbus_layout.addWidget(self.modbus_id_label)
         self.slave_id_spin = QSpinBox()
         self.slave_id_spin.setRange(1, 255)
-        self.slave_id_spin.setValue(1)
+        self.slave_id_spin.setValue(126)
         modbus_layout.addWidget(self.slave_id_spin)
         self.modbus_frame.setVisible(False)
         layout.addWidget(self.modbus_frame)
@@ -344,13 +350,14 @@ class ConnectionPanel(QWidget):
         self.canfd_adapter_label = QLabel(tr("adapter") + ":")
         canfd_layout.addWidget(self.canfd_adapter_label)
         self.canfd_port_combo = QComboBox()
+        self.canfd_port_combo.setEditable(True)
         self.canfd_port_combo.setMinimumWidth(170)
         canfd_layout.addWidget(self.canfd_port_combo)
         self.canfd_id_label = QLabel(tr("id") + ":")
         canfd_layout.addWidget(self.canfd_id_label)
         self.canfd_slave_spin = QSpinBox()
         self.canfd_slave_spin.setRange(1, 255)
-        self.canfd_slave_spin.setValue(1)
+        self.canfd_slave_spin.setValue(126)
         canfd_layout.addWidget(self.canfd_slave_spin)
         self.canfd_frame.setVisible(False)
         layout.addWidget(self.canfd_frame)
@@ -404,16 +411,41 @@ class ConnectionPanel(QWidget):
         self.status_label.setVisible(False)
         outer_layout.addWidget(self.status_label)
         self._refresh_port_list()
-        self._refresh_zqwl_devices()
+        self._refresh_canfd_adapters()
 
-    def _refresh_zqwl_devices(self):
-        if sdk is None or not hasattr(sdk, "list_zqwl_devices"):
-            return
+    def _refresh_canfd_adapters(self):
         try:
             self.canfd_port_combo.clear()
-            for d in sdk.list_zqwl_devices():
-                if getattr(d, "supports_canfd", True):
-                    self.canfd_port_combo.addItem(d.port_name, d.port_name)
+            
+            # Add common built-in/fallback CANFD ports
+            # BrainCo USB2CANFD adapters
+            self.canfd_port_combo.addItem("brainco:0 (BrainCo USB2CANFD Ch0)", "brainco:0")
+            self.canfd_port_combo.addItem("brainco:1 (BrainCo USB2CANFD Ch1)", "brainco:1")
+            
+            # SocketCAN adapters (Linux only)
+            import platform
+            if platform.system() == "Linux":
+                self.canfd_port_combo.addItem("can0 (SocketCAN)", "can0")
+                self.canfd_port_combo.addItem("can1 (SocketCAN)", "can1")
+
+            devices = []
+            if sdk is not None and hasattr(sdk, "list_zqwl_devices"):
+                try:
+                    devices = sdk.list_zqwl_devices()
+                except Exception as e:
+                    print(f"Failed to call list_zqwl_devices: {e}")
+            
+            if devices:
+                for d in devices:
+                    if getattr(d, "supports_canfd", True):
+                        self.canfd_port_combo.addItem(f"{d.port_name} (ZQWL CANFD)", d.port_name)
+
+            # If a custom port was specified via command line, ensure it is added and selected
+            if self.canfd_arg:
+                idx = self.canfd_port_combo.findData(self.canfd_arg)
+                if idx < 0:
+                    self.canfd_port_combo.addItem(self.canfd_arg, self.canfd_arg)
+                self.canfd_port_combo.setCurrentIndex(self.canfd_port_combo.findData(self.canfd_arg))
         except Exception as e:
             print(f"Error refreshing ZQWL devices: {e}")
 
@@ -438,7 +470,7 @@ class ConnectionPanel(QWidget):
         if protocol_key == PROTO_MODBUS:
             self._refresh_port_list()
         elif protocol_key == PROTO_CANFD:
-            self._refresh_zqwl_devices()
+            self._refresh_canfd_adapters()
 
     def _refresh_port_list(self):
         current = self.port_combo.currentText() if hasattr(self, "port_combo") else ""
@@ -569,8 +601,8 @@ class ConnectionPanel(QWidget):
             }
         elif protocol_key == PROTO_CANFD:
             idx = self.canfd_port_combo.currentIndex()
-            port_name = self.canfd_port_combo.itemData(idx) if idx >= 0 else None
-            if port_name == "No CANFD devices found":
+            port_name = self.canfd_port_combo.itemData(idx) or self.canfd_port_combo.currentText() or None
+            if port_name == "No CANFD devices found" or port_name == "":
                 port_name = None
             params = {
                 "port_name": port_name,

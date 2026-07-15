@@ -684,11 +684,11 @@ TRANSLATIONS_ZH = {
     ),
     "dialog_pressure_force_restore_title": "确认区域合力恢复出厂",
     "dialog_pressure_force_restore_all_message": (
-        "确定要恢复所有模量 Pressure Touch 模块的区域合力出厂设置吗？\n\n"
+        "确定要恢复所有 Pressure Touch 模块的区域合力出厂设置吗？\n\n"
         "此操作无法撤销。"
     ),
     "dialog_pressure_force_restore_module_message": (
-        "确定要恢复模量 Pressure Touch 模块 {module_id} 的区域合力出厂设置吗？\n\n"
+        "确定要恢复 Pressure Touch 模块 {module_id} 的区域合力出厂设置吗？\n\n"
         "此操作无法撤销。"
     ),
 
