@@ -25,7 +25,7 @@ INCLUDES := -I$(INCLUDE_DIR)
 LDFLAGS := -L$(LIB_DIR) -lbc_revo3_sdk $(RPATH)
 
 COMMON_SRC := common/revo3_common.cpp
-TARGETS := demo/auto_detect demo/hand_demo demo/hand_trajectory demo/hand_dfu demo/revo3_motor demo/revo3_touch demo/revo3_monitor demo/revo3_servo demo/revo3_ota_resource demo/revo3_collision_test demo/revo3_feedback_benchmark
+TARGETS := demo/auto_detect demo/hand_demo demo/hand_trajectory demo/hand_dfu demo/revo3_motor demo/revo3_touch demo/revo3_monitor demo/revo3_servo demo/revo3_mit_plan demo/revo3_ota_resource demo/revo3_collision_test demo/revo3_feedback_benchmark
 
 all: $(TARGETS)
 
@@ -53,6 +53,9 @@ demo/revo3_monitor: demo/revo3_monitor.cpp $(COMMON_SRC) common/revo3_common.h $
 demo/revo3_servo: demo/revo3_servo.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
 
+demo/revo3_mit_plan: demo/revo3_mit_plan.cpp $(COMMON_SRC) common/revo3_common.h common/revo3_mit_plan.hpp $(SDK_LIB)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+
 demo/revo3_ota_resource: demo/revo3_ota_resource.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
 
@@ -77,6 +80,7 @@ help:
 	@echo "Run hand demo:               ./c/demo/hand_demo"
 	@echo "Run DFU demo:                ./c/demo/hand_dfu firmware.bin"
 	@echo "Run motor demo:              ./c/demo/revo3_motor"
+	@echo "Run MIT plan demo:           ./c/demo/revo3_mit_plan --target 45"
 	@echo "Run feedback benchmark:      ./c/demo/revo3_feedback_benchmark --scenario motor --read full-state"
 	@echo "Manual Modbus:               ./c/demo/revo3_motor --modbus /dev/ttyUSB0 5000000 1"
 
