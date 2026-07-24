@@ -4,7 +4,7 @@ This repository provides example applications and integration code demonstrating
 
 ## Layout
 
-- `c/` - C++ examples using the C ABI
+- `c/` - C++ examples using the C ABI, plus a standalone Linux EtherCAT example
 - `python/revo3/` - Python Revo3 demos
 - `python/gui/` - PySide GUI with Revo3 panels and mock mode
 
@@ -19,6 +19,17 @@ make -C c
 ./c/demo/hand_demo
 ./c/demo/hand_trajectory
 ./c/demo/hand_dfu firmware.bin
+```
+
+The pure C++ IgH EtherCAT example is built separately because it does not use
+the downloaded SDK library. Before running it, verify the IgH master,
+`/dev/EtherCAT0`, and the selected NIC with `c/platform/linux/revo3_ec/README.md`:
+
+```bash
+make -C c/platform/linux/revo3_ec
+./c/platform/linux/revo3_ec/revo3_pdo 0
+./c/platform/linux/revo3_ec/revo3_benchmark \
+  --scenario motor --read full-state --duration 10
 ```
 
 ### Python
