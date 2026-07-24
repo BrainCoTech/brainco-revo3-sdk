@@ -11,6 +11,7 @@ __pycache__/
 *.dylib
 *.dll
 *.zip
+*.exe
 # Ignore all compiled binaries in c/demo/
 c/demo/*
 !c/demo/Makefile
@@ -27,6 +28,8 @@ ENV/
 
 # Python lock files
 uv.lock
-python/vts/BC_20260623/
+
+# vts
+python/vts/
 python/vts/checkpoints/
-python/vts/ViTaiViewer.exe
+python/vts/benchmark/
