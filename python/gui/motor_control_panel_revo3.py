@@ -1234,6 +1234,7 @@ class Revo3MotorControlPanel(QWidget):
         self._last_motor_status_sample_time = 0.0
         self._last_motor_error_debug_signature = None
         self._last_motor_error_debug_log_time = 0.0
+        self.enable_motor_error_debug = False
 
         self._setup_ui()
         self.update_texts()
@@ -1414,6 +1415,12 @@ class Revo3MotorControlPanel(QWidget):
         self.use_broadcast_id_cb.setChecked(True)
         self.use_broadcast_id_cb.clicked.connect(self._on_use_broadcast_id_changed)
         top_layout2.addWidget(self.use_broadcast_id_cb)
+
+        self.err_log_cb = QPushButton(tr("v3_motor_error_log"))
+        self.err_log_cb.setCheckable(True)
+        self.err_log_cb.setChecked(False)
+        self.err_log_cb.clicked.connect(self._on_motor_error_log_changed)
+        top_layout2.addWidget(self.err_log_cb)
 
         top_layout2.addStretch()
         layout.addLayout(top_layout2)
@@ -1800,6 +1807,10 @@ class Revo3MotorControlPanel(QWidget):
         run_async(lambda: self.device.revo3_set_use_broadcast_id(self.slave_id, enabled))
         print(f"[Settings] Use broadcast ID: {'enabled' if enabled else 'disabled'}")
 
+    def _on_motor_error_log_changed(self, checked):
+        self.enable_motor_error_debug = checked
+        print(f"[Settings] Motor error debug log: {'enabled' if checked else 'disabled'}")
+
     def _collision_enum_value(self, enum_name, value_name):
         if sdk is None:
             return value_name
@@ -2028,6 +2039,8 @@ class Revo3MotorControlPanel(QWidget):
                 row.update_diagnostics(temp_val, is_online, err_val, collision_active, stall_guard_active)
 
     def _log_motor_error_sample_debug(self, errors, status_sequence, is_new_sample):
+        if not self.enable_motor_error_debug:
+            return
         faulted = tuple(
             (idx, errors[idx], tuple(name for name in decode_motor_error(errors[idx]) if name != "Running"))
             for idx in range(min(len(errors or []), REVO3_MOTOR_COUNT))
@@ -2085,6 +2098,8 @@ class Revo3MotorControlPanel(QWidget):
         )
 
     def _log_finger_state_transition(self, active_joints, blocked_joints, dragging_joints, is_connected):
+        if not self.enable_motor_error_debug:
+            return
         signature = self._current_finger_state_signature(active_joints, blocked_joints, dragging_joints, is_connected)
         if signature == self._last_finger_state_signature:
             return
@@ -2394,6 +2409,7 @@ class Revo3MotorControlPanel(QWidget):
         self.teaching_mode_cb.setText(tr("v3_teaching_mode"))
         self.software_e_stop_cb.setText(tr("v3_software_e_stop"))
         self.use_broadcast_id_cb.setText(tr("v3_use_broadcast_id"))
+        self.err_log_cb.setText(tr("v3_motor_error_log"))
         self.btn_read_diag.setText(tr("v3_diag_read"))
 
         if hasattr(self, 'lbl_speed_or'):
