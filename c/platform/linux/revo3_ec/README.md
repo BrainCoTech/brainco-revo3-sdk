@@ -4,11 +4,14 @@ This Linux-only example controls a BrainCo Revo3 hand directly through the
 IgH EtherCAT master (`libethercat`). It does not link to the Rust SDK or the
 Revo3 SDK shared library.
 
-The implementation follows the fixed PDO mapping in `stark3_etc_drive`:
+The implementation starts from the Revo3 fixed PDO mapping and then detects the
+assigned PDO layout exposed by the connected slave SII:
 
 - RxPDO `0x1600`: 23 velocity, position, current, `Kp`, and `Kd` values
+- RxPDO `0x1601`: optional extra output entries when exposed by firmware
 - TxPDO `0x1A00`: 23 status, velocity, position, current, and error values
-- TxPDO `0x1A01`: touch packet index, valid length, and up to 200 values
+- TxPDO `0x1A01`: touch packet index, valid length, and the detected
+  `0x7007` payload capacity
 - SDO ranges: read-only `0x8000..0x87FF`, write-only `0x8800..0x8FFF`, and
   read/write `0x9000` and above
 
@@ -204,11 +207,31 @@ If both modes stay in PREOP and the kernel log contains
 `Failed to determine PDO sync manager for FMMU` or AL status `0x001E`
 (`Invalid input configuration`), the connected slave is not exposing the
 process-data sync manager information that IgH needs from SII/EEPROM. The ESI
-XML declares SM2 Outputs at `0x1100` with size 230 and SM3 Inputs at `0x1400`
-with size 680; the same information must be present in the slave SII/EEPROM or
-provided by firmware. IgH's public user-space API configures PDO assignment and
-mapping, but it does not provide an API to override SM physical start addresses
-and default sizes from an application.
+SM2 Outputs at `0x1100` and SM3 Inputs at `0x1400`; the same information must
+be present in the slave SII/EEPROM or provided by firmware. IgH's public
+user-space API configures PDO assignment and mapping, but it does not provide
+an API to override SM physical start addresses and default sizes from an
+application.
+
+For the full-touch default PDO, verify that the master can read the complete
+SII:
+
+```bash
+ethercat xml -p 0
+ethercat pdos -p 0
+```
+
+Expected full-touch SII/PDO information includes SM2 `DefaultSize=230`, SM3
+`DefaultSize=680`, and TxPDO `0x1A01` with touch packet metadata plus the
+`0x7007:01..0x7007:C8` payload entries. Upstream IgH `stable-1.6` and
+`stable-1.7` define `EC_MAX_SII_SIZE` as 4096 words in `master/globals.h` to
+avoid unbounded SII scans. If the Revo3 SII is larger than that limit, an
+unpatched master can stop before the touch PDO category and fail to expose
+SM3/`0x1A01` completely. Raising the local IgH limit, for example to 16384
+words, can make this host read the complete SII and enter OP, but that is a
+host-side patch. For firmware intended for customers or other EtherCAT
+masters, prefer a smaller default SII/PDO layout or confirm that the target
+master accepts the full SII size.
 
 ## SDO
 

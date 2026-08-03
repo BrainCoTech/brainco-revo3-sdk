@@ -109,9 +109,10 @@ bool enable_realtime(int priority, std::string *error) {
 
 struct Master::PdoConfiguration {
   std::array<ec_pdo_entry_info_t, kPdoJointCount * 5> rx_entries{};
+  std::array<ec_pdo_entry_info_t, kPdoJointCount> extra_rx_entries{};
   std::array<ec_pdo_entry_info_t, kPdoJointCount * 5> motor_tx_entries{};
   std::array<ec_pdo_entry_info_t, 2 + kTouchPacketCapacity> touch_tx_entries{};
-  std::array<ec_pdo_info_t, 1> rx_pdos{};
+  std::array<ec_pdo_info_t, 2> rx_pdos{};
   std::array<ec_pdo_info_t, 2> tx_pdos{};
   std::array<ec_sync_info_t, 5> syncs{};
 };
@@ -122,6 +123,77 @@ Master::Master(std::uint16_t slave_position, unsigned int master_index,
       layout_(layout) {}
 
 Master::~Master() { shutdown(); }
+
+void Master::apply_detected_pdo_layout() {
+  if (master_ == nullptr) {
+    return;
+  }
+
+  ec_slave_info_t slave_info{};
+  if (ecrt_master_get_slave(master_, slave_position_, &slave_info) != 0 ||
+      slave_info.sync_count <= kSm3) {
+    return;
+  }
+
+  const bool touch_requested = layout_.has_touch_pdo;
+  std::size_t extra_rx_entry_count = 0;
+  ec_sync_info_t sm2{};
+  if (ecrt_master_get_sync_manager(master_, slave_position_, kSm2, &sm2) !=
+      0) {
+    return;
+  }
+  for (std::uint16_t pdo_pos = 0; pdo_pos < sm2.n_pdos; ++pdo_pos) {
+    ec_pdo_info_t pdo{};
+    if (ecrt_master_get_pdo(master_, slave_position_, kSm2, pdo_pos, &pdo) !=
+        0) {
+      break;
+    }
+    if (pdo.index == kRxPdoMotorControlEchoIndex) {
+      extra_rx_entry_count =
+          std::min<std::size_t>(pdo.n_entries, kPdoJointCount);
+    }
+  }
+
+  std::size_t touch_payload_count = 0;
+  bool has_touch_pdo = false;
+  if (touch_requested) {
+    ec_sync_info_t sm3{};
+    if (ecrt_master_get_sync_manager(master_, slave_position_, kSm3, &sm3) !=
+        0) {
+      return;
+    }
+    for (std::uint16_t pdo_pos = 0; pdo_pos < sm3.n_pdos; ++pdo_pos) {
+      ec_pdo_info_t pdo{};
+      if (ecrt_master_get_pdo(master_, slave_position_, kSm3, pdo_pos, &pdo) !=
+          0) {
+        break;
+      }
+      if (pdo.index != kTxPdoTouchSensorDataIndex) {
+        continue;
+      }
+      has_touch_pdo = true;
+      for (std::uint16_t entry_pos = 0; entry_pos < pdo.n_entries;
+           ++entry_pos) {
+        ec_pdo_entry_info_t entry{};
+        if (ecrt_master_get_pdo_entry(master_, slave_position_, kSm3, pdo_pos,
+                                      entry_pos, &entry) != 0) {
+          break;
+        }
+        if (entry.index == kTouchSensorDataObjectIndex &&
+            entry.bit_length == 16) {
+          ++touch_payload_count;
+        }
+      }
+    }
+  }
+
+  layout_.extra_rx_pdo_entry_count = extra_rx_entry_count;
+  layout_.touch_packet_capacity =
+      std::min<std::size_t>(touch_payload_count, kTouchPacketCapacity);
+  layout_.touch_input_process_data_size =
+      sizeof(std::uint16_t) * (2 + layout_.touch_packet_capacity);
+  layout_.has_touch_pdo = has_touch_pdo;
+}
 
 void Master::build_pdo_configuration() {
   pdo_ = new PdoConfiguration();
@@ -152,6 +224,16 @@ void Master::build_pdo_configuration() {
   pdo_->rx_pdos[0] = {layout_.rx_pdo_index,
                       static_cast<unsigned int>(layout_.pdo_joint_count * 5),
                       pdo_->rx_entries.data()};
+  if (layout_.extra_rx_pdo_entry_count > 0) {
+    for (std::size_t i = 0; i < layout_.extra_rx_pdo_entry_count; ++i) {
+      pdo_->extra_rx_entries[i] = {
+          layout_.output_object_index, static_cast<std::uint8_t>(i + 1), 16};
+    }
+    pdo_->rx_pdos[1] = {
+        layout_.extra_rx_pdo_index,
+        static_cast<unsigned int>(layout_.extra_rx_pdo_entry_count),
+        pdo_->extra_rx_entries.data()};
+  }
   pdo_->tx_pdos[0] = {layout_.motor_tx_pdo_index,
                       static_cast<unsigned int>(layout_.pdo_joint_count * 5),
                       pdo_->motor_tx_entries.data()};
@@ -162,10 +244,11 @@ void Master::build_pdo_configuration() {
                                     : 0),
       layout_.has_touch_pdo ? pdo_->touch_tx_entries.data() : nullptr};
   const unsigned int tx_pdo_count = layout_.has_touch_pdo ? 2U : 1U;
+  const unsigned int rx_pdo_count =
+      layout_.extra_rx_pdo_entry_count > 0 ? 2U : 1U;
   pdo_->syncs[0] = {kSm0, EC_DIR_OUTPUT, 0, nullptr, EC_WD_DISABLE};
   pdo_->syncs[1] = {kSm1, EC_DIR_INPUT, 0, nullptr, EC_WD_DISABLE};
-  pdo_->syncs[2] = {kSm2, EC_DIR_OUTPUT,
-                    static_cast<unsigned int>(pdo_->rx_pdos.size()),
+  pdo_->syncs[2] = {kSm2, EC_DIR_OUTPUT, rx_pdo_count,
                     pdo_->rx_pdos.data(), EC_WD_ENABLE};
   pdo_->syncs[3] = {kSm3, EC_DIR_INPUT, tx_pdo_count,
                     pdo_->tx_pdos.data(), EC_WD_DISABLE};
@@ -180,6 +263,7 @@ bool Master::initialize(std::string *error) {
   if (!initialize_sdo(error)) {
     return false;
   }
+  apply_detected_pdo_layout();
   if (!is_valid_pdo_layout(layout_)) {
     if (error != nullptr) {
       *error = std::string("invalid PDO layout: ") +

@@ -20,6 +20,7 @@ constexpr std::size_t kTouchPacketCapacity = 200;
 constexpr std::uint16_t kDefaultDcAssignActivate = 0x0300;
 
 constexpr std::uint16_t kRxPdoMotorControlIndex = 0x1600;
+constexpr std::uint16_t kRxPdoMotorControlEchoIndex = 0x1601;
 constexpr std::uint16_t kTxPdoMotorDataIndex = 0x1A00;
 constexpr std::uint16_t kTxPdoTouchSensorDataIndex = 0x1A01;
 constexpr std::uint16_t kSm2AssignmentIndex = 0x1C12;
@@ -68,9 +69,10 @@ constexpr std::uint16_t kMotorTravelMaxArrayIndex = 0x900C;
 constexpr std::uint16_t kMotorSpeedMinArrayIndex = 0x900D;
 constexpr std::uint16_t kMotorSpeedMaxArrayIndex = 0x900E;
 
-constexpr std::size_t kOutputProcessDataSize = 230;
+constexpr std::size_t kOutputProcessDataSize = 234;
 constexpr std::size_t kMotorInputProcessDataSize = 276;
 constexpr std::size_t kTouchInputProcessDataSize = 404;
+constexpr std::size_t kRxPdoMotorControlEchoEntryCount = 2;
 
 constexpr std::size_t kOutputVelocityOffset = 0;
 constexpr std::size_t kOutputPositionOffset = 46;
@@ -91,6 +93,8 @@ constexpr std::size_t kTouchDataOffset = 4;
 struct PdoLayout {
   const char *name;
   std::uint16_t rx_pdo_index;
+  std::uint16_t extra_rx_pdo_index;
+  std::size_t extra_rx_pdo_entry_count;
   std::uint16_t motor_tx_pdo_index;
   std::uint16_t touch_tx_pdo_index;
   bool has_touch_pdo;
@@ -131,6 +135,9 @@ constexpr bool pdo_range_fits(std::size_t offset, std::size_t count,
 constexpr bool is_valid_pdo_layout(const PdoLayout &layout) {
   return layout.name != nullptr && layout.rx_pdo_index != 0 &&
          layout.motor_tx_pdo_index != 0 && layout.pdo_joint_count > 0 &&
+         (layout.extra_rx_pdo_entry_count == 0 ||
+          (layout.extra_rx_pdo_index != 0 &&
+           layout.extra_rx_pdo_entry_count <= layout.pdo_joint_count)) &&
          layout.pdo_joint_count <= kPdoJointCount &&
          layout.motor_count <= layout.pdo_joint_count &&
          layout.motor_count <= kMotorCount &&
@@ -182,6 +189,7 @@ constexpr bool is_valid_pdo_layout(const PdoLayout &layout) {
 constexpr PdoLayout default_pdo_layout_value() {
   return {
       "stark3_etc_drive_fixed", kRxPdoMotorControlIndex,
+      kRxPdoMotorControlEchoIndex, kRxPdoMotorControlEchoEntryCount,
       kTxPdoMotorDataIndex, kTxPdoTouchSensorDataIndex, true,
       kPdoJointCount, kMotorCount, kTouchPacketCapacity,
       kOutputProcessDataSize, kMotorInputProcessDataSize,
@@ -264,6 +272,7 @@ public:
                  std::size_t size, std::uint32_t *abort_code = nullptr);
 
 private:
+  void apply_detected_pdo_layout();
   void build_pdo_configuration();
   void sync_distributed_clocks(std::uint64_t application_time_ns);
   void read_process_data();
