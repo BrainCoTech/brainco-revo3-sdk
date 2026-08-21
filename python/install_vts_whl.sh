@@ -32,7 +32,7 @@ case "$OS" in
       PLATFORM="macosx_11_0_arm64"
     else
       echo "Warning: VTS SDK (pyvitaisdk4bc) is not natively supported on macOS x86_64."
-      echo "You can still run the GUI in --mock mode (e.g., python main.py --mock revo3-vision)."
+      echo "You can still run the standalone VisionTouch window with its built-in mock fallback."
       exit 1
     fi
     ;;
@@ -85,7 +85,7 @@ PIP_CMD="$PYTHON_CMD -m pip"
 # Do not probe `pip install --help` here: on some Windows terminals, pip's rich
 # help renderer can fail before installation starts. PEP 668 environments can
 # pass this explicitly, for example:
-#   PIP_FLAGS="--break-system-packages" sh scripts/install_vts_whl.sh
+#   PIP_FLAGS="--break-system-packages" bash python/install_vts_whl.sh
 PIP_FLAGS="${PIP_FLAGS:-}"
 
 install_from_local_wheel() {

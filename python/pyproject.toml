@@ -1,18 +1,26 @@
 [project]
 name = "revo3-examples"
-version = "1.5.1"
+version = "2.0.0rc3"
 description = "BrainCo Revo3 SDK Python Examples"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "bc-revo3-sdk>=1.5.1",
+    "bc-revo3-sdk>=2.0.0rc3,<3",
     "colorlog>=6.9.0",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+gui = [
     "numpy<2.0.0",
     "PySide6>=6.5.0",
     "pyqtgraph>=0.13.0",
-    # "PyOpenGL>=3.1.5", # Optional: Only required for VisionTouch (Device 22) 3D point cloud visualization
-    "pyserial>=3.5",
     "qasync>=0.24.0",
+]
+vision-touch = [
+    "opencv-python>=4.8.0",
+    # PyOpenGL is only required for the optional 3D point-cloud view.
+    # Install the platform-specific vision tactile runtime separately.
 ]
 
 [tool.setuptools]

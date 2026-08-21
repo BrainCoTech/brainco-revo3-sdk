@@ -46,10 +46,12 @@ This example must run on a Linux EtherCAT host. macOS can edit or cross-check
 the source tree, but it cannot run the IgH kernel master or create
 `/dev/EtherCAT0`.
 
-For Ubuntu kernels in the Linux 6.x series, use the latest stable IgH 1.6.x
-release or the latest `stable-1.6` branch when rebuilding kernel modules for
-the active kernel. The runtime kernel shown by `uname -r` must match the
-directory where the IgH modules are installed.
+The validated baseline is IgH EtherCAT master 1.6.x on Ubuntu with a Linux 6.x
+kernel. When building from the `stable-1.6` branch, record the exact upstream
+commit together with the kernel version in the validation report; a moving
+branch name is not a reproducible dependency. Other IgH releases and branches
+require target-host validation. The runtime kernel shown by `uname -r` must
+match the directory where the IgH modules are installed.
 
 Minimal IgH runtime checks:
 
@@ -184,6 +186,20 @@ demo runs `J1,J5,J9,J13,J16,J20` together, then `J1`, `J5`, `J9`, `J13`, `J16`,
 and `J20` one group at a time, then repeats from the full hand until
 interrupted.
 
+`MotorCommand` and `MotorFeedback` expose the fixed PDO words without unit
+conversion. Their fields therefore use the `_raw` suffix (`position_raw`,
+`velocity_raw`, `current_raw`, `kp_raw`, `kd_raw`, `status_raw`, and
+`error_raw`). Convert these values according to the firmware PDO contract
+before presenting physical units to an application.
+
+The header provides checked conversion helpers for application boundaries:
+`position_raw_to_deg` / `position_deg_to_raw`, `velocity_raw_to_rpm` /
+`velocity_rpm_to_raw`, `current_raw_to_ma` / `current_ma_to_raw`, and
+`gain_raw_to_value` / `gain_value_to_raw`. Encoding rejects non-finite and
+out-of-range inputs instead of silently wrapping or saturating them. Touch PDO
+payload conversion remains layout-specific and is not covered by these motor
+helpers.
+
 Motor indices accepted by the demo are `0..20`. The fixed EtherCAT PDO has
 23 channels; channels 21 and 22 remain available through `MotorCommand` for
 future firmware use.
@@ -224,14 +240,14 @@ ethercat pdos -p 0
 Expected full-touch SII/PDO information includes SM2 `DefaultSize=230`, SM3
 `DefaultSize=680`, and TxPDO `0x1A01` with touch packet metadata plus the
 `0x7007:01..0x7007:C8` payload entries. Upstream IgH `stable-1.6` and
-`stable-1.7` define `EC_MAX_SII_SIZE` as 4096 words in `master/globals.h` to
-avoid unbounded SII scans. If the Revo3 SII is larger than that limit, an
-unpatched master can stop before the touch PDO category and fail to expose
-SM3/`0x1A01` completely. Raising the local IgH limit, for example to 16384
-words, can make this host read the complete SII and enter OP, but that is a
-host-side patch. For firmware intended for customers or other EtherCAT
-masters, prefer a smaller default SII/PDO layout or confirm that the target
-master accepts the full SII size.
+`stable-1.7` define `EC_MAX_SII_SIZE` as 4096 words (8192 bytes, or 8 KiB) in
+`master/globals.h` to avoid unbounded SII scans. If the Revo3 SII is larger
+than that limit, an unpatched master can stop before the touch PDO category
+and fail to expose SM3/`0x1A01` completely. Raising the local IgH limit, for
+example to 16384 words (32768 bytes, or 32 KiB), can make this host read the
+complete SII and enter OP, but that is a host-side patch. For firmware intended
+for customers or other EtherCAT masters, prefer a smaller default SII/PDO
+layout or confirm that the target master accepts the full SII size.
 
 ## SDO
 

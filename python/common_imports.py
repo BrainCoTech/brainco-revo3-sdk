@@ -12,12 +12,11 @@ from logger import getLogger
 
 logger = getLogger(logging.INFO)
 
+
 try:
     from bc_revo3_sdk import main_mod as sdk
-    libstark = sdk
 except ImportError:
     sdk = None
-    libstark = None
     logger.error("bc_revo3_sdk not found. Install: pip install bc-revo3-sdk")
 
 
@@ -35,23 +34,18 @@ def int_to_baudrate(value: int):
     if sdk is None:
         return None
 
+    baud_cls = getattr(sdk, "Rs485Baudrate", None)
     baudrate_map = {
-        1000000: sdk.Baudrate.Baud1Mbps,
-        2000000: sdk.Baudrate.Baud2Mbps,
-        3000000: sdk.Baudrate.Baud3Mbps,
-        5000000: sdk.Baudrate.Baud5Mbps,
+        1000000: baud_cls.Baud1Mbps,
+        2000000: baud_cls.Baud2Mbps,
+        3000000: baud_cls.Baud3Mbps,
+        5000000: baud_cls.Baud5Mbps,
     }
     if value in baudrate_map:
         return baudrate_map[value]
 
-    if hasattr(sdk.Baudrate, "from_int"):
-        try:
-            return sdk.Baudrate.from_int(value)
-        except Exception:
-            pass
-
     try:
-        return sdk.Baudrate(value)
+        return baud_cls(value)
     except Exception:
         pass
 
@@ -71,90 +65,65 @@ def baudrate_to_int(baudrate) -> int:
     """Convert a Baudrate enum to the actual bps value."""
     if sdk is None:
         return 0
-    if baudrate == sdk.Baudrate.Baud1Mbps:
+    baud_cls = getattr(sdk, "Rs485Baudrate", None)
+    if baudrate == baud_cls.Baud1Mbps:
         return 1000000
-    elif baudrate == sdk.Baudrate.Baud2Mbps:
+    elif baudrate == baud_cls.Baud2Mbps:
         return 2000000
-    elif baudrate == sdk.Baudrate.Baud3Mbps:
+    elif baudrate == baud_cls.Baud3Mbps:
         return 3000000
-    elif baudrate == sdk.Baudrate.Baud5Mbps:
+    elif baudrate == baud_cls.Baud5Mbps:
         return 5000000
     return 0
-
-
-async def modbus_open(port_name: str, baudrate):
-    """Open a Revo3 Modbus connection, accepting int or Baudrate enum."""
-    check_sdk()
-    baudrate_enum = int_to_baudrate(baudrate) if isinstance(baudrate, int) else baudrate
-    return await sdk.modbus_open(port_name, baudrate_enum)
 
 
 def get_protocol_display_name(protocol_type) -> str:
     """Return a human-readable protocol name."""
     if sdk is None:
         return "Unknown"
-    if protocol_type == sdk.StarkProtocolType.Modbus:
+    if protocol_type == sdk.ProtocolType.Modbus:
         return "Modbus (RS485)"
-    elif protocol_type == sdk.StarkProtocolType.CanFd:
+    elif protocol_type == sdk.ProtocolType.CanFd:
         return "CANFD"
-    elif protocol_type == sdk.StarkProtocolType.EtherCAT:
-        return "EtherCAT"
     return str(protocol_type)
 
 
-def revo3_uses_motor_api(hw_type) -> bool:
-    """Check if a hardware type is a Revo3 device."""
+def revo3_uses_motor_api(model) -> bool:
+    """Return whether the model is supported by the current Revo3 runtime."""
     if sdk is None:
         return False
-    return hw_type in (
-        sdk.StarkHardwareType.Revo3Ultra,
-        sdk.StarkHardwareType.Revo3UltraTouch,
-        sdk.StarkHardwareType.Revo3UltraVisionTouch,
-        sdk.StarkHardwareType.Revo3Pro,
-        sdk.StarkHardwareType.Revo3ProTouch,
-        sdk.StarkHardwareType.Revo3Basic,
-        sdk.StarkHardwareType.Revo3BasicTouch,
+    return model in (
+        sdk.Revo3Model.Ultra,
+        sdk.Revo3Model.UltraTouch,
+        sdk.Revo3Model.UltraVisionTouch,
+        sdk.Revo3Model.Pro,
+        sdk.Revo3Model.ProTouch,
+        sdk.Revo3Model.Basic,
+        sdk.Revo3Model.BasicTouch,
     )
 
 
-def uses_revo3_motor_api(hw_type) -> bool:
-    """Compatibility alias used by the GUI panels."""
-    return revo3_uses_motor_api(hw_type)
-
-
-def has_touch(hw_type) -> bool:
-    """Return whether a Revo3 hardware type has touch capability."""
+def has_vision_tactile(model) -> bool:
+    """Return whether a Revo3 product model has VisionTouch capability."""
     if sdk is None:
         return False
-    return hw_type in (
-        sdk.StarkHardwareType.Revo3UltraTouch,
-        sdk.StarkHardwareType.Revo3UltraVisionTouch,
-        sdk.StarkHardwareType.Revo3ProTouch,
-        sdk.StarkHardwareType.Revo3BasicTouch,
-    )
+    return model == sdk.Revo3Model.UltraVisionTouch
 
 
-def has_vision_tactile(hw_type) -> bool:
-    """Return whether a Revo3 hardware type has VisionTouch capability."""
-    if sdk is None:
-        return False
-    return hw_type == sdk.StarkHardwareType.Revo3UltraVisionTouch
-
-
-def get_hw_type_name(hw_type) -> str:
+def get_model_name(model) -> str:
     """Return a Revo3 hardware display name."""
     if sdk is None:
         return "Unknown"
     descriptions = {
-        "Revo3Ultra": "Revo3 Ultra (21 DoF)",
-        "Revo3UltraTouch": "Revo3 Ultra Touch (21 DoF)",
-        "Revo3UltraVisionTouch": "Revo3 Ultra Vision Touch (21 DoF)",
-        "Revo3Pro": "Revo3 Pro (16 DoF)",
-        "Revo3ProTouch": "Revo3 Pro Touch (16 DoF)",
-        "Revo3Basic": "Revo3 Basic (13 DoF)",
-        "Revo3BasicTouch": "Revo3 Basic Touch (13 DoF)",
+        "Ultra": "Revo3 Ultra (21 DoF)",
+        "UltraTouch": "Revo3 Ultra Touch (21 DoF)",
+        "UltraVisionTouch": "Revo3 Ultra Vision Touch (21 DoF)",
+        "Pro": "Revo3 Pro (16 DoF)",
+        "ProTouch": "Revo3 Pro Touch (16 DoF)",
+        "Basic": "Revo3 Basic (13 DoF)",
+        "BasicTouch": "Revo3 Basic Touch (13 DoF)",
     }
-    name = str(hw_type) if hasattr(hw_type, "int_value") else ""
+    name = str(model) if hasattr(model, "int_value") else ""
     if name in descriptions:
         return descriptions[name]
 
@@ -167,8 +136,8 @@ def get_hw_type_name(hw_type) -> str:
         26: "Revo3 Basic (13 DoF)",
         27: "Revo3 Basic Touch (13 DoF)",
     }
-    value = hw_type if isinstance(hw_type, int) else -1
-    return value_names.get(value, str(hw_type))
+    value = model if isinstance(model, int) else -1
+    return value_names.get(value, str(model))
 
 
 def run_async(coro_or_fn, raise_exception: bool = False):

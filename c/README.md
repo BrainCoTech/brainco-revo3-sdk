@@ -1,19 +1,67 @@
-# Revo3 C++ Examples
+# Revo3 C and C++ Examples
 
-These examples use the C ABI from `dist/include/stark-sdk.h` in C++ programs.
-They are Revo3-only and cover Modbus, CANFD auto-detect, motor control, touch data, and buffered monitoring.
+The public C ABI header is C11 compatible. C++ examples require a C++17
+compliant compiler or newer and use the RAII wrapper from
+`dist/include/revo3/revo3.hpp`. They are Revo3-only and cover Modbus and CANFD
+discovery, device operations, motion, state, and touch data.
 
 The independent Linux EtherCAT example under `platform/linux/revo3_ec` uses
 IgH `libethercat` directly and does not depend on the Rust SDK shared library.
+
+`tests/revo3_c_contract.c` and `tests/revo3_cpp_contract.cpp` provide
+compile-time ABI and wrapper checks. Together with the C++ examples, every
+exported C symbol has compile-time evidence. This does not claim that every
+hardware effect has passed on-device validation; use the staged hardware
+validation guide for runtime evidence.
 
 ## Build
 
 From the repository root:
 
 ```bash
-sh download-lib.sh
+bash download-lib.sh
 make -C c
 ```
+
+Use `dist/include/revo3-sdk.h` for pure C projects, embedded C projects, and
+cross-language bindings. C++ applications can include `revo3/revo3.hpp` for
+the move-only `revo3::Manager`, `revo3::Hand`, and `revo3::OperationHandle` API.
+The C++ object methods omit the redundant `revo3_` prefix; only C ABI symbols
+retain it.
+
+Minimal C++ usage:
+
+```cpp
+#include <revo3/revo3.hpp>
+
+#include <cstdio>
+
+int main() {
+  try {
+    revo3::Manager manager;
+    auto hand = manager.connect_auto();
+    const auto device_info = hand.device_info();
+    const auto state = hand.state().snapshot();
+    const auto health = hand.health().snapshot();
+    std::printf("Connected to %s with %zu motor values; safety=%u\n",
+                device_info.serial_number.c_str(), state.motors.positions_deg.size(),
+                static_cast<unsigned>(health.safety_state));
+    return 0;
+  } catch (const revo3::SdkError &error) {
+    std::fprintf(stderr, "Revo3 error: %s\n", error.what());
+    return 1;
+  }
+}
+```
+
+Use one of `move_joint()`, `flex_finger()`, or `move_thumb()` instead when the
+application needs a narrower motion scope. The `quickstart` flags demonstrate
+each alternative without starting overlapping motions.
+
+`move_to()` returns immediately with a handle, so the C++ API does not need
+coroutines for the core motion path. A future C++20 async adapter should only be
+added after discovery, subscriptions, cancellation, and executor behavior are
+truly asynchronous end to end.
 
 Build the pure C++ EtherCAT example on Linux:
 
@@ -22,7 +70,7 @@ make -C c/platform/linux/revo3_ec
 ```
 
 Before running it, verify the IgH master, `/dev/EtherCAT0`, and the selected
-NIC with `examples/c/platform/linux/revo3_ec/README.md`.
+NIC with `c/platform/linux/revo3_ec/README.md`.
 
 Run the standalone EtherCAT benchmark:
 
@@ -33,25 +81,33 @@ Run the standalone EtherCAT benchmark:
 
 ## Run
 
-Auto-detect:
+Device discovery and diagnostics:
 
 ```bash
-./c/demo/auto_detect
-./c/demo/auto_detect --stream
-./c/demo/hand_demo
-./c/demo/hand_trajectory
-./c/demo/hand_dfu firmware.bin
-./c/demo/revo3_motor
-./c/demo/revo3_touch
-./c/demo/revo3_monitor
-./c/demo/revo3_servo
-./c/demo/revo3_mit_plan --joint 13 --target 45
+./c/build/demo/quickstart
+./c/build/demo/multi_hand
+./c/build/demo/device_operations
+./c/build/demo/touch_sensor
+./c/build/demo/touch_hybrid
+./c/build/demo/streaming_control --move
+./c/build/demo/mit_plan --move
+./c/build/demo/teaching_mode --move
+./c/build/diagnostics/collision_detection --run
 ```
 
-`--stream` uses `revo3_auto_detect_start()` and prints each device as soon as
-it is found. Add `--stop-on-first` for quick-connect behavior, `--verbose` to
-show SDK scan logs, or `--modbus-baudrate 5000000` to probe one known Modbus
-baudrate. By default, CANFD auto-detect tries data baudrates in order:
+`collision_detection` enables experimental SDK-side collision detection and
+moves one joint. It exits without connecting or moving unless `--run` is
+provided; use `--joint` and `--target` to select the test motion.
+
+`touch_hybrid` requires a confirmed `hp_*` + `mt_*` hardware layout. It changes
+only the current SDK session's parsing layout by default. Pass `--test-tare`
+only when changing touch calibration state is intended.
+
+Device discovery stops after the first match by default. Add `--scan-all` to
+scan every candidate. `--stream` uses `revo3_auto_detect_start()` and prints
+devices as they are found; combine it with `--scan-all` to stream every match.
+Add `--verbose` to show SDK scan logs, or `--modbus-baudrate 5000000` to probe
+one known Modbus baudrate. By default, CANFD auto-detect tries data baudrates in order:
 `5M`, `4M`, `2M`, `1M` on adapters that support them. BrainCo USB2CANFD
 supports only `5M`; add `--canfd-data-baudrate 2000000` to probe only one
 known CANFD data baudrate on compatible adapters.
@@ -63,7 +119,7 @@ struct ScanState {
   bool selected = false;
 };
 
-bool on_device_found(const CDetectedDevice *device, void *user_data) {
+bool on_device_found(const CRevo3DetectedDevice *device, void *user_data) {
   auto *state = static_cast<ScanState *>(user_data);
   std::printf("Found %s slave=%u\n", device->port_name, device->slave_id);
   state->selected = true;
@@ -74,7 +130,7 @@ ScanState state;
 Revo3AutoDetectHandle *scan = revo3_auto_detect_start(
     true,
     nullptr,
-    STARK_PROTOCOL_TYPE_AUTO,
+    REVO3_PROTOCOL_TYPE_AUTO,
     0,
     0,
     0,
@@ -86,13 +142,13 @@ revo3_auto_detect_join(scan);
 revo3_auto_detect_free_handle(scan);
 ```
 
-The `CDetectedDevice` pointer passed to the callback is valid only during the
+The `CRevo3DetectedDevice` pointer passed to the callback is valid only during the
 callback. Copy fields you need before returning.
 
-Pass a non-zero `slave_id` to `revo3_auto_detect_start()` or
-`stark_auto_detect()` to probe only one known slave ID. Pass `0` to probe the
-default Revo3 IDs. Pass a non-zero `modbus_baudrate`, such as `5000000`, to
-probe only one known Modbus baudrate; pass `0` to probe the default list.
+Pass a non-zero `slave_id` to `revo3_auto_detect_start()` to probe only one
+known slave ID. Pass `0` to probe the default Revo3 IDs. Pass a non-zero
+`modbus_baudrate`, such as `5000000`, to probe only one known Modbus baudrate;
+pass `0` to probe the default list.
 Pass a non-zero `canfd_data_baudrate`, such as `2000000`, to probe only one
 known CANFD data baudrate; pass `0` to probe the default CANFD data baudrate
 list (`5M`, `4M`, `2M`, `1M`).
@@ -104,7 +160,7 @@ immediately:
 Revo3AutoDetectHandle *scan = revo3_auto_detect_start(
     false,
     nullptr,
-    STARK_PROTOCOL_TYPE_AUTO,
+    REVO3_PROTOCOL_TYPE_AUTO,
     0,
     0,
     0,
@@ -118,41 +174,18 @@ revo3_auto_detect_join(scan);
 revo3_auto_detect_free_handle(scan);
 ```
 
-Manual Modbus:
+## Troubleshooting & Serial Port Cleanup
+
+If `connect_auto` or device scanner fails with `Failed to open ... at 5000000 bps: Invalid argument` or `No Revo3 device detected`, it typically indicates an active background process (e.g. from a previously killed shell or interrupted debug session) holding an open handle on the physical serial port `/dev/tty.usbserial-*`.
+
+To inspect and release the occupied serial port:
 
 ```bash
-./c/demo/hand_demo --modbus /dev/ttyUSB0 5000000 1
-./c/demo/hand_trajectory --modbus /dev/ttyUSB0 5000000 1
-./c/demo/hand_dfu --modbus /dev/ttyUSB0 5000000 1 firmware.bin
-./c/demo/revo3_motor --modbus /dev/ttyUSB0 5000000 1
-./c/demo/revo3_touch --modbus /dev/ttyUSB0 5000000 1
-./c/demo/revo3_monitor --modbus /dev/ttyUSB0 5000000 1
-./c/demo/revo3_servo --modbus /dev/ttyUSB0 5000000 1
-./c/demo/revo3_mit_plan --modbus /dev/ttyUSB0 5000000 1 \
-  --target 80 --duration 0.8 --repeat 1 --frequency 100 --kp 3 --kd 0.3
+# 1. Find process holding the serial port
+lsof /dev/tty.usbserial*
+
+# 2. Terminate the zombie process
+kill -9 <PID>
 ```
 
-`revo3_mit_plan` reads initial positions, streams MIT position and velocity targets
-generated by a 5th-order quintic formula (full hand followed by sequential per-finger),
-and clears gains on completion or interruption.
-
-The examples intentionally avoid legacy transports and APIs.
-
-## Zero Position
-
-There are two separate APIs for zero-position calibration:
-1. `revo3_set_zero_position`: Writes explicit offset values in degrees for all 21 motors to registers 60~80, and registers them to take effect.
-2. `revo3_set_current_position_as_zero`: Registers the current feedback positions as zero (register 81).
-   * **Recommended Workflow**: Disable motors -> manually pose the hand -> enable motors -> call this API to lock in the zero pose.
-
-```cpp
-// 1. Set explicit offsets
-float offsets_deg[21] = {0.0f};
-revo3_set_zero_position(handle, slave_id, offsets_deg);
-
-// 2. Set current position as zero (requires clamping/posing)
-// Step 1: Disable motors
-// Step 2: Manually pose hand to zero-reference
-// Step 3: Enable motors
-revo3_set_current_position_as_zero(handle, slave_id);
-```
+Always ensure `hand.close()` and `manager.close()` are called on application exit, and handle `SIGINT` (Ctrl+C) signals appropriately to release underlying OS file descriptors cleanly.

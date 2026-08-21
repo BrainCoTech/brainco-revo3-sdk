@@ -21,6 +21,7 @@ class I18n(QObject):
             return
         super().__init__()
         self._initialized = True
+        # Keep the historical application key so existing GUI preferences survive SDK upgrades.
         self._settings = QSettings("BrainCo", "StarkSDK")
         # Load saved language preference, default to "en"
         saved_lang = self._settings.value("language", "en")
@@ -47,7 +48,7 @@ class I18n(QObject):
         return translations.get(key, key)
 
 
-# English translations
+# English translations aligned with SDK 2.x public API & models
 TRANSLATIONS_EN = {
     # Main window
     "app_title": "BC Revo3 SDK GUI",
@@ -68,12 +69,11 @@ TRANSLATIONS_EN = {
         "BC Revo3 SDK GUI Tool\n\n"
         "Supported Protocols:\n"
         "- Modbus/RS485\n"
-        "- CANFD\n"
-        "- EtherCAT\n\n"
+        "- CANFD\n\n"
         "Supported Devices:\n"
-        "- Revo3 Basic/Touch\n"
-        "- Revo3 Pro/Touch\n"
-        "- Revo3 Ultra/Touch/Vision Touch\n\n"
+        "- Revo3 Basic / Revo3 Basic Touch\n"
+        "- Revo3 Pro / Revo3 Pro Touch\n"
+        "- Revo3 Ultra / Revo3 Ultra Touch / Revo3 Ultra VisionTouch\n\n"
         "© 2026 BrainCo"
     ),
 
@@ -81,14 +81,14 @@ TRANSLATIONS_EN = {
     "connection_settings": "Connection Settings",
     "connection_info": "Connection Info",
     "protocol": "Protocol",
-    "modbus_params": "Modbus Parameters",
+    "modbus_params": "RS485 Parameters",
     "serial_port": "Serial Port",
     "port": "Port",
     "baudrate": "Baudrate",
     "baud": "Baud",
     "slave_id": "Slave ID",
     "id": "ID",
-    "can_params": "CAN Parameters",
+    "can_params": "CANFD Parameters",
     "adapter": "Adapter",
     "channel": "Channel",
     "btn_connect": "Connect",
@@ -102,15 +102,15 @@ TRANSLATIONS_EN = {
     # Motor control panel
     "motor_control": "Motor Control",
     "motor_control_v3": "Motor Control",
-    "v3_motor_config": "Motor Config",
+    "v3_motor_config": "Joint Configuration",
     "control_mode": "Control Mode",
     "mode": "Mode",
     "mode_position": "Position",
-    "mode_speed": "Speed",
-    "or_speed": "or Speed",
-    "speed_priority_tooltip": "If > 0, speed API will override T(ms)",
+    "mode_speed": "Velocity",
+    "or_speed": "or Velocity",
+    "speed_priority_tooltip": "If > 0, velocity profile will override duration (ms)",
     "mode_current": "Current",
-    "mode_torque": "Torque Control",
+    "mode_torque": "Torque",
     "finger_control": "Finger Control",
     "finger_thumb": "Thumb",
     "finger_index": "Index",
@@ -130,20 +130,26 @@ TRANSLATIONS_EN = {
     "btn_enable_touch": "Enable Touch",
     "btn_calibrate": "Calibrate",
     "btn_reset": "Reset",
-    "btn_read_touch_settings": "Read Enable State",
-    "btn_read_matrix_module_sns": "Read SN",
-    "btn_read_matrix_point_counts": "Read Points",
-    "btn_read_matrix_output_mode": "Read Module Value Type",
-    "btn_read_matrix_tare_status": "Read Tare State",
-    "btn_touch_zero_calibrate": "Zero Calibration",
-    "btn_touch_zero_cancel": "Zero Cancel",
-    "btn_pressure_zero": "Pressure Zero",
-    "btn_pressure_force_clear": "Regional Force Zero",
-    "btn_pressure_force_restore": "Restore Regional Force",
+    "btn_read_touch_enabled": "Read Enable State",
+    "btn_read_touch_snapshot": "Read Snapshot",
+    "btn_enable_all_touch": "Enable All",
+    "btn_disable_all_touch": "Disable All",
+    "btn_read_module_sns": "Read SN",
+    "btn_read_point_counts": "Read Point Counts",
+    "btn_read_mode": "Read Value Mode",
+    "btn_read_mt_mode": "Read MT Value Mode",
+    "btn_read_tare_status": "Read Tare State",
+    "btn_touch_tare": "Tare",
+    "btn_touch_tare_all": "Tare All Touch Modules",
+    "touch_value_mode": "Touch Value Mode:",
+    "mt_touch_value_mode": "MT Touch Value Mode:",
+    "btn_touch_tare_cancel": "Cancel Tare",
+    "btn_tare": "Tare",
+    "btn_touch_zero_calibrate": "Tare",
+    "btn_touch_zero_cancel": "Cancel Tare",
     "finger_selection": "Finger Selection",
     "touch_data": "Touch Data",
-    "pressure_touch": "Pressure Touch",
-    "normal_force": "Normal Force",
+    "mt_touch": "mt_* Touch",
     "tangential_force": "Tangential Force",
     "proximity": "Proximity",
     "status": "Status",
@@ -169,15 +175,6 @@ TRANSLATIONS_EN = {
         "• May require re-calibration after reset\n\n"
         "This operation cannot be undone."
     ),
-    "dialog_pressure_force_restore_title": "Confirm Regional Force Restore",
-    "dialog_pressure_force_restore_all_message": (
-        "Restore regional force factory settings for all Pressure Touch modules?\n\n"
-        "This operation cannot be undone."
-    ),
-    "dialog_pressure_force_restore_module_message": (
-        "Restore regional force factory settings for Pressure Touch module {module_id}?\n\n"
-        "This operation cannot be undone."
-    ),
 
     # Data collection panel
     "data_collection": "Data Collection",
@@ -187,7 +184,8 @@ TRANSLATIONS_EN = {
     "save_path": "Save Path",
     "data_types": "Data Types",
     "motor_status": "Motor Status",
-    "touch_data_type": "Touch Data",
+    "touch_read_mode": "Touch Read Mode",
+    "touch_layout": "Touch Layout:",
     "btn_start_collection": "Start Collection",
     "btn_stop_collection": "Stop Collection",
     "collection_status": "Collection Status",
@@ -203,10 +201,19 @@ TRANSLATIONS_EN = {
 
     # System config panel
     "system_config": "System Config",
+    "system_overview": "Overview",
+    "motor_health_summary": "Motor Health",
+    "show_motor_details": "Show 21-motor details",
+    "motor_online_summary": "Online: {count}/21",
+    "motor_online_summary_unavailable": "Online: --/21",
+    "motor_max_temp_summary": "Max temperature: {value} °C",
+    "motor_fault_summary": "Faults: {count}",
+    "motor_fault_summary_unavailable": "Faults: --",
+    "touch_firmware_unavailable": "{families}: version reading unsupported",
     "device_info": "Device Info",
     "serial_number": "Serial Number",
     "firmware_version": "Firmware Version",
-    "hardware_type": "Hardware Type",
+    "model": "Product Model",
     "slave_id_settings": "Slave ID Settings",
     "new_slave_id": "New Slave ID",
     "system_control": "System Control",
@@ -214,7 +221,7 @@ TRANSLATIONS_EN = {
     "btn_factory_reset": "Factory Reset",
     "operation_log": "Operation Log",
     "confirm": "Confirm",
-    "confirm_factory_reset": "Are you sure to factory reset? This cannot be undone!",
+    "confirm_factory_reset": "Are you sure you want to factory reset? This cannot be undone!",
     "confirm_reboot": "Are you sure you want to reboot the device?\n\nThis will temporarily disconnect the current connection.",
     "reboot_info_msg": "The device is rebooting.\n\nThe system will automatically attempt to reconnect once it is ready.",
     "log_setting_slave_id": "Setting slave ID to {id}...",
@@ -268,9 +275,8 @@ TRANSLATIONS_EN = {
     "latency": "Latency",
     "packets": "Packets",
     "errors": "Errors",
-    "speed": "Speed",
+    "speed": "Velocity",
     "touch_force": "Touch Force",
-    "hand_visualization": "Hand Visualization",
 
     # Timing test panel
     "timing_test": "Timing Test",
@@ -329,9 +335,9 @@ TRANSLATIONS_EN = {
     "dfu_starting": "Starting upgrade...",
     "dfu_completed": "Upgrade completed",
     "dfu_failed": "Upgrade failed",
-    "note_modbus_ota_requires_0_0_4": "Note: Modbus OTA is only supported on firmware version >= 0.0.4. Older versions must use CANFD or legacy tools.",
+    "note_modbus_ota_requires_0_0_4": "Note: Modbus OTA is only supported on firmware version >= 0.0.4. Older versions must use CANFD.",
 
-    # Missing DFU keys
+    # DFU state strings
     "dfu_state_idle": "Idle",
     "dfu_state_starting": "Starting",
     "dfu_state_started": "Started",
@@ -384,13 +390,12 @@ TRANSLATIONS_EN = {
     "turbo_interval": "Interval (ms)",
     "turbo_duration": "Duration (ms)",
     "position_calibration": "Position Calibration",
-    "auto_calibration": "Auto Calibration on Power-up",
+    "auto_calibration": "Power-on Auto Calibration",
     "manual_calibration": "Manual Calibration",
     "force_level": "Force Level",
     "force_small": "Small",
     "force_normal": "Normal",
     "force_full": "Full",
-    "unit_mode": "Unit Mode",
     "unit_normalized": "Normalized (0-1000)",
     "unit_physical": "Physical (degrees/mA)",
     "peripheral_settings": "Peripheral Settings",
@@ -400,20 +405,20 @@ TRANSLATIONS_EN = {
     "refresh_settings": "Refresh Settings",
 
     # Communication settings
-    "modbus_baudrate": "Modbus/RS485 Baudrate",
-    "canfd_baudrate": "CANFD Data Baudrate",
+    "modbus_baudrate": "RS485 Baudrate",
+    "canfd_baudrate": "CANFD Baudrate",
     "current_settings": "Current Settings",
     "confirm_baudrate_change": "Confirm Baudrate Change",
     "device_will_reboot": "Device will reboot after change.",
 
     # Finger settings
     "finger_settings": "Finger Settings",
-    "protected_currents": "Protected Currents",
+    "protected_currents": "Protect Currents",
     "min_position": "Min Position",
     "max_position": "Max Position",
-    "max_speed": "Max Speed",
+    "max_speed": "Max Velocity",
     "max_current": "Max Current",
-    "protected_current": "Protected Current",
+    "protected_current": "Protect Current",
     "apply": "Apply",
     "apply_all": "Apply All",
     "finger_thumb_base": "Thumb Base",
@@ -422,12 +427,12 @@ TRANSLATIONS_EN = {
     # Revo3 Motor Settings
     "revo3_runtime": "Runtime",
     "runtime_flags": "Runtime Flags",
-    "protection": "Protection",
+    "protection": "Safety Protection",
     "refresh_status_info": "Refresh Status & Info",
     "v3_settings": "⚙ Settings",
 
-    "v3_position_limits": "Position Limits",
-    "v3_speed_limits": "Speed Limits",
+    "v3_position_limits": "Joint Position Limits",
+    "v3_speed_limits": "Joint Speed Limits",
     "v3_joint_protect_current": "Joint Protect Current",
     "v3_global_settings": "Global Settings",
     "v3_global_protect_current": "Global Protect Current",
@@ -435,27 +440,28 @@ TRANSLATIONS_EN = {
     "v3_read_parameters": "Read Parameters",
     "btn_apply": "Apply",
     "btn_set": "Set",
-    "v3_joint_pos_limits": "Joint Pos Limits (°)",
+    "v3_joint_pos_limits": "Joint Position Limits (°)",
     "v3_joint_speed_limits": "Joint Speed Limits (rpm)",
-    "v3_calibration_current": "Calibration Current (A)",
-    "v3_max_continuous_current": "Max Continuous Current (A)",
-    "v3_auto_calibration": "Enable Auto Calibration",
+    "v3_calibration_current": "Calibration Current (mA)",
+    "v3_max_continuous_current": "Max Continuous Current (mA)",
+    "v3_auto_calibration": "Power-on Auto Calibration",
+    "v3_auto_clear_motor_faults": "Auto Clear Motor Faults",
     "v3_manual_calibration": "🔧 Manual Calibration",
-    "v3_clear_errors": "🗑 Clear Motor Errors",
+    "v3_clear_faults": "🗑 Clear Motor Faults",
     "btn_open": "Open",
     "btn_close": "Close",
     "btn_run_finger": "▶ Run Finger",
-    "v3_hw_type": "Hardware Type",
-    "v3_hw": "Hardware",
-    "v3_fw": "Firmware",
-    "v3_sn": "Serial No.",
+    "v3_model": "Product Model",
+    "v3_hw": "Hardware Revision",
+    "v3_fw": "Firmware Version",
+    "v3_sn": "Serial Number",
     "v3_sku": "SKU",
-    "v3_touch_vendor": "Touch Vendor",
+    "v3_touch_layout": "Touch Layout",
     "v3_online": "Online Nodes",
     "v3_offline": "Offline Nodes",
     "v3_temp": "Max Temp",
     "v3_errors": "Error Nodes",
-    "v3_max_temp": "Max",
+    "v3_max_temp": "Max Temp",
     "v3_overheat": "Overheat!",
     "v3_warm": "Warm",
     "v3_no_errors": "No Errors",
@@ -464,8 +470,8 @@ TRANSLATIONS_EN = {
     "mode_impedance": "Impedance",
     "mode_damping": "Damping",
     "mode_mit": "MIT",
-    "mode_trajectory": "Trajectory Planning",
-    "communication": "Communication",
+    "mode_trajectory": "Trajectory",
+    "communication": "Communication Settings",
     "revo3_status": "Status",
 
     "system_state": "System State",
@@ -497,18 +503,18 @@ TRANSLATIONS_EN = {
     "timing_triangle": "Triangle",
 
     # System Config
-    "config_modbus": "Modbus",
+    "config_modbus": "Modbus/RS485",
     "config_revo3_status": "Status",
 
     "v3_reset_finger_defaults": "↩ Reset Finger Defaults",
     "v3_touch_screen": "Touch Screen",
     "v3_teaching_mode": "🎓 Teaching Mode",
-    "v3_software_e_stop": "🛑 Software E-Stop",
+    "v3_software_e_stop": "🛑 Software Stop",
     "v3_use_broadcast_id": "Use Broadcast ID",
-    "v3_motor_error_log": "Motor Error Log",
+    "v3_motor_fault_log": "Motor Fault Log",
     "v3_diagnostics": "📊 Hardware Diagnostics",
     "v3_diag_read": "Read Info",
-    "v3_motor_status_info": "Motor Status",
+    "v3_motor_status_info": "Motor Status Info",
 
     # Teaching panel
     "teaching_mode": "Teaching Mode",
@@ -537,19 +543,19 @@ TRANSLATIONS_EN = {
     "collision_strat_softstop": "Soft Stop",
     "collision_strat_zeroforce": "Zero Force",
     "collision_strat_holdactual": "Hold Position",
-    "collision_err_deg": "Err(deg):",
-    "collision_cur_ma": "Cur(mA):",
-    "collision_debounce": "Debounce:",
-    "collision_cache": "Cache:",
-    "collision_auto_clear": "Auto clear:",
+    "collision_err_deg": "Position Error (°):",
+    "collision_cur_ma": "Current (mA):",
+    "collision_debounce": "Debounce (ms):",
+    "collision_cache": "Cache (ms):",
+    "collision_auto_clear": "Auto Clear (ms):",
     "btn_apply": "Apply",
     "btn_reset_collision": "Reset Collision",
-    "collision_status_prefix": "Collision",
+    "collision_status_prefix": "Collision Status",
     "collision_status_enabled": "enabled",
     "collision_status_disabled": "disabled",
     "collision_status_unsupported": "unsupported",
     "collision_status_sdk_unsupported": "SDK unsupported",
-    "collision_status_active": "Collision active",
+    "collision_status_active": "Collision Active",
     "vision_touch_tab": "VisionTouch",
     "vision_touch_sensor": "VisionTouch Sensor",
     "vts_overview": "Overview",
@@ -558,10 +564,15 @@ TRANSLATIONS_EN = {
     "vts_marker": "Marker",
     "vts_images": "Images",
     "vts_slip_detection": "Slip Detection",
+
+    # FPS
+    "fps_motor_prefix": "Motor",
+    "fps_touch_prefix": "Touch",
+    "fps_ui_prefix": "GUI Update Rate",
 }
 
 
-# Chinese translations
+# Chinese translations aligned with SDK 2.x public API & models
 TRANSLATIONS_ZH = {
     # Main window
     "app_title": "BC Revo3 SDK 控制台",
@@ -582,31 +593,30 @@ TRANSLATIONS_ZH = {
         "BC Revo3 SDK 图形界面工具\n\n"
         "支持协议:\n"
         "- Modbus/RS485\n"
-        "- CANFD\n"
-        "- EtherCAT\n\n"
+        "- CANFD\n\n"
         "支持设备:\n"
-        "- Revo3 Basic/Touch\n"
-        "- Revo3 Pro/Touch\n"
-        "- Revo3 Ultra/Touch/Vision Touch\n\n"
+        "- Revo3 Basic / Revo3 Basic Touch\n"
+        "- Revo3 Pro / Revo3 Pro Touch\n"
+        "- Revo3 Ultra / Revo3 Ultra Touch / Revo3 Ultra VisionTouch\n\n"
         "© 2026 BrainCo"
     ),
 
     # Connection Panel
     "connection_settings": "连接设置",
     "connection_info": "连接信息",
-    "protocol": "协议",
-    "modbus_params": "Modbus 参数",
-    "serial_port": "串口",
+    "protocol": "通信协议",
+    "modbus_params": "RS485 参数",
+    "serial_port": "串口端口",
     "port": "端口",
     "baudrate": "波特率",
     "baud": "波特率",
-    "slave_id": "从站ID",
+    "slave_id": "从机 ID",
     "id": "ID",
-    "can_params": "CAN 参数",
+    "can_params": "CANFD 参数",
     "adapter": "适配器",
     "channel": "通道",
     "btn_connect": "连接",
-    "btn_disconnect": "断开",
+    "btn_disconnect": "断开连接",
     "btn_auto_detect": "🔍 自动检测",
     "status_connecting": "连接中...",
     "status_connect_failed": "连接失败",
@@ -619,11 +629,11 @@ TRANSLATIONS_ZH = {
     "v3_motor_config": "关节参数配置",
     "control_mode": "控制模式",
     "mode": "模式",
-    "mode_position": "位置",
-    "mode_speed": "速度",
-    "or_speed": "或 Speed",
-    "speed_priority_tooltip": "如果大于0，则优先使用速度规划（覆盖T）",
-    "mode_current": "电流",
+    "mode_position": "位置控制",
+    "mode_speed": "速度控制",
+    "or_speed": "或速度 (rpm)",
+    "speed_priority_tooltip": "如果大于 0，则优先使用速度规划（覆盖时间周期）",
+    "mode_current": "电流控制",
     "mode_torque": "力矩控制",
     "finger_control": "手指控制",
     "finger_thumb": "拇指",
@@ -644,20 +654,26 @@ TRANSLATIONS_ZH = {
     "btn_enable_touch": "启用触觉",
     "btn_calibrate": "校准",
     "btn_reset": "复位",
-    "btn_read_touch_settings": "读取使能状态",
-    "btn_read_matrix_module_sns": "读取SN",
-    "btn_read_matrix_point_counts": "读取点数",
-    "btn_read_matrix_output_mode": "读取模块值类型",
-    "btn_read_matrix_tare_status": "读取零漂状态",
-    "btn_touch_zero_calibrate": "校准零漂",
-    "btn_touch_zero_cancel": "取消零漂",
-    "btn_pressure_zero": "压力清零",
-    "btn_pressure_force_clear": "区域合力清零",
-    "btn_pressure_force_restore": "区域合力恢复出厂",
+    "btn_read_touch_enabled": "读取使能状态",
+    "btn_read_touch_snapshot": "读取快照",
+    "btn_enable_all_touch": "全部启用",
+    "btn_disable_all_touch": "全部停用",
+    "btn_read_module_sns": "读取SN",
+    "btn_read_point_counts": "读取点数",
+    "btn_read_mode": "读取数值模式",
+    "btn_read_mt_mode": "读取 MT 数值模式",
+    "btn_read_tare_status": "读取清零状态",
+    "btn_touch_tare": "清零",
+    "btn_touch_tare_all": "全部触觉清零",
+    "touch_value_mode": "触觉数值模式：",
+    "mt_touch_value_mode": "MT 触觉数值模式：",
+    "btn_touch_tare_cancel": "取消清零",
+    "btn_tare": "清零",
+    "btn_touch_zero_calibrate": "清零",
+    "btn_touch_zero_cancel": "取消清零",
     "finger_selection": "手指选择",
     "touch_data": "触觉数据",
-    "pressure_touch": "压力触觉",
-    "normal_force": "法向力",
+    "mt_touch": "mt_* 触觉",
     "tangential_force": "切向力",
     "proximity": "接近值",
     "status": "状态",
@@ -683,15 +699,6 @@ TRANSLATIONS_ZH = {
         "• 复位后可能需要重新校准\n\n"
         "此操作无法撤销。"
     ),
-    "dialog_pressure_force_restore_title": "确认区域合力恢复出厂",
-    "dialog_pressure_force_restore_all_message": (
-        "确定要恢复所有 Pressure Touch 模块的区域合力出厂设置吗？\n\n"
-        "此操作无法撤销。"
-    ),
-    "dialog_pressure_force_restore_module_message": (
-        "确定要恢复 Pressure Touch 模块 {module_id} 的区域合力出厂设置吗？\n\n"
-        "此操作无法撤销。"
-    ),
 
     # Data Collection Panel
     "data_collection": "数据采集",
@@ -701,7 +708,8 @@ TRANSLATIONS_ZH = {
     "save_path": "保存路径",
     "data_types": "数据类型",
     "motor_status": "电机状态",
-    "touch_data_type": "触觉数据",
+    "touch_read_mode": "触觉读取模式",
+    "touch_layout": "触觉布局:",
     "btn_start_collection": "开始采集",
     "btn_stop_collection": "停止采集",
     "collection_status": "采集状态",
@@ -717,12 +725,21 @@ TRANSLATIONS_ZH = {
 
     # System Config Panel
     "system_config": "系统配置",
+    "system_overview": "概览",
+    "motor_health_summary": "电机健康摘要",
+    "show_motor_details": "显示 21 路电机明细",
+    "motor_online_summary": "在线：{count}/21",
+    "motor_online_summary_unavailable": "在线：--/21",
+    "motor_max_temp_summary": "最高温度：{value} °C",
+    "motor_fault_summary": "故障：{count}",
+    "motor_fault_summary_unavailable": "故障：--",
+    "touch_firmware_unavailable": "{families}：不支持版本读取",
     "device_info": "设备信息",
-    "serial_number": "序列号",
+    "serial_number": "设备序列号",
     "firmware_version": "固件版本",
-    "hardware_type": "硬件类型",
-    "slave_id_settings": "从站ID设置",
-    "new_slave_id": "新从站ID",
+    "model": "产品型号",
+    "slave_id_settings": "从机ID设置",
+    "new_slave_id": "新从机ID",
     "system_control": "系统控制",
     "btn_reboot": "重启设备",
     "btn_factory_reset": "恢复出厂设置",
@@ -731,9 +748,9 @@ TRANSLATIONS_ZH = {
     "confirm_factory_reset": "确定要恢复出厂设置吗？此操作不可撤销！",
     "confirm_reboot": "确定要重启设备吗？\n\n这将暂时断开当前的连接。",
     "reboot_info_msg": "设备正在重启。\n\n系统将在设备就绪后自动尝试重新连接。",
-    "log_setting_slave_id": "设置从站ID为 {id}...",
-    "log_slave_id_set": "从站ID已设置为 {id}",
-    "log_slave_id_failed": "设置从站ID失败: {error}",
+    "log_setting_slave_id": "设置从机ID为 {id}...",
+    "log_slave_id_set": "从机ID已设置为 {id}",
+    "log_slave_id_failed": "设置从机ID失败: {error}",
     "log_rebooting": "重启设备...",
     "log_rebooted": "设备已重启",
     "log_reboot_failed": "重启失败: {error}",
@@ -777,14 +794,13 @@ TRANSLATIONS_ZH = {
     "time_window": "时间窗口",
     "update_rate": "更新频率",
     "control": "控制",
-    "statistics": "统计",
-    "frequency": "频率",
-    "latency": "延迟",
-    "packets": "数据包",
-    "errors": "错误",
-    "speed": "速度",
-    "touch_force": "触觉力",
-    "hand_visualization": "手部可视化",
+    "statistics": "统计信息",
+    "frequency": "采样频率",
+    "latency": "通信延迟",
+    "packets": "数据包数",
+    "errors": "错误计数",
+    "speed": "角速度",
+    "touch_force": "触觉受力",
 
     # Timing Test Panel
     "timing_test": "时序测试",
@@ -823,29 +839,29 @@ TRANSLATIONS_ZH = {
     "test_failed": "测试失败",
 
     # DFU Panel
-    "dfu_upgrade": "固件升级",
+    "dfu_upgrade": "固件升级 (DFU)",
     "dfu_warning_title": "⚠ 固件升级注意事项",
-    "dfu_warning_1": "1. 升级过程中请勿断开电源或USB线",
+    "dfu_warning_1": "1. 升级过程中请勿断开电源或通信线缆",
     "dfu_warning_2": "2. 升级过程中请勿操作设备",
     "dfu_warning_3": "3. 升级完成后设备将自动重启",
     "device_type": "设备类型",
     "current_firmware": "当前固件",
-    "firmware_type": "固件类型",
+    "firmware_type": "固件目标",
     "firmware_file": "固件文件",
     "btn_browse": "浏览...",
     "dfu_status_waiting": "等待开始",
     "dfu_status_idle": "状态: 空闲",
     "btn_start_upgrade": "🚀 开始升级",
     "btn_reset_state": "🔄 重置状态",
-    "dfu_reset_tooltip": "如果DFU卡住显示'dfu is not available'，点击此按钮重置",
+    "dfu_reset_tooltip": "如果 DFU 状态异常，点击此按钮重置状态",
     "dfu_progress": "升级进度",
     "dfu_select_file": "请选择固件文件",
     "dfu_starting": "开始升级...",
     "dfu_completed": "升级完成",
     "dfu_failed": "升级失败",
-    "note_modbus_ota_requires_0_0_4": "注意: Modbus OTA 仅支持 >= 0.0.4 版本的固件。老版本必须使用 CANFD 或旧版工具进行升级。",
+    "note_modbus_ota_requires_0_0_4": "注意: Modbus OTA 仅支持 >= 0.0.4 版本的固件。老版本必须使用 CANFD 进行升级。",
 
-    # Missing DFU keys
+    # DFU state strings
     "dfu_state_idle": "空闲",
     "dfu_state_starting": "启动中",
     "dfu_state_started": "已启动",
@@ -870,7 +886,7 @@ TRANSLATIONS_ZH = {
     "dfu_success_short": "✅ 升级成功，设备将自动重启",
     "dfu_failed_short": "❌ 升级失败",
     "dfu_reset_success_title": "成功",
-    "dfu_reset_success_msg": "DFU状态已重置，可以重新开始升级",
+    "dfu_reset_success_msg": "DFU 状态已重置，可以重新开始升级",
     "dfu_reset_fail_msg": "重置失败: {error}",
     "dfu_state_reset": "状态已重置",
 
@@ -904,7 +920,6 @@ TRANSLATIONS_ZH = {
     "force_small": "小",
     "force_normal": "中",
     "force_full": "大",
-    "unit_mode": "单位模式",
     "unit_normalized": "归一化 (0-1000)",
     "unit_physical": "物理单位 (度/mA)",
     "peripheral_settings": "外设设置",
@@ -914,8 +929,8 @@ TRANSLATIONS_ZH = {
     "refresh_settings": "刷新设置",
 
     # Communication settings
-    "modbus_baudrate": "Modbus/RS485 波特率",
-    "canfd_baudrate": "CANFD 数据波特率",
+    "modbus_baudrate": "RS485 波特率",
+    "canfd_baudrate": "CANFD 波特率",
     "current_settings": "当前设置",
     "confirm_baudrate_change": "确认波特率更改",
     "device_will_reboot": "更改后设备将重启。",
@@ -940,9 +955,9 @@ TRANSLATIONS_ZH = {
     "refresh_status_info": "刷新状态与信息",
     "v3_settings": "⚙ 设置",
 
-    "v3_position_limits": "位置限制",
-    "v3_speed_limits": "速度限制",
-    "v3_joint_protect_current": "单关节保护电流",
+    "v3_position_limits": "关节位置限制",
+    "v3_speed_limits": "关节速度限制",
+    "v3_joint_protect_current": "关节保护电流",
     "v3_global_settings": "全局设置",
     "v3_global_protect_current": "全局保护电流",
     "v3_auto_refresh": "自动刷新 (3s)",
@@ -951,33 +966,34 @@ TRANSLATIONS_ZH = {
     "btn_set": "设置",
     "v3_joint_pos_limits": "关节位置限制 (°)",
     "v3_joint_speed_limits": "关节速度限制 (rpm)",
-    "v3_calibration_current": "校准电流 (A)",
-    "v3_max_continuous_current": "最大持续电流 (A)",
+    "v3_calibration_current": "校准电流 (mA)",
+    "v3_max_continuous_current": "最大持续电流 (mA)",
     "v3_auto_calibration": "开机自动校准",
+    "v3_auto_clear_motor_faults": "自动清除电机故障",
     "v3_manual_calibration": "🔧 手动校准",
-    "v3_clear_errors": "🗑 清除电机错误",
+    "v3_clear_faults": "🗑 清除电机故障",
     "btn_open": "张开",
     "btn_close": "闭合",
     "btn_run_finger": "▶ 运行手指",
-    "v3_hw_type": "硬件类型",
+    "v3_model": "产品型号",
     "v3_hw": "硬件版本",
     "v3_fw": "固件版本",
     "v3_sn": "设备序列号",
     "v3_sku": "SKU",
-    "v3_touch_vendor": "触觉类型",
+    "v3_touch_layout": "触觉布局",
     "v3_online": "在线节点",
     "v3_offline": "离线节点",
     "v3_temp": "最高温度",
     "v3_errors": "故障节点",
-    "v3_max_temp": "最高",
+    "v3_max_temp": "最高温度",
     "v3_overheat": "过热！",
     "v3_warm": "偏高",
     "v3_no_errors": "无错误",
 
     # Modes
-    "mode_impedance": "阻抗",
-    "mode_damping": "阻尼",
-    "mode_mit": "MIT",
+    "mode_impedance": "阻抗模式",
+    "mode_damping": "阻尼模式",
+    "mode_mit": "MIT 阻抗",
     "mode_trajectory": "轨迹规划",
     "communication": "通信设置",
     "revo3_status": "状态",
@@ -988,20 +1004,20 @@ TRANSLATIONS_ZH = {
     "voltage_v": "电压 (V)",
     "power_w": "功率 (W)",
     "temperature_c": "温度 (°C)",
-    "motor_info": "马达信息",
-    "motor_id": "马达 ID",
-    "motor": "马达",
+    "motor_info": "电机信息",
+    "motor_id": "电机 ID",
+    "motor": "电机",
 
     "timing_step": "阶跃",
 
     # Touch Sensor Panel
     "touch_summary": "总览",
     "touch_palm": "手掌",
-    "touch_thumb": "大拇指",
+    "touch_thumb": "拇指",
     "touch_index": "食指",
     "touch_middle": "中指",
     "touch_ring": "无名指",
-    "touch_pinky": "小拇指",
+    "touch_pinky": "小指",
 
     # Timing Test
     "timing_control": "控制",
@@ -1011,18 +1027,18 @@ TRANSLATIONS_ZH = {
     "timing_triangle": "三角波",
 
     # System Config
-    "config_modbus": "Modbus",
+    "config_modbus": "Modbus/RS485",
     "config_revo3_status": "状态",
 
-    "v3_reset_finger_defaults": "↩ 恢复参数默认值",
+    "v3_reset_finger_defaults": "↩ 恢复手指默认参数",
     "v3_touch_screen": "触屏功能",
     "v3_teaching_mode": "🎓 示教模式",
-    "v3_software_e_stop": "🛑 软件急停",
+    "v3_software_e_stop": "🛑 软件停止",
     "v3_use_broadcast_id": "使用广播ID",
-    "v3_motor_error_log": "电机错误日志",
+    "v3_motor_fault_log": "电机故障日志",
     "v3_diagnostics": "📊 硬件诊断",
     "v3_diag_read": "读取信息",
-    "v3_motor_status_info": "马达状态信息",
+    "v3_motor_status_info": "电机状态信息",
 
     # Teaching panel
     "teaching_mode": "示教模式",
@@ -1045,17 +1061,17 @@ TRANSLATIONS_ZH = {
 
     # Collision Protection
     "collision_protection": "碰撞保护",
-    "collision_src_hybrid": "混合检测",
-    "collision_src_hardware": "仅硬件检测",
-    "collision_src_software": "仅软件检测",
-    "collision_strat_softstop": "软停止",
-    "collision_strat_zeroforce": "零阻力释放",
-    "collision_strat_holdactual": "锁定当前位置",
-    "collision_err_deg": "误差(度):",
-    "collision_cur_ma": "电流(mA):",
-    "collision_debounce": "防抖时间:",
-    "collision_cache": "缓存时间:",
-    "collision_auto_clear": "自动释放:",
+    "collision_src_hybrid": "混合检测 (Hybrid)",
+    "collision_src_hardware": "仅硬件检测 (HardwareOnly)",
+    "collision_src_software": "仅软件检测 (SoftwareOnly)",
+    "collision_strat_softstop": "软停止 (SoftStop)",
+    "collision_strat_zeroforce": "零阻力释放 (ZeroForce)",
+    "collision_strat_holdactual": "保持当前位置 (HoldActualPosition)",
+    "collision_err_deg": "位置误差 (°):",
+    "collision_cur_ma": "电流 (mA):",
+    "collision_debounce": "防抖时间 (ms):",
+    "collision_cache": "缓存时间 (ms):",
+    "collision_auto_clear": "自动释放 (ms):",
     "btn_apply": "应用",
     "btn_reset_collision": "复位碰撞",
     "collision_status_prefix": "碰撞状态",
@@ -1072,6 +1088,11 @@ TRANSLATIONS_ZH = {
     "vts_marker": "标记点",
     "vts_images": "红外图像",
     "vts_slip_detection": "防滑检测",
+
+    # FPS
+    "fps_motor_prefix": "电机",
+    "fps_touch_prefix": "触觉",
+    "fps_ui_prefix": "GUI 更新频率",
 }
 
 

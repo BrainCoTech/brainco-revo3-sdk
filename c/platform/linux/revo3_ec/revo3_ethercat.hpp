@@ -2,8 +2,11 @@
 #define REVO3_ETHERCAT_HPP
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 struct ec_domain;
@@ -48,7 +51,6 @@ constexpr std::uint16_t kMotorSnObjectIndexBase = 0x8004;
 constexpr std::uint16_t kMotorVersionObjectIndex = 0x8019;
 constexpr std::uint16_t kMotorSystemParamsObjectIndex = 0x801A;
 constexpr std::uint16_t kHandTypeObjectIndex = 0x801B;
-constexpr std::uint16_t kTouchVendorObjectIndex = 0x801C;
 
 constexpr std::uint16_t kPositionZeroCommandIndex = 0x8802;
 constexpr std::uint16_t kFactoryResetCommandIndex = 0x8803;
@@ -90,6 +92,69 @@ constexpr std::size_t kTouchIndexOffset = 0;
 constexpr std::size_t kTouchLengthOffset = 2;
 constexpr std::size_t kTouchDataOffset = 4;
 
+namespace detail {
+
+inline float signed_raw_to_value(std::uint16_t raw, float scale) {
+  const std::int32_t signed_value =
+      raw <= static_cast<std::uint16_t>(std::numeric_limits<std::int16_t>::max())
+          ? static_cast<std::int32_t>(raw)
+          : static_cast<std::int32_t>(raw) - 0x10000;
+  return static_cast<float>(signed_value) / scale;
+}
+
+inline std::uint16_t value_to_signed_raw(float value, float scale) {
+  if (!std::isfinite(value)) {
+    throw std::invalid_argument("EtherCAT physical value must be finite");
+  }
+  const double scaled = std::round(static_cast<double>(value) * scale);
+  if (scaled < std::numeric_limits<std::int16_t>::min() ||
+      scaled > std::numeric_limits<std::int16_t>::max()) {
+    throw std::out_of_range("EtherCAT physical value exceeds int16 PDO range");
+  }
+  return static_cast<std::uint16_t>(static_cast<std::int16_t>(scaled));
+}
+
+} // namespace detail
+
+inline float position_raw_to_deg(std::uint16_t raw) {
+  return detail::signed_raw_to_value(raw, 100.0f);
+}
+
+inline std::uint16_t position_deg_to_raw(float position_deg) {
+  return detail::value_to_signed_raw(position_deg, 100.0f);
+}
+
+inline float velocity_raw_to_rpm(std::uint16_t raw) {
+  return detail::signed_raw_to_value(raw, 100.0f);
+}
+
+inline std::uint16_t velocity_rpm_to_raw(float velocity_rpm) {
+  return detail::value_to_signed_raw(velocity_rpm, 100.0f);
+}
+
+inline float current_raw_to_ma(std::uint16_t raw) {
+  return detail::signed_raw_to_value(raw, 1.0f);
+}
+
+inline std::uint16_t current_ma_to_raw(float current_ma) {
+  return detail::value_to_signed_raw(current_ma, 1.0f);
+}
+
+inline float gain_raw_to_value(std::uint16_t raw) {
+  return static_cast<float>(raw) / 100.0f;
+}
+
+inline std::uint16_t gain_value_to_raw(float gain) {
+  if (!std::isfinite(gain) || gain < 0.0f) {
+    throw std::invalid_argument("EtherCAT gain must be finite and non-negative");
+  }
+  const double scaled = std::round(static_cast<double>(gain) * 100.0);
+  if (scaled > std::numeric_limits<std::uint16_t>::max()) {
+    throw std::out_of_range("EtherCAT gain exceeds uint16 PDO range");
+  }
+  return static_cast<std::uint16_t>(scaled);
+}
+
 struct PdoLayout {
   const char *name;
   std::uint16_t rx_pdo_index;
@@ -119,7 +184,7 @@ struct PdoLayout {
   std::size_t motor_velocity_offset;
   std::size_t motor_position_offset;
   std::size_t motor_current_offset;
-  std::size_t motor_error_offset;
+  std::size_t motor_faults_offset;
   std::size_t touch_index_offset;
   std::size_t touch_length_offset;
   std::size_t touch_data_offset;
@@ -168,7 +233,7 @@ constexpr bool is_valid_pdo_layout(const PdoLayout &layout) {
          pdo_range_fits(layout.motor_current_offset, layout.pdo_joint_count,
                         sizeof(std::uint16_t),
                         layout.motor_input_process_data_size) &&
-         pdo_range_fits(layout.motor_error_offset, layout.pdo_joint_count,
+         pdo_range_fits(layout.motor_faults_offset, layout.pdo_joint_count,
                         sizeof(std::uint32_t),
                         layout.motor_input_process_data_size) &&
          (!layout.has_touch_pdo ||
@@ -218,19 +283,19 @@ void sleep_until_monotonic_ns(std::uint64_t target_time_ns);
 bool enable_realtime(int priority, std::string *error = nullptr);
 
 struct MotorCommand {
-  std::array<std::uint16_t, kPdoJointCount> velocity{};
-  std::array<std::uint16_t, kPdoJointCount> position{};
-  std::array<std::uint16_t, kPdoJointCount> current{};
-  std::array<std::uint16_t, kPdoJointCount> kp{};
-  std::array<std::uint16_t, kPdoJointCount> kd{};
+  std::array<std::uint16_t, kPdoJointCount> velocity_raw{};
+  std::array<std::uint16_t, kPdoJointCount> position_raw{};
+  std::array<std::uint16_t, kPdoJointCount> current_raw{};
+  std::array<std::uint16_t, kPdoJointCount> kp_raw{};
+  std::array<std::uint16_t, kPdoJointCount> kd_raw{};
 };
 
 struct MotorFeedback {
-  std::array<std::uint16_t, kPdoJointCount> status{};
-  std::array<std::uint16_t, kPdoJointCount> velocity{};
-  std::array<std::uint16_t, kPdoJointCount> position{};
-  std::array<std::uint16_t, kPdoJointCount> current{};
-  std::array<std::uint32_t, kPdoJointCount> error{};
+  std::array<std::uint16_t, kPdoJointCount> status_raw{};
+  std::array<std::uint16_t, kPdoJointCount> velocity_raw{};
+  std::array<std::uint16_t, kPdoJointCount> position_raw{};
+  std::array<std::uint16_t, kPdoJointCount> current_raw{};
+  std::array<std::uint32_t, kPdoJointCount> error_raw{};
 };
 
 struct TouchPacket {

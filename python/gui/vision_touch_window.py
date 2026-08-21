@@ -32,7 +32,7 @@ MOCK_MODE = False
 try:
     from pyvitaisdk import VTSensor, VTSDeviceFinder, VTSDataType, VTSError, VTSensorType
     HAS_VITAI_SDK = True
-    print("✅ Using real pyvitaisdk")
+    print("✅ Using optional vts_* runtime")
 except ImportError:
     HAS_VITAI_SDK = False
     try:
@@ -45,8 +45,8 @@ except ImportError:
                 VTSensor, VTSDeviceFinder, VTSDataType, VTSError, VTSensorType
             )
         MOCK_MODE = True
-        print("⚠ pyvitaisdk not found, using Mock Device")
-        print("Install real SDK with: bash python/install_vts_whl.sh")
+        print("⚠ Optional vts_* runtime not found, using Mock Device")
+        print("See python/gui/README.md for runtime setup")
     except ImportError:
         print("❌ Error: Neither real nor mock VisionTouch available")
         VTSensor = None

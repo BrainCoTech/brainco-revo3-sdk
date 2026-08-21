@@ -306,10 +306,10 @@ bool Master::initialize(std::string *error) {
         static_cast<std::uint8_t>(i + 1), bytes.data(), bytes.size(),
         &result_size, &abort_code);
     if (result != 0 || result_size != bytes.size()) {
-      command_.position[i] = 0;
+      command_.position_raw[i] = 0;
       continue;
     }
-    command_.position[i] = EC_READ_U16(bytes.data());
+    command_.position_raw[i] = EC_READ_U16(bytes.data());
   }
   outputs_initialized_ = true;
 
@@ -474,16 +474,16 @@ void Master::sync_distributed_clocks(std::uint64_t application_time_ns) {
 void Master::read_process_data() {
   const std::uint8_t *motor = domain_data_ + motor_input_offset_;
   for (std::size_t i = 0; i < layout_.pdo_joint_count; ++i) {
-    feedback_.status[i] =
+    feedback_.status_raw[i] =
         EC_READ_U16(motor + layout_.motor_status_offset + i * 2);
-    feedback_.velocity[i] =
+    feedback_.velocity_raw[i] =
         EC_READ_U16(motor + layout_.motor_velocity_offset + i * 2);
-    feedback_.position[i] =
+    feedback_.position_raw[i] =
         EC_READ_U16(motor + layout_.motor_position_offset + i * 2);
-    feedback_.current[i] =
+    feedback_.current_raw[i] =
         EC_READ_U16(motor + layout_.motor_current_offset + i * 2);
-    feedback_.error[i] =
-        EC_READ_U32(motor + layout_.motor_error_offset + i * 4);
+    feedback_.error_raw[i] =
+        EC_READ_U32(motor + layout_.motor_faults_offset + i * 4);
   }
   if (layout_.has_touch_pdo) {
     const std::uint8_t *touch = domain_data_ + touch_input_offset_;
@@ -504,13 +504,13 @@ void Master::write_process_data() {
   std::uint8_t *output = domain_data_ + output_offset_;
   for (std::size_t i = 0; i < layout_.pdo_joint_count; ++i) {
     EC_WRITE_U16(output + layout_.output_velocity_offset + i * 2,
-                 command_.velocity[i]);
+                 command_.velocity_raw[i]);
     EC_WRITE_U16(output + layout_.output_position_offset + i * 2,
-                 command_.position[i]);
+                 command_.position_raw[i]);
     EC_WRITE_U16(output + layout_.output_current_offset + i * 2,
-                 command_.current[i]);
-    EC_WRITE_U16(output + layout_.output_kp_offset + i * 2, command_.kp[i]);
-    EC_WRITE_U16(output + layout_.output_kd_offset + i * 2, command_.kd[i]);
+                 command_.current_raw[i]);
+    EC_WRITE_U16(output + layout_.output_kp_offset + i * 2, command_.kp_raw[i]);
+    EC_WRITE_U16(output + layout_.output_kd_offset + i * 2, command_.kd_raw[i]);
   }
 }
 

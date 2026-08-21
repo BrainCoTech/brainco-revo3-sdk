@@ -1,4 +1,4 @@
-"""Revo3 data collection panel, matching the legacy GUI workflow."""
+"""Revo3 data collection panel for the current GUI workflow."""
 
 import time
 from datetime import datetime
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .constants import REVO3_MOTOR_COUNT
+from .constants import REVO3_ULTRA_JOINT_COUNT
 from .i18n import tr
 
 if TYPE_CHECKING:
@@ -82,7 +82,7 @@ class CollectorWorker(QObject):
             headers = ["index"]
             if self.collect_motor:
                 for prefix in ("status", "pos", "vel", "cur", "err"):
-                    headers.extend(f"{prefix}_{i}" for i in range(REVO3_MOTOR_COUNT))
+                    headers.extend(f"{prefix}_{i}" for i in range(REVO3_ULTRA_JOINT_COUNT))
             if self.collect_touch:
                 headers.extend(f"touch_summary_{i}" for i in range(42))
             f.write(",".join(headers) + "\n")
@@ -91,14 +91,14 @@ class CollectorWorker(QObject):
                 row = [str(idx)]
                 if self.collect_motor:
                     values = [
-                        list(getattr(motor, "statuses", []) or []),
+                        list(getattr(motor, "operating_states", []) or []),
                         list(getattr(motor, "positions", []) or []),
                         list(getattr(motor, "velocities", []) or []),
                         list(getattr(motor, "currents", []) or []),
-                        list(getattr(motor, "errors", []) or []),
+                        list(getattr(motor, "fault_codes", []) or []),
                     ]
                     for arr in values:
-                        row.extend(str(arr[i] if i < len(arr) else 0) for i in range(REVO3_MOTOR_COUNT))
+                        row.extend(str(arr[i] if i < len(arr) else 0) for i in range(REVO3_ULTRA_JOINT_COUNT))
                 if self.collect_touch:
                     if touch_data:
                         t_idx = min(idx * len(touch_data) // max(1, len(motor_data)), len(touch_data) - 1)

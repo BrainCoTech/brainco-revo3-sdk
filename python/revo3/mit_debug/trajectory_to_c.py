@@ -1,4 +1,4 @@
-"""Convert trajectory JSON (from revo3_teaching.py) to a C header file.
+"""Convert trajectory JSON from teaching_mode.py to a C header file.
 
 The generated header contains a static array that firmware can directly
 include and use in its control loop, bypassing SDK and communication stack.
@@ -65,7 +65,7 @@ def generate_header(frames, motor_count, freq, source_file):
     lines.append(" * Usage in firmware:")
     lines.append(" *   #include \"trajectory_data.h\"")
     lines.append(" *   for (int i = 0; i < TRAJ_FRAME_COUNT; i++) {")
-    lines.append(f" *       set_motor_positions(TRAJ_DATA[i], {motor_count});")
+    lines.append(f" *       set_joint_positions(TRAJ_DATA[i], {motor_count});")
     lines.append(f" *       delay_ms({dt_ms if dt_ms else 'TRAJ_DT_MS'});")
     lines.append(" *   }")
     lines.append(" */")

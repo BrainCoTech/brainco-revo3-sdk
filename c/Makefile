@@ -2,86 +2,105 @@
 
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -O2
+CC ?= cc
+CFLAGS ?= -std=c11 -Wall -Wextra -pedantic -O2
 
 ROOT_DIR := ..
 INCLUDE_DIR := $(ROOT_DIR)/dist/include
+CPP_INCLUDE_DIR := $(INCLUDE_DIR)
+BUILD_DIR := build
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
   LIB_DIR := $(ROOT_DIR)/dist/shared/mac
   SDK_LIB := $(LIB_DIR)/libbc_revo3_sdk.dylib
-  RPATH := -Wl,-rpath,@loader_path/../../dist/shared/mac
+  RPATH := -Wl,-rpath,$(abspath $(LIB_DIR))
 else ifeq ($(UNAME_S),Linux)
   LIB_DIR := $(ROOT_DIR)/dist/shared/linux
   SDK_LIB := $(LIB_DIR)/libbc_revo3_sdk.so
-  RPATH := -Wl,-rpath,'$$ORIGIN/../../dist/shared/linux'
+  RPATH := -Wl,-rpath,$(abspath $(LIB_DIR))
 else
   LIB_DIR := $(ROOT_DIR)/dist/shared/win
   SDK_LIB := $(LIB_DIR)/bc_revo3_sdk.dll
   RPATH :=
 endif
 
-INCLUDES := -I$(INCLUDE_DIR)
+INCLUDES := -I$(CPP_INCLUDE_DIR) -I$(INCLUDE_DIR)
 LDFLAGS := -L$(LIB_DIR) -lbc_revo3_sdk $(RPATH)
 
-COMMON_SRC := common/revo3_common.cpp
-TARGETS := demo/auto_detect demo/hand_demo demo/hand_trajectory demo/hand_dfu demo/revo3_motor demo/revo3_touch demo/revo3_monitor demo/revo3_servo demo/revo3_mit_plan demo/revo3_ota_resource demo/revo3_collision_test demo/revo3_feedback_benchmark
+TARGETS := $(BUILD_DIR)/tests/revo3_c_contract $(BUILD_DIR)/tests/revo3_abi_layout $(BUILD_DIR)/tests/revo3_cpp_contract $(BUILD_DIR)/demo/quickstart $(BUILD_DIR)/demo/multi_hand $(BUILD_DIR)/demo/device_operations $(BUILD_DIR)/demo/touch_sensor $(BUILD_DIR)/demo/touch_hybrid $(BUILD_DIR)/demo/streaming_control $(BUILD_DIR)/demo/mit_plan $(BUILD_DIR)/demo/teaching_mode $(BUILD_DIR)/diagnostics/collision_detection
+
+LEGACY_TARGETS := demo/auto_detect demo/hand_demo demo/hand_dfu demo/hand_trajectory demo/revo3_feedback_benchmark demo/revo3_manager_mit_plan demo/revo3_manager_multi_hand demo/revo3_manager_operations demo/revo3_manager_quickstart demo/revo3_manager_teaching demo/revo3_manager_touch demo/revo3_mit_plan demo/revo3_monitor demo/revo3_motor demo/revo3_ota_resource demo/revo3_servo demo/revo3_touch
 
 all: $(TARGETS)
 
-demo/auto_detect: demo/auto_detect.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/tests/revo3_c_contract: tests/revo3_c_contract.c $(INCLUDE_DIR)/revo3-sdk.h $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/hand_demo: demo/hand_demo.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/tests/revo3_abi_layout: tests/revo3_abi_layout.cpp $(INCLUDE_DIR)/revo3-sdk.h
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
-demo/hand_trajectory: demo/hand_trajectory.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/tests/revo3_cpp_contract: tests/revo3_cpp_contract.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(INCLUDE_DIR)/revo3-sdk.h
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
-demo/hand_dfu: demo/hand_dfu.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/diagnostics/collision_detection: diagnostics/collision_detection.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_motor: demo/revo3_motor.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/quickstart: demo/quickstart.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_touch: demo/revo3_touch.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/multi_hand: demo/multi_hand.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_monitor: demo/revo3_monitor.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/device_operations: demo/device_operations.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_servo: demo/revo3_servo.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/touch_sensor: demo/touch_sensor.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_mit_plan: demo/revo3_mit_plan.cpp $(COMMON_SRC) common/revo3_common.h common/revo3_mit_plan.hpp $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/touch_hybrid: demo/touch_hybrid.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_ota_resource: demo/revo3_ota_resource.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/streaming_control: demo/streaming_control.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_collision_test: demo/revo3_collision_test.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/mit_plan: demo/mit_plan.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
-demo/revo3_feedback_benchmark: demo/revo3_feedback_benchmark.cpp $(COMMON_SRC) common/revo3_common.h $(SDK_LIB)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(COMMON_SRC) -o $@ $(LDFLAGS)
+$(BUILD_DIR)/demo/teaching_mode: demo/teaching_mode.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
 
 $(SDK_LIB):
 	@echo "Missing SDK library: $(SDK_LIB)"
-	@echo "Run: sh download-lib.sh"
+	@echo "Run: bash download-lib.sh"
 	@exit 1
 
 clean:
-	rm -f $(TARGETS)
-	rm -rf demo/*.dSYM
+	rm -rf $(BUILD_DIR)
+	rm -f $(LEGACY_TARGETS)
+	rm -rf demo/*.dSYM diagnostics/*.dSYM tests/*.dSYM
 
 help:
 	@echo "Build all C++ Revo3 examples: make -C c"
-	@echo "Run auto detect:             ./c/demo/auto_detect"
-	@echo "Run hand demo:               ./c/demo/hand_demo"
-	@echo "Run DFU demo:                ./c/demo/hand_dfu firmware.bin"
-	@echo "Run motor demo:              ./c/demo/revo3_motor"
-	@echo "Run MIT plan demo:           ./c/demo/revo3_mit_plan --target 45"
-	@echo "Run feedback benchmark:      ./c/demo/revo3_feedback_benchmark --scenario motor --read full-state"
-	@echo "Manual Modbus:               ./c/demo/revo3_motor --modbus /dev/ttyUSB0 5000000 1"
+	@echo "Run Revo3 Quickstart:        ./c/build/demo/quickstart [--port /dev/ttyUSB0] [--move]"
+	@echo "Run Multi-Hand:              ./c/build/demo/multi_hand"
+	@echo "Run Device Operations:       ./c/build/demo/device_operations [--calibrate|--reboot|--firmware FILE]"
+	@echo "Run Touch Sensor:            ./c/build/demo/touch_sensor [--port /dev/ttyUSB0]"
+	@echo "Run Hybrid Touch:            ./c/build/demo/touch_hybrid [port] [--test-tare]"
+	@echo "Run Revo3 Streaming:         ./c/build/demo/streaming_control [port] --move"
+	@echo "Run MIT Plan:                ./c/build/demo/mit_plan [port] --move"
+	@echo "Run Teaching Mode:           ./c/build/demo/teaching_mode [port] --move"
 
 .PHONY: all clean help

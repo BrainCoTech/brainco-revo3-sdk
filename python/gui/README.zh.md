@@ -18,32 +18,35 @@
 ## 安装
 
 ```bash
-uv sync --project examples/python
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install './python[gui]'
 ```
+
+Windows PowerShell 使用 `py -3.10 -m venv .venv` 创建环境，并运行 `.venv\Scripts\Activate.ps1` 激活。
 
 ## 运行
 
 ```bash
-python examples/python/gui/main.py
-python examples/python/gui/main.py --revo3-modbus
-python examples/python/gui/main.py --mock
-python examples/python/gui/main.py --mock revo3-vision
-python examples/python/gui/main.py --mock revo3-matrix-touch
-python examples/python/gui/main.py --touch-vendor matrix
-python examples/python/gui/main.py --vts-force-model-dir examples/python/vts/checkpoints --vts-force-model-mode auto
+python python/gui/main.py
+python python/gui/main.py --revo3-modbus
+python python/gui/main.py --mock
+python python/gui/main.py --mock revo3-vision
+python python/gui/main.py --mock revo3-mx-touch
+python python/gui/main.py --vts-force-model-dir python/vts/checkpoints --vts-force-model-mode auto
 ```
 
-`--mock` 用于 GUI 调试，不连接真实硬件。可选类型包括 `revo3`、`revo3-touch`、`revo3-matrix-touch`、`revo3-vision`、`revo3-pro`、`revo3-pro-touch`、`revo3-basic`、`revo3-basic-touch`。
+`--mock` 用于 GUI 调试，不连接真实硬件。可选类型包括 `revo3`、`revo3-touch`、`revo3-mx-touch`、`revo3-vision`、`revo3-pro`、`revo3-pro-touch`、`revo3-basic`、`revo3-basic-touch`。
 
-连接 Revo3 Ultra VisionTouch 后，主 GUI 会根据硬件类型显示 `VisionTouch` Tab。如果同一只手还上报 Pressure 或 Matrix 触觉，普通 Revo3 触觉 Tab 会同时保留。`Tools` → `VisionTouch Sensor...` 保留为跳转到 VisionTouch Tab 的快捷入口。
+连接 Revo3 Ultra VisionTouch 后，主 GUI 会根据硬件类型显示 `VisionTouch` Tab。如果同一只手还上报 `mt_*` 压阻阵列或 `mx_*` 高密矩阵触觉，普通 Revo3 触觉 Tab 会同时保留。`Tools` → `VisionTouch Sensor...` 保留为跳转到 VisionTouch Tab 的快捷入口。
 
-`--touch-vendor matrix` 或 `--touch-vendor pressure` 只用于旧固件无法上报普通触觉寄存器映射时手动覆盖。它不会启用或禁用 VisionTouch。
+普通 Revo3 触觉界面仅在 `hand.touch.layout` 可用时显示。SDK 无法识别底层寄存器映射时保持 fail-closed，GUI 不提供手动覆盖。
 
 VisionTouch 力模型加载是可选的，默认不加载以减少初始化等待：
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `--vts-force-model-dir` | VTS 力模型父目录：`{dir}/{SN}/{SN}.onnx.enc` | 若存在则自动使用 `examples/python/vts/checkpoints` |
+| `--vts-force-model-dir` | VTS 力模型父目录：`{dir}/{SN}/{SN}.onnx.enc` | 若存在则自动使用 `python/vts/checkpoints` |
 | `--vts-force-model-mode` | `none` = 快速启动不载入力模型，`auto` = 有匹配模型则加载，`required` = 缺模型则跳过对应传感器 | `none` |
 
 只有需要 Force6D 力值时才建议使用 `--vts-force-model-mode auto`。不加载力模型时，图像、深度、Marker 等数据仍可用，初始化更快。
@@ -53,5 +56,5 @@ VisionTouch 力模型加载是可选的，默认不加载以减少初始化等�
 真实 VTS 数据依赖 `pyvitaisdk4bc`：
 
 ```bash
-bash scripts/install_vts_whl.sh
+bash python/install_vts_whl.sh
 ```

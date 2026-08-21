@@ -49,12 +49,12 @@ python revo3/mit_debug/plot_log.py
 ## MIT Control Law
 
 ```
-tau = Kp × (P_ref − P_act) + Kd × (V_ref − V_act) + tau_ff
+u = Kp × (P_ref − P_act) + Kd × (V_ref − V_act) + current_ff
 ```
 
 - **Position** is in degrees (°)
 - **Velocity** is in rpm (converted from trajectory °/s internally)
-- **Current/torque** is in mA
+- **Feedforward current** is in mA; it is not calibrated joint torque in Nm
 
 ## Log Format
 

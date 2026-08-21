@@ -4,6 +4,8 @@ logs/
 ota_bin/
 dist/shared/
 dist/include/
+.bc-revo3-sdk.*
+c/build/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -11,7 +13,6 @@ __pycache__/
 *.dylib
 *.dll
 *.zip
-*.exe
 # Ignore all compiled binaries in c/demo/
 c/demo/*
 !c/demo/Makefile
@@ -21,6 +22,13 @@ c/demo/*
 !c/demo/**/*.hpp
 !c/demo/**/*.c
 !c/demo/**/*.md
+# Ignore compiled engineering diagnostics
+c/diagnostics/*
+!c/diagnostics/**/*.cpp
+!c/diagnostics/**/*.h
+!c/diagnostics/**/*.hpp
+!c/diagnostics/**/*.c
+!c/diagnostics/**/*.md
 # Virtual environments
 .venv/
 venv/
@@ -28,8 +36,6 @@ ENV/
 
 # Python lock files
 uv.lock
-
-# vts
-python/vts/
+python/vts/BC_20260623/
 python/vts/checkpoints/
-python/vts/benchmark/
+python/vts/ViTaiViewer.exe

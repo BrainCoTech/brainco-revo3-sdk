@@ -319,11 +319,6 @@ std::string join_csv(const std::vector<std::string> &values) {
   return stream.str();
 }
 
-bool uses_touch(const Args &args) {
-  return args.scenario == "motor-touch" ||
-         args.read_strategy.find("touch") != std::string::npos;
-}
-
 void apply_control(revo3::ethercat::Master *master, const Args &args,
                    const revo3::ethercat::MotorCommand &base_command,
                    double elapsed_seconds) {
@@ -336,12 +331,12 @@ void apply_control(revo3::ethercat::Master *master, const Args &args,
   const int delta = static_cast<int>(std::lround(args.amplitude * std::sin(phase)));
   const auto update_joint = [&](std::size_t motor) {
     const int target = std::clamp(
-        static_cast<int>(base_command.position[motor]) + delta, 0,
+        static_cast<int>(base_command.position_raw[motor]) + delta, 0,
         static_cast<int>(std::numeric_limits<std::uint16_t>::max()));
-    master->command().position[motor] = static_cast<std::uint16_t>(target);
+    master->command().position_raw[motor] = static_cast<std::uint16_t>(target);
     // Raw gains Kp and Kd are scaled by 100 (e.g. 100 represents Kp=1.0).
-    master->command().kp[motor] = args.kp;
-    master->command().kd[motor] = args.kd;
+    master->command().kp_raw[motor] = args.kp;
+    master->command().kd_raw[motor] = args.kd;
   };
   if (args.control_strategy == "all-positions") {
     for (std::size_t motor = 0; motor < revo3::ethercat::kMotorCount;
@@ -361,19 +356,19 @@ void consume_feedback(const revo3::ethercat::Master &master, const Args &args,
   const bool motor_touch_scenario = args.scenario == "motor-touch";
 
   if (args.read_strategy == "single-status") {
-    stats->sample = feedback.status[motor];
+    stats->sample = feedback.status_raw[motor];
     ++stats->motor_reads;
   } else if (args.read_strategy == "multi-status") {
-    stats->sample = feedback.status[motor] + feedback.error[motor];
+    stats->sample = feedback.status_raw[motor] + feedback.error_raw[motor];
     ++stats->motor_reads;
   } else if (args.read_strategy == "all-positions") {
-    stats->sample = feedback.position[motor];
+    stats->sample = feedback.position_raw[motor];
     ++stats->motor_reads;
   } else if (args.read_strategy == "split-state" ||
              args.read_strategy == "full-state" ||
              args.read_strategy.find("full-state-touch") == 0) {
-    stats->sample = feedback.position[motor] + feedback.velocity[motor] +
-                    feedback.current[motor] + feedback.error[motor];
+    stats->sample = feedback.position_raw[motor] + feedback.velocity_raw[motor] +
+                    feedback.current_raw[motor] + feedback.error_raw[motor];
     ++stats->motor_reads;
   }
 
@@ -453,24 +448,15 @@ int main(int argc, char **argv) {
   const std::vector<std::string> motor_sns = read_motor_sdo_strings(&master);
   const std::vector<std::string> motor_versions = read_motor_versions(&master);
   std::uint16_t hand_type = 0;
-  std::uint16_t touch_vendor = 0;
   read_sdo_u16(&master, revo3::ethercat::kHandTypeObjectIndex, &hand_type);
-  read_sdo_u16(&master, revo3::ethercat::kTouchVendorObjectIndex,
-               &touch_vendor);
 
   std::cout << "DEVICE_INFO: sn=" << serial << ", fw=" << firmware
-            << ", hw=" << hardware << ", type=" << hand_type
-            << ", touch_vendor=" << touch_vendor << '\n';
+            << ", hw=" << hardware << ", type=" << hand_type << '\n';
   std::cout << "DETECTED_SLAVE_ID=" << args.slave_position << '\n';
-  std::cout << "DETECTED_TOUCH_VENDOR=" << touch_vendor << '\n';
   std::cout << "DEVICE_MOTORS_SN: " << join_csv(motor_sns) << '\n';
   std::cout << "DEVICE_MOTORS_FW: " << join_csv(motor_versions) << '\n';
   if (args.detect_only) {
     return serial == "Unknown" ? 1 : 0;
-  }
-  if (uses_touch(args) && touch_vendor == 0) {
-    std::cerr << "UNSUPPORTED_FEATURE: Device does not support touch sensor\n";
-    return 1;
   }
   if (!master.initialize(&error) || !master.activate(&error)) {
     std::cerr << error << '\n';
@@ -578,8 +564,8 @@ int main(int argc, char **argv) {
 
   master.command() = base_command;
   for (std::size_t joint = 0; joint < revo3::ethercat::kMotorCount; ++joint) {
-    master.command().kp[joint] = 0;
-    master.command().kd[joint] = 0;
+    master.command().kp_raw[joint] = 0;
+    master.command().kd_raw[joint] = 0;
   }
   master.cycle();
   return total.errors == 0 ? 0 : 1;

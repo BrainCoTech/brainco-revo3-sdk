@@ -4,22 +4,35 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Any, List, Optional
 
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
 
-from common_imports import check_sdk, get_hw_type_name, logger, modbus_open, sdk, revo3_uses_motor_api
+from common_imports import check_sdk, get_model_name, int_to_baudrate, logger, sdk, revo3_uses_motor_api
+
+REVO3_ULTRA_JOINT_COUNT = 21
+REVO3_FINGER_COUNT = 5
+FINGER_NAMES = ["Thumb", "Index", "Middle", "Ring", "Pinky"]
+
+
+class Revo3Finger(IntEnum):
+    INDEX = 1
+    MIDDLE = 2
+    RING = 3
+    PINKY = 4
 
 
 @dataclass
-class DeviceContext:
-    """Device context for Revo3 examples."""
+class ExampleHandSession:
+    """Owning Manager, connected Hand, and discovery metadata."""
 
-    ctx: Any
+    manager: Any
+    hand: Any
     slave_id: int
-    hw_type: Any
+    model: Any
     protocol_type: Any
     port_name: str
     baudrate: int = 0
@@ -27,45 +40,65 @@ class DeviceContext:
     firmware_version: str = ""
 
 
-async def init_modbus(port: str, baudrate: int, slave_id: int) -> Optional[DeviceContext]:
+async def init_modbus(port: str, baudrate: int, slave_id: int) -> Optional[ExampleHandSession]:
     """Initialize a Revo3 device via Modbus."""
     check_sdk()
+    manager = None
+    hand = None
     try:
-        ctx = await modbus_open(port, baudrate)
-        info = await ctx.revo3_get_device_info(slave_id)
-        if not revo3_uses_motor_api(info.hardware_type):
-            logger.error(f"Detected non-Revo3 hardware: {get_hw_type_name(info.hardware_type)}")
-            await sdk.modbus_close(ctx)
+        manager = sdk.Manager()
+        hand = await manager.connect_auto(
+            port=port,
+            protocol=sdk.ProtocolType.Modbus,
+            slave_id=slave_id,
+            modbus_baudrate=int_to_baudrate(baudrate),
+        )
+        info = hand.device_info
+        if info is None:
+            raise RuntimeError("Device identity is unavailable")
+        if not revo3_uses_motor_api(info.model):
+            logger.error(f"Detected non-Revo3 hardware: {get_model_name(info.model)}")
+            await hand.close()
+            await manager.close()
             return None
 
-        return DeviceContext(
-            ctx=ctx,
+        return ExampleHandSession(
+            manager=manager,
+            hand=hand,
             slave_id=slave_id,
-            hw_type=info.hardware_type,
-            protocol_type=sdk.StarkProtocolType.Modbus,
+            model=info.model,
+            protocol_type=sdk.ProtocolType.Modbus,
             port_name=port,
             baudrate=baudrate,
             serial_number=info.serial_number or "",
-            firmware_version=info.firmware_version or "",
+            firmware_version=hand.firmware_info.controller_firmware_version or "",
         )
     except Exception as exc:
+        if hand is not None:
+            await hand.close()
+        if manager is not None:
+            await manager.close()
         logger.error(f"Modbus init failed: {exc}")
         return None
 
 
-async def auto_detect_and_init(select_device: bool = True, scan_all: bool = False) -> Optional[DeviceContext]:
+async def auto_detect_and_init(select_device: bool = True, scan_all: bool = False) -> Optional[ExampleHandSession]:
     """Auto-detect Revo3 devices and initialize the selected device."""
     check_sdk()
     try:
-        devices = await sdk.revo3_auto_detect(scan_all=scan_all)
-        devices = [device for device in devices if revo3_uses_motor_api(device.hardware_type)]
+        manager = sdk.Manager()
+        try:
+            devices = await manager.discover(scan_all=scan_all)
+        finally:
+            await manager.close()
+        devices = [device for device in devices if revo3_uses_motor_api(device.model)]
         if not devices:
             logger.error("No Revo3 devices found")
             return None
 
         logger.info(f"Found {len(devices)} Revo3 device(s):")
         for index, device in enumerate(devices):
-            print(f"\n[{index + 1}] {get_hw_type_name(device.hardware_type)}")
+            print(f"\n[{index + 1}] {get_model_name(device.model)}")
             print(f"    Protocol: {device.protocol_type}")
             print(f"    Port: {device.port_name}")
             print(f"    Slave ID: 0x{device.slave_id:02X} ({device.slave_id})")
@@ -85,11 +118,17 @@ async def auto_detect_and_init(select_device: bool = True, scan_all: bool = Fals
                 logger.error("Invalid input")
                 return None
 
-        ctx = await sdk.init_from_detected(device)
-        return DeviceContext(
-            ctx=ctx,
+        manager = sdk.Manager()
+        try:
+            hand = await manager.connect(device)
+        except Exception:
+            await manager.close()
+            raise
+        return ExampleHandSession(
+            manager=manager,
+            hand=hand,
             slave_id=device.slave_id,
-            hw_type=device.hardware_type,
+            model=device.model,
             protocol_type=device.protocol_type,
             port_name=device.port_name,
             serial_number=device.serial_number or "",
@@ -100,18 +139,55 @@ async def auto_detect_and_init(select_device: bool = True, scan_all: bool = Fals
         return None
 
 
-async def cleanup_context(ctx: DeviceContext):
+async def cleanup_session(session: ExampleHandSession):
     """Close an initialized Revo3 device context."""
-    if ctx is None:
+    if session is None:
         return
     try:
-        if ctx.protocol_type == sdk.StarkProtocolType.Modbus:
-            await sdk.modbus_close(ctx.ctx)
-        elif hasattr(sdk, "close_device_handler"):
-            await sdk.close_device_handler(ctx.ctx)
+        await session.hand.close()
+        await session.manager.close()
         logger.info("Device connection closed")
     except Exception as exc:
         logger.error(f"Cleanup error: {exc}")
+
+
+async def connect_modbus_revo3(port_name=None, baudrate=5000000, slave_id=None):
+    """Connect one Revo3 hand over Modbus and return its owning objects."""
+    manager = sdk.Manager()
+    try:
+        hand = await manager.connect_auto(
+            port=port_name,
+            protocol=sdk.ProtocolType.Modbus,
+            slave_id=slave_id,
+            modbus_baudrate=int_to_baudrate(baudrate),
+        )
+        return manager, hand
+    except Exception:
+        await manager.close()
+        raise
+
+
+async def connect_revo3(port_name=None, baudrate=5000000, slave_id=None):
+    """Connect one Revo3 hand over an automatically selected transport."""
+    manager = sdk.Manager()
+    try:
+        hand = await manager.connect_auto(
+            port=port_name,
+            slave_id=slave_id,
+            modbus_baudrate=int_to_baudrate(baudrate),
+        )
+        return manager, hand
+    except Exception:
+        await manager.close()
+        raise
+
+
+async def close_revo3(manager, hand):
+    """Close a Hand followed by its owning Manager."""
+    if hand is not None:
+        await hand.close()
+    if manager is not None:
+        await manager.close()
 
 
 def print_init_usage(prog_name: str = "program"):
@@ -137,8 +213,13 @@ def create_init_parser(prog_name: Optional[str] = None) -> argparse.ArgumentPars
 
 
 async def parse_args_and_init(argv: List[str], extra_parser: Optional[argparse.ArgumentParser] = None) -> tuple:
-    """Parse command-line initialization args and return a Revo3 DeviceContext."""
+    """Parse command-line initialization args and return a Revo3 Hand context."""
     prog_name = os.path.basename(argv[0]) if argv else "program"
+    if "-h" in argv[1:] or "--help" in argv[1:]:
+        if extra_parser is not None:
+            extra_parser.print_help()
+        print_init_usage(prog_name)
+        raise SystemExit(0)
     init_parser = create_init_parser(prog_name)
     init_args, remaining = init_parser.parse_known_args(argv[1:])
 
@@ -155,7 +236,7 @@ async def parse_args_and_init(argv: List[str], extra_parser: Optional[argparse.A
     if ctx is None:
         return None, None, None
 
-    print(f"\n[Init] {get_hw_type_name(ctx.hw_type)}")
+    print(f"\n[Init] {get_model_name(ctx.model)}")
     print(f"  Protocol: {ctx.protocol_type}")
     print(f"  Port: {ctx.port_name}")
     print(f"  Slave ID: 0x{ctx.slave_id:02X} ({ctx.slave_id})")
@@ -169,10 +250,20 @@ async def parse_args_and_init(argv: List[str], extra_parser: Optional[argparse.A
 
 
 __all__ = [
-    "DeviceContext",
+    "ExampleHandSession",
     "init_modbus",
     "auto_detect_and_init",
-    "cleanup_context",
+    "cleanup_session",
+    "connect_modbus_revo3",
+    "connect_revo3",
+    "close_revo3",
+    "sdk",
+    "logger",
+    "int_to_baudrate",
+    "REVO3_ULTRA_JOINT_COUNT",
+    "REVO3_FINGER_COUNT",
+    "FINGER_NAMES",
+    "Revo3Finger",
     "print_init_usage",
     "create_init_parser",
     "parse_args_and_init",

@@ -143,9 +143,9 @@ class MockVTSensor:
         """Generate synthetic calibrate image"""
         h, w, c = self.image_size
         img = np.ones((h, w, c), dtype=np.uint8) * 100
-        # Add some mock calibration pattern
-        import cv2
-        cv2.putText(img, "MOCK CALIBRATION", (40, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (200, 200, 200), 2)
+        grid_y, grid_x = np.ogrid[:h, :w]
+        checker = ((grid_x // 40) + (grid_y // 40)) % 2 == 0
+        img[checker] = 180
         return img
         
     def _generate_raw_image(self) -> np.ndarray:
@@ -238,9 +238,12 @@ class MockVTSensor:
                 y = int(h * (i + 1) / (n + 1))
                 x = int(w * (j + 1) / (m + 1))
                 
-                # Draw marker (small circle)
-                import cv2
-                cv2.circle(img, (x, y), 3, (0, 255, 0), -1)
+                y_min, y_max = max(0, y - 3), min(h, y + 4)
+                x_min, x_max = max(0, x - 3), min(w, x + 4)
+                marker_y, marker_x = np.ogrid[y_min:y_max, x_min:x_max]
+                marker = (marker_x - x) ** 2 + (marker_y - y) ** 2 <= 9
+                region = img[y_min:y_max, x_min:x_max]
+                region[marker] = (0, 255, 0)
         
         return img
     

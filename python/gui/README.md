@@ -1,6 +1,6 @@
 # BC Revo3 SDK GUI
 
-This GUI keeps the same window layout, tab organization, styling, and Revo3 panels as the legacy SDK GUI, while removing non-Revo3 workflows.
+This GUI provides the current Revo3 Manager/Hand workflows for device control, telemetry, touch, diagnostics, and maintenance.
 
 Panels:
 
@@ -18,37 +18,41 @@ Panels:
 
 ## Collision Test Panel
 
-The Revo3 motor panel exposes collision protection controls for hardware testing. The GUI default uses `Hybrid`, `SoftStop`, `debounce_time_ms=50`, `max_cached_status_age_ms=80`, and `auto_clear_time_ms=1000`, with wider position-error and lower current thresholds than the SDK defaults for bench testing. Normal drag mode reduces the shared data collector to 10Hz so control commands have more bus time; when collision protection is enabled, drag mode keeps the collector at the normal monitor frequency so motor status stays fresh and the GUI avoids changing collector frequency on every drag press/release. If the dragged joint reports fresh firmware `Stall` samples while the slider is still held, the GUI locally shows a yellow stall guard and blocks that drag until slider release so it does not repeatedly push into the obstacle. SDK-confirmed `collision_active` remains the red state. On SDK-confirmed collision, the drag worker marks `collision_active`, tries the configured protection command with a watchdog timeout, and stops the current stream without sending a final hold. Collector start/stop/frequency changes and collision config/poll calls run through background watchdog paths, so slow SDK or transport calls are logged but should not freeze the Qt UI. SDK defaults remain defined by `CollisionProtectionConfig`.
+The Revo3 motor panel exposes collision protection controls for hardware testing. The GUI default uses `Hybrid`, `SoftStop`, `debounce_time_ms=50`, `max_cached_status_age_ms=80`, and `auto_clear_time_ms=1000`, with wider position-error and lower current thresholds than the SDK defaults for bench testing. The GUI keeps its existing Data Collection panel, but its adapter now obtains current samples through the 2.0 State pull subscription and stores only GUI-owned display history; it does not use the removed SDK collector or shared buffer. Normal drag mode reduces GUI monitoring to 10Hz so control commands have more bus time. When collision protection is enabled, drag mode keeps the normal monitor frequency so motor status remains fresh. If the dragged joint reports fresh firmware `Stall` samples while the slider is still held, the GUI locally shows a yellow stall guard and blocks that drag until slider release. SDK-confirmed `collision_active` remains the red state. Monitoring-frequency changes and collision config/poll calls run through background watchdog paths, so slow SDK or transport calls are logged but should not freeze the Qt UI.
 
 ## Install
 
 ```bash
-uv sync --project examples/python
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install './python[gui]'
 ```
+
+On Windows PowerShell, create the environment with `py -3.10 -m venv .venv`
+and activate it with `.venv\Scripts\Activate.ps1`.
 
 ## Run
 
 ```bash
-python examples/python/gui/main.py
-python examples/python/gui/main.py --revo3-modbus
-python examples/python/gui/main.py --mock
-python examples/python/gui/main.py --mock revo3-vision
-python examples/python/gui/main.py --mock revo3-matrix-touch
-python examples/python/gui/main.py --touch-vendor matrix
-python examples/python/gui/main.py --vts-force-model-dir examples/python/vts/checkpoints --vts-force-model-mode auto
+python python/gui/main.py
+python python/gui/main.py --revo3-modbus
+python python/gui/main.py --mock
+python python/gui/main.py --mock revo3-vision
+python python/gui/main.py --mock revo3-mx-touch
+python python/gui/main.py --vts-force-model-dir python/vts/checkpoints --vts-force-model-mode auto
 ```
 
-`--mock` is for GUI debugging without hardware. Supported mock types: `revo3`, `revo3-touch`, `revo3-matrix-touch`, `revo3-vision`, `revo3-pro`, `revo3-pro-touch`, `revo3-basic`, `revo3-basic-touch`.
+`--mock` is for GUI debugging without hardware. Supported mock types: `revo3`, `revo3-touch`, `revo3-mx-touch`, `revo3-vision`, `revo3-pro`, `revo3-pro-touch`, `revo3-basic`, `revo3-basic-touch`.
 
-After connecting a Revo3 Ultra VisionTouch device, the `VisionTouch` tab is shown based on the hardware type. If the same hand also reports Pressure or Matrix touch, the regular Revo3 touch tab remains available. `Tools` -> `VisionTouch Sensor...` is kept as a shortcut to the VisionTouch tab.
+After connecting a Revo3 Ultra VisionTouch device, the `VisionTouch` tab is shown based on the product model. If the same hand also reports `mt_*` or `mx_*` touch, the regular Revo3 touch tab remains available. `Tools` -> `VisionTouch Sensor...` is kept as a shortcut to the VisionTouch tab.
 
-Use `--touch-vendor matrix` or `--touch-vendor pressure` only to override the normal tactile register mapping when older firmware cannot report it. It does not enable or disable VisionTouch.
+The regular Revo3 touch UI is shown only when `hand.touch.layout` is available. If the SDK cannot identify the underlying register mapping, it fails closed; the GUI does not provide a manual override.
 
 VisionTouch force model loading is optional to keep GUI startup fast:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--vts-force-model-dir` | Parent directory for VTS force models: `{dir}/{SN}/{SN}.onnx.enc` | Auto-detects `examples/python/vts/checkpoints` when present |
+| `--vts-force-model-dir` | Parent directory for VTS force models: `{dir}/{SN}/{SN}.onnx.enc` | Auto-detects `python/vts/checkpoints` when present |
 | `--vts-force-model-mode` | `none` = fast init without Force6D, `auto` = load matching models when present, `required` = skip sensors without models | `none` |
 
 Use `--vts-force-model-mode auto` only when Force6D values are needed. Without force models, image/depth/marker data still works and initializes faster.
@@ -58,5 +62,5 @@ The `VisionTouch` tab also provides a force model mode selector, a model directo
 Real VTS data requires `pyvitaisdk4bc`:
 
 ```bash
-bash scripts/install_vts_whl.sh
+bash python/install_vts_whl.sh
 ```

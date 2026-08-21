@@ -1,53 +1,44 @@
-# BrainCo Revo3 Python Examples
+# BrainCo Revo3 SDK 2.0 Python Examples
 
-Python examples in this repository are scoped to Revo3.
+All customer examples use the 2.0 `Manager -> Hand` object API.
 
 ## Install
 
-### 1. Install Dependencies
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install ./python
+```
+
+On Windows PowerShell, create the environment with `py -3.10 -m venv .venv`
+and activate it with `.venv\Scripts\Activate.ps1`.
+
+For a local SDK build:
 
 ```bash
-# If using uv (recommended):
-uv sync
-
+bash python/install_whl.sh
 ```
 
-### 2. Install SDK (from OSS)
+## Command Line
 
 ```bash
-bash install_whl.sh
+python python/revo3/quickstart.py
+python python/revo3/touch_sensor.py
+python python/revo3/streaming_control.py
 ```
 
-For a local development build:
-
-```bash
-bash install_whl.sh
-```
-
-## Import
-
-```python
-from bc_revo3_sdk import main_mod as sdk
-```
-
-## Revo3 Examples
-
-See [revo3/README.md](revo3/README.md) for the full Revo3 Python API reference and examples.
-
-```bash
-cd python/revo3
-python auto_detect.py
-python hand_demo.py
-python hand_trajectory.py
-python hand_dfu.py /path/to/firmware.bin
-python revo3_motor.py
-```
+See `python/revo3/README.md` for the full list.
 
 ## GUI
 
-The PySide GUI lives in `python/gui` and includes Revo3 connection, motor, touch, data collection, teaching, timing, DFU and VisionTouch panels.
+The PySide GUI uses the same 2.0 Manager/Hand API and does not depend on the
+Legacy `DeviceContext` layer.
 
 ```bash
+python -m pip install './python[gui]'
 python python/gui/main.py
-python python/gui/main.py --mock
 ```
+
+Install `./python[gui,vision-touch]` instead when using the optional
+vision tactile panels. The platform-specific vision tactile runtime must be
+installed separately as described in `python/vts/README.md`.

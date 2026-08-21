@@ -7,19 +7,12 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 VERSION_FILE="${SCRIPT_DIR}/VERSION"
 
 # Configuration
-LIB_VERSION="v1.5.1"
+LIB_VERSION="v2.0.0-rc.3"
 BASE_URL="https://app.brainco.cn/universal/bc-revo3-sdk/libs/${LIB_VERSION}"
 
-# Colorful echo functions
-echo_y() { echo -e "\033[1;33m$*\033[0m"; } # Yellow
-echo_r() { echo -e "\033[0;31m$*\033[0m"; } # Red
-
-# Check if version is already installed
-if [ -f "$VERSION_FILE" ] && grep -F --quiet "$LIB_VERSION" "$VERSION_FILE"; then
-  echo_y "[bc-revo3-sdk] (${LIB_VERSION}) is already installed"
-  cat "$VERSION_FILE"
-  exit 0
-fi
+# Colorful output functions
+echo_y() { printf "\033[1;33m%s\033[0m\n" "$*"; } # Yellow
+echo_r() { printf "\033[0;31m%s\033[0m\n" "$*"; } # Red
 
 # Determine platform and library name
 OS_TYPE=$(uname -s)
@@ -44,12 +37,15 @@ case "$OS_TYPE" in
   ARM64_SUFFIX=""
   [[ $IS_ARM64 -eq 1 ]] && ARM64_SUFFIX="-arm64"
   LIB_NAME="${LIB_PREFIX}${ARM64_SUFFIX}"
+  SDK_LIBRARY_RELATIVE="shared/linux/libbc_revo3_sdk.so"
   ;;
 "Darwin")
   LIB_NAME="mac"
+  SDK_LIBRARY_RELATIVE="shared/mac/libbc_revo3_sdk.dylib"
   ;;
 "msys" | "MINGW"*)
   LIB_NAME="win"
+  SDK_LIBRARY_RELATIVE="shared/win/bc_revo3_sdk.dll"
   ;;
 *)
   echo_r "Error: This script does not support your platform ($OS_TYPE)"
@@ -57,15 +53,23 @@ case "$OS_TYPE" in
   ;;
 esac
 
+# Reuse an installation only when its version and required public artifacts match.
+if [ -f "$VERSION_FILE" ] && grep -Fqx "[bc-revo3-sdk] Version: $LIB_VERSION" "$VERSION_FILE" && \
+  [ -f "$DIST_DIR/include/revo3-sdk.h" ] && \
+  [ -f "$DIST_DIR/include/revo3/revo3.hpp" ] && \
+  [ -f "$DIST_DIR/$SDK_LIBRARY_RELATIVE" ]; then
+  echo_y "[bc-revo3-sdk] (${LIB_VERSION}) is already installed"
+  cat "$VERSION_FILE"
+  exit 0
+fi
+
 ZIP_NAME="${LIB_NAME}.zip"
 DOWNLOAD_URL="${BASE_URL}/${ZIP_NAME}?$(date +%s)" # Timestamp for uniqueness
-
-# Clean up previous files
-echo_y "[bc-revo3-sdk] Cleaning up previous distribution..."
-rm -rf "$DIST_DIR" "${SCRIPT_DIR}/__MACOSX" "${SCRIPT_DIR}/${ZIP_NAME}"
-
-# Create dist directory
-mkdir -p "$DIST_DIR"
+DOWNLOAD_DIR=$(mktemp -d "$SCRIPT_DIR/.bc-revo3-sdk.XXXXXX")
+ZIP_PATH="$DOWNLOAD_DIR/$ZIP_NAME"
+EXTRACT_DIR="$DOWNLOAD_DIR/extract"
+trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
+mkdir -p "$EXTRACT_DIR"
 
 # Download library
 echo_y "[bc-revo3-sdk] Downloading (${LIB_VERSION}) for ${LIB_NAME}..."
@@ -75,7 +79,7 @@ DOWNLOAD_SUCCESS=0
 # 1. Try downloading with curl if available
 if command -v curl >/dev/null 2>&1; then
   echo_y "Trying to download using curl..."
-  if curl -L -# "$DOWNLOAD_URL" -o "${SCRIPT_DIR}/${ZIP_NAME}"; then
+  if curl --fail --location --progress-bar "$DOWNLOAD_URL" -o "$ZIP_PATH"; then
     DOWNLOAD_SUCCESS=1
   else
     echo_r "Warning: curl download failed. Trying fallback options..."
@@ -85,7 +89,7 @@ fi
 # 2. Try downloading with wget if curl failed or is unavailable
 if [ $DOWNLOAD_SUCCESS -ne 1 ] && command -v wget >/dev/null 2>&1; then
   echo_y "Trying to download using wget..."
-  if wget -q --show-progress "$DOWNLOAD_URL" -O "${SCRIPT_DIR}/${ZIP_NAME}"; then
+  if wget -q --show-progress "$DOWNLOAD_URL" -O "$ZIP_PATH"; then
     DOWNLOAD_SUCCESS=1
   else
     echo_r "Error: wget download failed."
@@ -102,20 +106,50 @@ if [ $DOWNLOAD_SUCCESS -ne 1 ]; then
   exit 1
 fi
 
-# Extract and clean up
+# Validate and extract without modifying the current installation.
+if ! unzip -tq "$ZIP_PATH" >/dev/null; then
+  echo_r "Error: Downloaded file is not a valid SDK ZIP archive: ${ZIP_NAME}"
+  exit 1
+fi
+
 echo_y "[bc-revo3-sdk] Extracting ${ZIP_NAME}..."
-unzip -o -q "${SCRIPT_DIR}/${ZIP_NAME}" -d "$SCRIPT_DIR" || {
+unzip -o -q "$ZIP_PATH" -d "$EXTRACT_DIR" || {
   echo_r "Error: Failed to unzip ${ZIP_NAME}"
   exit 1
 }
-rm -f "${SCRIPT_DIR}/${ZIP_NAME}"
-rm -rf "${SCRIPT_DIR}/__MACOSX"
-rm -rf "${DIST_DIR}/__MACOSX"
-find dist/include \
+STAGED_DIST="$EXTRACT_DIR/dist"
+rm -rf "$EXTRACT_DIR/__MACOSX" "$STAGED_DIST/__MACOSX"
+if [ ! -d "$STAGED_DIST/include" ]; then
+  echo_r "Error: Downloaded SDK package has an invalid directory layout."
+  exit 1
+fi
+find "$STAGED_DIST/include" \
   -type f \
   ! -name 'revo3-sdk.h' \
-  ! -path 'dist/include/zlgcan/*' \
+  ! -path "$STAGED_DIST/include/revo3/revo3.hpp" \
+  ! -path "$STAGED_DIST/include/zlgcan/*" \
   -exec rm -f {} \;
+
+if [ ! -f "$STAGED_DIST/include/revo3-sdk.h" ] || \
+  [ ! -f "$STAGED_DIST/include/revo3/revo3.hpp" ] || \
+  [ ! -f "$STAGED_DIST/$SDK_LIBRARY_RELATIVE" ]; then
+  echo_r "Error: Downloaded SDK package is missing required public artifacts."
+  exit 1
+fi
+
+echo_y "[bc-revo3-sdk] Replacing the previous validated distribution..."
+PREVIOUS_DIST="$DOWNLOAD_DIR/previous-dist"
+if [ -d "$DIST_DIR" ]; then
+  mv "$DIST_DIR" "$PREVIOUS_DIST"
+fi
+if ! mv "$STAGED_DIST" "$DIST_DIR"; then
+  if [ -d "$PREVIOUS_DIST" ]; then
+    mv "$PREVIOUS_DIST" "$DIST_DIR"
+  fi
+  echo_r "Error: Failed to install the validated SDK distribution."
+  exit 1
+fi
+rm -rf "$PREVIOUS_DIST"
 
 case "$OS_TYPE" in
 "Linux")
@@ -126,8 +160,8 @@ case "$OS_TYPE" in
 "Darwin")
   ;;
 "msys" | "MINGW"*)
-  mkdir -p python/dll
-  cp -vf dist/shared/win/*.dll python/dll/
+  mkdir -p "$SCRIPT_DIR/python/dll"
+  cp -vf "$DIST_DIR"/shared/win/*.dll "$SCRIPT_DIR/python/dll/"
   ;;
 esac
 

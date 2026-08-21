@@ -3,7 +3,7 @@ set -e
 
 # BrainCo Revo3 SDK - Install .whl from OSS
 # Usage: bash install_whl.sh [version]
-# Example: bash install_whl.sh 1.5.1
+# Example: bash install_whl.sh 2.0.0-rc.3
 
 OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 
@@ -11,8 +11,15 @@ OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 if [ -n "$1" ]; then
   VERSION="$1"
 else
-  VERSION="1.5.1"
+  VERSION="2.0.0-rc.3"
 fi
+
+# Cargo prerelease versions use SemVer spelling while wheel filenames use
+# their normalized PEP 440 spelling.
+WHEEL_VERSION=$(printf '%s' "$VERSION" | sed -E \
+  -e 's/-rc\.([0-9]+)$/rc\1/' \
+  -e 's/-beta\.([0-9]+)$/b\1/' \
+  -e 's/-alpha\.([0-9]+)$/a\1/')
 
 echo "Installing bc-revo3-sdk v${VERSION}..."
 
@@ -30,8 +37,8 @@ case "$OS" in
     ;;
   Linux)
     case "$ARCH" in
-      x86_64) PLATFORM="manylinux_2_34_x86_64" ;;
-      aarch64) PLATFORM="manylinux_2_34_aarch64" ;;
+      x86_64) PLATFORM="manylinux_2_31_x86_64" ;;
+      aarch64) PLATFORM="manylinux_2_31_aarch64" ;;
       *) echo "Unsupported Linux arch: $ARCH"; exit 1 ;;
     esac
     ;;
@@ -44,8 +51,8 @@ case "$OS" in
     ;;
 esac
 
-# abi3-cp39 is compatible with Python 3.9+
-WHL_NAME="bc_revo3_sdk-${VERSION}-cp39-abi3-${PLATFORM}.whl"
+# abi3-cp310 is compatible with Python 3.10+.
+WHL_NAME="bc_revo3_sdk-${WHEEL_VERSION}-cp310-abi3-${PLATFORM}.whl"
 WHL_URL="${OSS_BASE}/v${VERSION}/${WHL_NAME}"
 
 # Check if file exists before downloading

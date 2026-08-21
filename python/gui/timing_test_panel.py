@@ -1,4 +1,4 @@
-"""Revo3-only timing test panel using the legacy chart worker."""
+"""Revo3-only timing test panel using the shared chart worker."""
 
 from .timing_test_revo3_worker import (
     REVO3_SINGLE_FINGER_OPTIONS,
@@ -127,13 +127,17 @@ class TimingTestPanel(QWidget):
         self.worker.moveToThread(self._thread)
         self._thread.started.connect(self.worker.run)
         if hasattr(self.worker, "log_message"):
-            self.worker.log_message.connect(self.log.append)
+            self.worker.log_message.connect(self._on_log_message)
         if hasattr(self.worker, "finished"):
             self.worker.finished.connect(self._on_finished)
             self.worker.finished.connect(self._thread.quit)
         self._thread.start()
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+
+    def _on_log_message(self, msg: str):
+        print(msg)
+        self.log.append(msg)
 
     def _stop(self):
         if self.worker and hasattr(self.worker, "stop"):

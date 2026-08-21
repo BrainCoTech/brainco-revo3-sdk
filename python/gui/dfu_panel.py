@@ -1,4 +1,4 @@
-"""Revo3 DFU panel with legacy GUI shape."""
+"""Revo3 DFU panel for the current GUI."""
 
 import asyncio
 import inspect
@@ -78,15 +78,20 @@ class DfuWorker(QObject):
         def on_progress(slave_id, p):
             self.progress.emit(int(p * 100))
 
-        result = self.device.revo3_start_dfu(
-            self.slave_id, 
-            self.firmware_path, 
+        result = self.device.start_dfu(
+            self.slave_id,
+            self.firmware_path,
             5,
             on_state,
             on_progress
         )
         if asyncio.isfuture(result) or inspect.isawaitable(result):
-            await result
+            result = await result
+        # Mock devices return True; the real adapter returns an OperationState.
+        # Never report "Completed" for a transfer that did not succeed.
+        succeeded = result is True or result == sdk.OperationState.Succeeded
+        if not succeeded:
+            raise RuntimeError(f"DFU ended in {result}")
         self.progress.emit(100)
         self.state_changed.emit("Completed")
 
@@ -194,8 +199,9 @@ class DfuPanel(QWidget):
     def set_device(self, device, slave_id, device_info, shared_data=None):
         self.shared_data = shared_data
         if device_info:
-            self.device_type_label.setText(f"{tr('device_type')}: {device_info.hardware_type}")
-            self.firmware_version_label.setText(f"{tr('current_firmware')}: {device_info.firmware_version}")
+            self.device_type_label.setText(f"{tr('device_type')}: {device_info.model}")
+            firmware_version = getattr(device_info, "firmware_version", "--")
+            self.firmware_version_label.setText(f"{tr('current_firmware')}: {firmware_version}")
 
     def clear_device(self):
         self.shared_data = None
@@ -241,8 +247,9 @@ class DfuPanel(QWidget):
         self.device_group.setTitle(tr("device_info"))
         
         if self.device_info:
-            self.device_type_label.setText(f"{tr('device_type')}: {self.device_info.hardware_type}")
-            self.firmware_version_label.setText(f"{tr('current_firmware')}: {self.device_info.firmware_version}")
+            self.device_type_label.setText(f"{tr('device_type')}: {self.device_info.model}")
+            firmware_version = getattr(self.device_info, "firmware_version", "--")
+            self.firmware_version_label.setText(f"{tr('current_firmware')}: {firmware_version}")
         else:
             self.device_type_label.setText(tr("device_type") + ": --")
             self.firmware_version_label.setText(tr("current_firmware") + ": --")

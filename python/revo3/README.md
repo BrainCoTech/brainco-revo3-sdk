@@ -1,1022 +1,147 @@
-# Revo3 Python API Reference
+# Revo3 Python 2.0 Examples
 
-Revo3 (Revo3) 21-DoF Dexterous Hand — Motor Control & Tactile Sensor API
+These examples use the public 2.0 object model:
 
-> SDK: `bc-revo3-sdk >= 1.3.5` · Protocol: Modbus RTU @ 5 Mbps
+`Manager -> Hand -> Motion/State/Touch/Health/Config/Calibration/Maintenance`
 
----
+They do not carry a `DeviceContext` or `slave_id` through device operations,
+and object methods do not use the Legacy `revo3_` prefix.
 
-## Table of Contents
+## Recommended Examples
 
-- [Protocol](#protocol)
-- [Quick Start](#quick-start)
-- [Connection](#connection)
-- [Motor Control](#motor-control)
-  - [Device Info](#device-info)
-  - [Motor Status](#motor-status)
-  - [Position Control](#position-control)
-  - [Velocity Control](#velocity-control)
-  - [Current Control](#current-control)
-  - [MIT Impedance Control](#mit-impedance-control)
-  - [Fingertip Cartesian Control](#fingertip-cartesian-control)
-  - [Servo Control](#servo-control)
-  - [Trajectory Control](#trajectory-control)
-  - [Teaching Mode](#teaching-mode)
-  - [Motor Settings](#motor-settings)
-- [Tactile Sensor](#tactile-sensor)
-  - [Module Enable/Disable](#module-enabledisable)
-  - [Data Type](#data-type)
-  - [Summary Data](#summary-data)
-  - [Module Data](#module-data)
-  - [All Touch Data](#all-touch-data)
-  - [Calibrate Touch Zero](#calibrate-touch-zero)
-- [DataCollector (High-Frequency)](#datacollector-high-frequency)
-  - [Revo3 Basic (Motor Only)](#v3-basic-motor-only)
-  - [Revo3 Full (Motor + Touch)](#v3-full-motor--touch)
-  - [Dynamic Frequency Control](#dynamic-frequency-control)
-  - [Buffers](#buffers)
-- [Hardware Layout](#hardware-layout)
-- [Examples](#examples)
+| File | Purpose |
+| --- | --- |
+| `quickstart.py` | Connect, inspect layouts, read State and Health, and optionally move |
+| `discover_devices.py` | Read-only device discovery and connection troubleshooting |
+| `multi_hand.py` | Multiple Hand lifecycle and shared transport behavior |
+| `subscriptions.py` | Finite State and Touch subscriptions |
+| `concurrent_control.py` | Concurrent servo control and State reads |
+| `touch_sensor.py` | Typed Touch layouts and snapshots |
+| `device_operations.py` | Config, runtime statistics, calibration, reboot, and firmware update |
+| `teaching_mode.py` | Teach and Replay operations |
+| `shared_ports.py` | Trusted serial port listing and VID/PID allowlist |
+| `manager_cli.py` | JSONL recording, replay, and diagnostic bundles |
+| `streaming_control.py` | Position streaming and Servo command timeout behavior |
+| `mit_control.py` | Full-hand MIT command streaming |
+| `units.py` | Offline scalar and batch unit conversions |
 
----
+These are the customer-facing entry points maintained as the primary 2.0
+examples. They do not use an adapter, operation-level `slave_id`, a collector,
+or a State buffer.
 
-## Protocol
+## Specialized Workflows
 
-- **Register map**: `RegAddrRevo3` (addresses 100+, 1000+, 2000+)
-- **Joint count**: 21 joints (joint_id: 0~20, excludes 2 wrist motors)
-- **Single joint control**: 3 consecutive registers (1000~1002: id + mode + param)
-- **Multi-joint control**: 22 consecutive registers (1010~1031: mode + 21 params)
-- **MIT control**: 6 consecutive registers (1050~1055), **atomic single write**
-- **Motor feedback**: 5 separate groups (2000-2020, 2030-2050, ...), read individually
-- **Additional features**: motor protection current, position/speed limits, teaching mode, touch screen switch
+| File | Purpose |
+| --- | --- |
+| `trajectory_control.py` | Run an explicitly enabled joint and full-hand trajectory sequence |
+| `firmware_update.py` | Update hand firmware with an explicit firmware path |
+| `firmware_resource_update.py` | Update a selected firmware resource |
+| `finger_motion.py` | Run an explicitly enabled finger and thumb motion workflow |
+| `touch_hybrid.py` | Verify a confirmed `hp_*` + `mt_*` hybrid touch layout |
 
-### API Overview
+## Engineering Diagnostics
 
-| API | Notes |
-|-----|-------|
-| `revo3_set_motor_position` | SingleJointId mode=0 |
-| `revo3_set_motor_velocity` | SingleJointId mode=1 |
-| `revo3_set_motor_current` | SingleJointId mode=2 |
-| `revo3_set_motor_mit` | Atomic MIT: MitJointId 1050~1055 |
-| `revo3_set_all_motor_positions` | MultiJoint mode=0, 21 joints |
-| `revo3_set_all_motor_velocities` | MultiJoint mode=1, 21 joints |
-| `revo3_set_all_motor_currents` | MultiJoint mode=2, 21 joints |
-| `revo3_get_motor_status_data` | 5×21 register reads |
-| `revo3_set_*` | Extended APIs (prefixed `revo3_`) |
+The following scripts are intended for SDK and firmware verification rather
+than as application templates:
 
-Extended APIs (prefixed with `revo3_`):
+- `diagnostics/canfd_mit_batch.py`
+- `diagnostics/collision_test.py`
+- `diagnostics/drag_scenarios.py`
+- `diagnostics/feedback_benchmark.py`
+- `diagnostics/finger_damping.py`
+- `diagnostics/full_hand_motion_diagnostic.py`
+- `diagnostics/interruption_test.py`
+- `diagnostics/io_benchmark.py`
+- `diagnostics/jitter_analysis.py`
+- `diagnostics/overshoot_test.py`
+- `diagnostics/timing_test.py`
+- `diagnostics/touch_mock.py`
 
-| API | Description |
-|-----|-------------|
-| `revo3_single_joint_control(joint_id, mode, param)` | Low-level single joint |
-| `revo3_multi_joint_control(mode, params[21])` | Low-level multi-joint |
-| `revo3_joint_mit_control(joint_id, kp, kd, pos, vel, torque_ff)` | Atomic MIT control |
-| `revo3_set_joint_mit_params(joint_id, kp, kd, pos, vel, tor)` | Set one joint in the interleaved MIT params block (1100+N×5) |
-| `revo3_hand_mit_control[_without_retry](kp, kd, pos, vel, tor)` | Full-hand MIT control, interleaved by joint (1100~1204) |
-| `revo3_set_all_mit_kp/kd/positions/velocities/torques(values)` | Grouped MIT single-parameter write (1300~1404) |
-| `revo3_set_all_mit_params[_without_retry](kp, kd, pos, vel, tor)` | Grouped MIT all-parameter write (1300~1404) |
-| `revo3_finger_control(finger_id, mode, params[4])` | Non-thumb finger control (1500~1505) |
-| `revo3_thumb_control(mode, params[5])` | Thumb control (1510~1515) |
-| `revo3_finger_mit_control(finger_id, params[20])` | Finger MIT (1520~1540) |
-| `revo3_thumb_mit_control(params[25])` | Thumb MIT (1550~1574) |
-| `revo3_set_global_protect_current(current)` | Global protection current |
-| `revo3_set_joint_protect_current(joint_id, current)` | Per-joint protection |
-| `revo3_set_joint_position_limits(joint_id, min, max)` | Position limits |
-| `revo3_set_joint_speed_limits(joint_id, min, max)` | Speed limits |
-| `revo3_set_touch_screen(enabled)` | Touch screen switch |
-| `revo3_set_teaching_mode(enabled)` | Teaching mode |
-| `revo3_reset_finger_defaults(finger_id)` | Restore finger defaults |
-| `revo3_get_all_motor_temperatures()` | Motor temperatures [21] (°C) |
-| `revo3_get_motor_temperature(motor_id)` | Single motor temperature |
-| `revo3_get_motor_sn(motor_id)` | Motor serial number |
-| `revo3_get_all_motor_sns()` | All motor SNs [21] |
-| `revo3_get_motor_fw_versions()` | Motor firmware versions [21] |
-| `revo3_get_hardware_version()` | Hardware version string |
-| `revo3_get_motor_online_status()` | Motor online bitmask |
+`public_api_exerciser.py` is the real-hardware entry point for public
+operations that do not belong in a customer workflow example. It executes one
+operation per process. Read-only operations can run directly; every operation
+that can change device state requires `--run`.
 
-Trajectory & Teaching APIs:
+```bash
+python \
+  python/revo3/public_api_exerciser.py health-motor-status --port <PORT>
 
-| API | Description |
-|-----|-------------|
-| `revo3_move_joint(slave_id, joint_id, target, T, dt)` | Quintic polynomial single joint move (Non-blocking) |
-| `revo3_move_joint_wait(slave_id, joint_id, target, T, dt)` | Quintic polynomial single joint move and block |
-| `revo3_move_joint_with_gains(slave_id, joint_id, target, T, dt, kp, kd)` | Single joint move with custom gains (Non-blocking) |
-| `revo3_move_joint_with_gains_wait(slave_id, joint_id, target, T, dt, kp, kd)` | Single joint move and block with custom gains |
-| `revo3_move_joint_with_speed(slave_id, joint_id, target, speed, dt)` | Single joint move by speed (Non-blocking) |
-| `revo3_move_joint_with_speed_wait(slave_id, joint_id, target, speed, dt)` | Single joint move and block by speed |
-| `revo3_move_hand(slave_id, targets, T, dt)` | Full hand synchronized move (21 joints, Non-blocking) |
-| `revo3_move_hand_wait(slave_id, targets, T, dt)` | Full hand move and block |
-| `revo3_move_hand_with_gains(slave_id, targets, T, dt, kp, kd)` | Full hand move with custom gains (Non-blocking) |
-| `revo3_move_hand_with_gains_wait(slave_id, targets, T, dt, kp, kd)` | Full hand move and block with custom gains |
-| `revo3_move_hand_with_speed(slave_id, targets, speed, dt)` | Full hand move synchronized by speed (Non-blocking) |
-| `revo3_move_hand_with_speed_wait(slave_id, targets, speed, dt)` | Full hand move and block by speed |
-| `revo3_move_finger(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints (4 joints, Non-blocking) |
-| `revo3_move_finger_wait(slave_id, finger_id, targets, T, dt)` | Move non-thumb finger joints and block |
-| `revo3_move_finger_with_gains(slave_id, finger_id, targets, T, dt, kp, kd)` | Finger move with custom gains (Non-blocking) |
-| `revo3_move_thumb(slave_id, targets, T, dt)` | Move thumb joints simultaneously (5 joints, Non-blocking) |
-| `revo3_move_thumb_wait(slave_id, targets, T, dt)` | Move thumb joints and block until completion (Blocking/Await) |
-| `revo3_move_thumb_with_gains(slave_id, targets, T, dt, kp, kd)` | Thumb move with custom gains (Non-blocking) |
-| `revo3_move_thumb_with_gains_wait(slave_id, targets, T, dt, kp, kd)` | Thumb move and block with custom gains (Blocking/Await) |
-| `revo3_start_servo_drag(slave_id, joint_id, target, kp, kd, vel_cap_rpm, interval_ms, idle_timeout_ms, filter_mode, omega)` | Start SDK-managed GUI/joystick drag stream |
-| `revo3_update_servo_drag(slave_id, joint_id, target)` | Update latest target for active drag stream |
-| `revo3_cancel_servo_drag(slave_id, joint_id)` | Cancel active drag stream without final hold |
-| `revo3_stop_servo_drag(slave_id, joint_id, final_target)` | Stop drag stream and normally hold final target |
-| `revo3_teach_joint(slave_id, joint_id, dt, T)` | Record single joint (backdrive mode) |
-| `revo3_teach_hand(slave_id, dt, T)` | Record full hand (backdrive mode) |
-| `revo3_replay_joint(slave_id, joint_id, positions, dt, kp, kd)` | Replay recorded single joint |
-| `revo3_replay_hand(slave_id, trajectory, dt, kp, kd)` | Replay recorded full hand |
+python \
+  python/revo3/public_api_exerciser.py software-stop-cycle \
+  --port <PORT> --run
+```
 
----
+`mit_debug/` contains MIT trajectory conversion, tracking, and plotting tools.
+Shared connection and cleanup helpers live in `python/common_init.py`.
+Offline tests for `manager_cli.py` live under `tests/python/`.
 
-## Quick Start
+Minimal Python usage:
 
 ```python
 import asyncio
-from bc_revo3_sdk import bc_revo3_sdk as sdk
+from bc_revo3_sdk import main_mod as sdk
 
-sdk.init_logging()
 
 async def main():
-    # Auto-detect Revo3 device (returns Baudrate enum as the 3rd element)
-    (protocol, port, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()
-    ctx = await sdk.modbus_open(port, baudrate)
+    manager = sdk.Manager()
+    hand = None
+    try:
+        hand = await manager.connect_auto()
+        device_info = hand.device_info
+        firmware_info = hand.firmware_info
+        state = await hand.state.snapshot()
+        health = await hand.health.snapshot()
+        print(device_info.serial_number, firmware_info.controller_firmware_version)
+        print(state.positions_deg, health.safety_state)
+    finally:
+        if hand is not None:
+            await hand.close()
+        await manager.close()
 
-    # Read motor status
-    status = await ctx.revo3_get_motor_status_data(slave_id)
-    print(f"Positions: {status.positions}")
-
-    # Position control (motor 0 → 45°)
-    await ctx.revo3_set_motor_position(slave_id, 0, 45.0)
-
-    # Read touch summary
-    summary = await ctx.revo3_get_touch_summary(slave_id)
-    print(f"Touch summary: {summary}")
-
-    sdk.modbus_close(ctx)
 
 asyncio.run(main())
 ```
 
----
+## Run
 
-## Connection
-
-### Auto-Detect
-
-> [!NOTE]
-> `revo3_auto_detect_modbus` is a Modbus (RS485) specific discovery interface. If you need to scan and connect to both Modbus and CANFD (e.g. via ZQWL adapters) devices, please use the recommended general `revo3_auto_detect` API below.
-
-```python
-# Auto-detect Revo3 Modbus device (tries default Revo3 IDs and baudrates)
-(protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus()
-# Returns: (StarkProtocolType, str, Baudrate, int)
-# e.g., (sdk.StarkProtocolType.Modbus, "/dev/ttyUSB0", sdk.Baudrate.Baud5Mbps, 1)
-
-# With specific port hint
-(protocol_type, port_name, baudrate, slave_id) = await sdk.revo3_auto_detect_modbus("/dev/ttyUSB0")
-```
-
-For Modbus, CANFD, and future protocol-aware connection flows, use the
-Revo3 device list API:
-
-```python
-devices = await sdk.revo3_auto_detect(scan_all=False, protocol=sdk.ProtocolType.Auto)
-ctx = await sdk.init_from_detected(devices[0])
-```
-
-Reconnect faster when you already know the previous device:
-
-```python
-devices = await sdk.revo3_auto_detect(
-    scan_all=False,
-    port="/dev/ttyUSB0",
-    protocol=sdk.ProtocolType.Modbus,
-    slave_id=0x7E,
-    modbus_baudrate=sdk.Baudrate.Baud5Mbps,
-)
-# Or specify CANFD data baudrate:
-devices = await sdk.revo3_auto_detect(
-    scan_all=False,
-    port="brainco:0",
-    protocol=sdk.ProtocolType.CanFd,
-    slave_id=0x7E,
-    canfd_data_baudrate=sdk.BaudrateCAN.Baud5Mbps,
-)
-```
-
-For GUI or selection workflows, stream devices as they are found:
-
-```python
-scanner = sdk.Revo3AutoDetector(
-    stop_on_first=False,
-    protocol=sdk.ProtocolType.Auto,
-    modbus_baudrate=None,
-    canfd_data_baudrate=None,
-)
-async for device in scanner:
-    print(device)
-    print(device.touch_vendor)  # TouchVendor: 0 = Unknown, 1 = Pressure, 2 = Matrix
-    if user_selected(device):
-        await scanner.stop()
-        ctx = await sdk.init_from_detected(device)
-        break
-```
-
-The `revo3/auto_detect.py` example keeps SDK scan logs quiet by default. Pass
-`--verbose` if you need adapter-level scan diagnostics. Pass
-`--modbus-baudrate 5000000` when reconnecting to a known Modbus baudrate, or
-`--canfd-data-baudrate 5000000` (or `5M`) to restrict CANFD scanning to a specific data baudrate.
-
-### Manual Connection
-
-```python
-# Open Modbus connection using Baudrate enum (Revo3 default: 5Mbps)
-ctx = await sdk.modbus_open("/dev/ttyUSB0", sdk.Baudrate.Baud5Mbps)
-# Note: sdk.modbus_open requires sdk.Baudrate enum. To connect with an integer baudrate,
-# use modbus_open wrapper from examples/python/common_imports.py or convert via sdk.Baudrate(val).
-slave_id = 1  # default slave ID
-
-# Close connection
-sdk.modbus_close(ctx)
-```
-
-### Device Identification
-
-```python
-device_info = await ctx.revo3_get_device_info(slave_id)
-# DeviceInfo fields:
-#   .hardware_type   → StarkHardwareType enum
-#   .sku_type        → SkuType enum
-#   .serial_number   → str
-#   .firmware_version → str
-#   .description     → str
-
-# Check if device supports Revo3 APIs
-is_revo3 = device_info.revo3_uses_motor_api()  # → bool
-```
-
----
-
-## Motor Control
-
-### Constants
-
-| Constant        | Value | Description            |
-|-----------------|-------|------------------------|
-| Motor Count     | 21    | motor_id: 0 ~ 20      |
-| Finger Count    | 5     | Thumb, Index, Middle, Ring, Pinky |
-
-### Device Info
-
-```python
-fw_version  = await ctx.revo3_get_firmware_version(slave_id)   # → str
-serial_num  = await ctx.revo3_get_serial_number(slave_id)       # → str
-hand_type   = await ctx.revo3_get_hand_type(slave_id)           # → int/str
-temperature = await ctx.revo3_get_board_temperature(slave_id)   # → float (°C)
-```
-
-### Motor Status
-
-```python
-# Read all 21 motors status in a single call
-status = await ctx.revo3_get_motor_status_data(slave_id)
-# Revo3MotorStatusData fields:
-#   .positions   → List[float]  (21 values, degrees)
-#   .velocities  → List[float]  (21 values)
-#   .currents    → List[float]  (21 values, Amperes)
-
-# Read positions only
-positions = await ctx.revo3_get_all_motor_positions(slave_id)  # → List[float] (21 values)
-```
-
-### Position Control
-
-```python
-# Single motor position (degrees, float)
-await ctx.revo3_set_motor_position(slave_id, motor_id, degrees)
-# motor_id: 0~20
-# degrees: float
-#   Motor 0~18: range [-90.0, 90.0]
-#   Motor 19~20 (differential): range [-105.0, 105.0]
-
-# Example
-await ctx.revo3_set_motor_position(slave_id, 0, 45.0)
-
-# Batch: set all 21 motors at once
-positions = [30.0] * 21
-await ctx.revo3_set_all_motor_positions(slave_id, positions)
-# positions: List[float] of exactly 21 values
-```
-
-### Velocity Control
-
-```python
-# Single motor velocity
-await ctx.revo3_set_motor_velocity(slave_id, motor_id, velocity)
-# motor_id: 0~22
-# velocity: float, range [0.0, 1000.0]
-
-# Example
-await ctx.revo3_set_motor_velocity(slave_id, 0, 100.0)
-# Stop: set velocity to 0.0
-await ctx.revo3_set_motor_velocity(slave_id, 0, 0.0)
-```
-
-### Current Control
-
-```python
-# Single motor current (mA)
-await ctx.revo3_set_motor_current(slave_id, motor_id, current)
-# motor_id: 0~22
-# current: float, range [-1024, 1024] mA
-
-# Example
-await ctx.revo3_set_motor_current(slave_id, 0, 500.0)  # 500 mA
-# Stop: set current to 0.0
-await ctx.revo3_set_motor_current(slave_id, 0, 0.0)
-```
-
-### MIT Impedance Control
-
-MIT (Mini Cheetah) impedance control formula:
-
-```
-tau = Kp × (P_des - P_act) + Kd × (V_des - V_act) + T_ff
-```
-
-| Parameter | Symbol | Range              | Unit    |
-|-----------|--------|--------------------|---------|
-| Position  | P_des  | [-434.7, 434.7]    | degrees |
-| Velocity  | V_des  | [-32767, 32767]    | rpm     |
-| Current   | T_ff   | [-1024, 1024]      | mA      |
-| Kp        | Kp     | [0, 10.0]          |         |
-| Kd        | Kd     | [0, 10.0]          |         |
-
-```python
-# Single motor MIT control
-await ctx.revo3_set_motor_mit(
-    slave_id,
-    motor_id,          # 0~22
-    position,          # float, degrees
-    velocity,          # float, rpm
-    current,           # float, mA (feedforward torque)
-    kp,                # float, position stiffness
-    kd                 # float, velocity damping
-)
-
-# Example: Motor 0, pos=45°, vel=0, cur=500mA, Kp=5.0, Kd=0.5
-await ctx.revo3_set_motor_mit(slave_id, 0, 45.0, 0.0, 500.0, 5.0, 0.5)
-
-# Batch: all 21 joints in a single write (105 Modbus registers)
-await ctx.revo3_set_all_mit_params(
-    slave_id,
-    kp_values,         # List[float], 21 values
-    kd_values,         # List[float], 21 values
-    positions,         # List[float], 21 values
-    velocities,        # List[float], 21 values
-    torques            # List[float], 21 values
-)
-
-# Batch: set Kp/Kd only
-await ctx.revo3_set_all_mit_kp(slave_id, kp_values)
-await ctx.revo3_set_all_mit_kd(slave_id, kd_values)
-```
-
-### Fingertip Cartesian Control
-
-Fingertip Cartesian control is not exported in the current Python API.
-Use joint-level Revo3 APIs (`revo3_finger_control`, `revo3_thumb_control`,
-`revo3_finger_mit_control`, `revo3_thumb_mit_control`) for now.
-
-### Servo Control
-
-Use servo APIs for real-time MIT-style tracking. Speed and velocity parameters
-are in rpm. The lower-level `revo3_servo_joint_with_gains` API sends one command
-per call, so the caller owns loop timing.
-
-For GUI sliders, joysticks, or VR targets that update only when the target
-changes, prefer `revo3_start_servo_drag` / `revo3_update_servo_drag` /
-`revo3_stop_servo_drag`. The SDK runs one background stream, keeps only the
-latest target, and sends position-mode MIT commands with zero target velocity.
-The stream stays active until `revo3_stop_servo_drag` is called, even if the
-slider is held still for a while.
-
-Use `revo3_cancel_servo_drag` only for guarded cleanup paths, such as a local
-GUI stall guard or disconnect cleanup. It cancels the SDK stream without sending
-a final hold command. Normal slider release should use `revo3_stop_servo_drag`.
-
-With collision protection enabled, a collision/stall stops the active drag
-stream and keeps `collision_active` true for the configured auto-clear window.
-After that window expires, the next stream re-checks telemetry, so a short
-obstruction does not permanently block dragging back.
-
-```python
-# Slider press / drag start
-await ctx.revo3_start_servo_drag(
-    slave_id,
-    joint_id=5,
-    target_pos=0.0,
-    kp=2.0,
-    kd=0.25,
-    vel_cap_rpm=60.0,    # reserved; position-mode drag keeps target velocity at zero
-    interval_ms=15,
-    idle_timeout_ms=300, # unchanged-target refresh interval, not a stop timeout
-    filter_mode=0,  # 0=None, 1=FirstOrderLpf, 2=SecondOrderCriticallyDamped
-    omega=35.0,     # used only when filter_mode=2
-)
-
-# Slider valueChanged events
-ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=35.0)
-ctx.revo3_update_servo_drag(slave_id, joint_id=5, target_pos=50.0)
-
-# Slider release / leaving position mode
-await ctx.revo3_stop_servo_drag(slave_id, joint_id=5, final_pos=50.0)
-```
-
-When DataCollector is also running on Modbus, start with `interval_ms=15`.
-On macOS, keep motor collection around 50 Hz to 60 Hz for ordinary monitoring,
-and reduce it to 5 Hz to 10 Hz while a slider or joystick drag is active. Use
-`move_*` APIs for one-shot targets with planned trajectories, and use raw
-`revo3_servo_*_with_gains` APIs only when your application already owns a
-deterministic servo loop.
-
-### Motor Settings
-
-```python
-# Calibration
-await ctx.revo3_set_calibration_current(slave_id, current)  # float, mA
-await ctx.revo3_set_auto_calibration(slave_id, enabled)      # bool
-
-# Zero-position setup changes persistent calibration. Use only when the hand
-# is in the intended reference pose.
-# 1. Set explicit zero offsets (accepts list up to 21 values, e.g. 13, 16, or 21)
-await ctx.revo3_set_zero_position(slave_id, offsets_deg)
-
-# 2. Set current position as zero (recommended workflow: disable -> pose -> enable -> set)
-# Step 1: Disable motors
-# Step 2: Manually pose hand to zero-reference
-# Step 3: Enable motors
-await ctx.revo3_set_current_position_as_zero(slave_id)
-
-# Motion limits
-await ctx.revo3_set_global_protect_current(slave_id, current) # float, mA
-
-# Error handling
-await ctx.revo3_clear_motor_errors(slave_id)
-
-# Protection & configuration
-await ctx.revo3_set_global_protect_current(slave_id, current)      # float, mA
-await ctx.revo3_set_joint_protect_current(slave_id, joint_id, cur) # joint 0~20, mA
-await ctx.revo3_set_joint_position_limits(slave_id, joint_id, min_raw, max_raw)
-await ctx.revo3_set_joint_speed_limits(slave_id, joint_id, min_raw, max_raw)
-await ctx.revo3_set_touch_screen(slave_id, enabled)                # bool
-await ctx.revo3_set_teaching_mode(slave_id, enabled)               # bool
-await ctx.revo3_reset_finger_defaults(slave_id, finger_id)         # restore defaults
-
-# Motor diagnostics
-temps = await ctx.revo3_get_all_motor_temperatures(slave_id)       # List[int], °C
-temp = await ctx.revo3_get_motor_temperature(slave_id, motor_id)   # int, °C
-sn = await ctx.revo3_get_motor_sn(slave_id, motor_id)              # str
-hw_ver = await ctx.revo3_get_hardware_version(slave_id)            # str
-online = await ctx.revo3_get_motor_online_status(slave_id)         # int (bitmask)
-```
-
-### Trajectory Control
-
-Host-side quintic polynomial trajectory planning. Generates smooth motion
-with zero velocity/acceleration at start and end.
-
-> **Speed unit:** All speed/velocity parameters use **RPM** (`1 RPM = 6 °/s`).
-
-```python
-# Single joint: move J3 (Pinky DIP) to 45° over 2 seconds
-await ctx.revo3_move_joint_wait(slave_id, joint_id=3, target=45.0, duration=2.0, dt=0.01)
-
-# Single joint by speed: move J3 to 45° at 30 rpm
-await ctx.revo3_move_joint_with_speed_wait(slave_id, joint_id=3, target=45.0, speed=30.0, dt=0.01)
-
-# Single joint with custom stiffness/damping
-await ctx.revo3_move_joint_with_gains_wait(
-    slave_id, joint_id=1, target=60.0,
-    duration=1.5, dt=0.01, kp=5.0, kd=0.5
-)
-
-# Full hand: move all 21 joints simultaneously
-targets = [0.0] * 21
-targets[1] = 45.0   # Pinky MCP
-targets[5] = 45.0   # Ring MCP
-targets[9] = 45.0   # Middle MCP
-targets[13] = 45.0  # Index MCP
-targets[17] = 45.0  # Thumb MCP
-await ctx.revo3_move_hand_wait(slave_id, targets, duration=3.0, dt=0.01)
-
-# Full hand by uniform speed: 20 rpm
-await ctx.revo3_move_hand_with_speed_wait(slave_id, targets, speed=20.0, dt=0.01)
-
-# With custom gains
-await ctx.revo3_move_hand_with_gains_wait(
-    slave_id, targets, duration=3.0, dt=0.01, kp=5.0, kd=0.5
-)
-
-# Move non-thumb finger: move Index (finger_id=1) MCP & PIP joints to 45° over 2 seconds
-await ctx.revo3_move_finger_wait(slave_id, finger_id=1, target_positions=[0.0, 45.0, 45.0, 0.0], duration=2.0, dt=0.01)
-
-# Move thumb: move CMC Flex & CMC Abd to 30° over 2 seconds
-await ctx.revo3_move_thumb_wait(slave_id, target_positions=[30.0, 30.0, 0.0, 0.0, 0.0], duration=2.0, dt=0.01)
-```
-
-### Teaching Mode
-
-Backdrive recording: joints become compliant (zero torque), positions are
-sampled at `dt` interval for `T` seconds, then replayed with MIT control.
-For GUI recording, it is also valid to enable teaching mode and record motor
-positions from DataCollector. Collector samples are state observations, not
-control-loop ticks, so record a monotonic timestamp with each frame. On macOS
-Modbus, 50 Hz to 60 Hz is a good default for demonstration recording; use around
-100 Hz only when the bus is stable and other high-rate reads are disabled.
-During playback, interpolate or skip late frames by timestamp. Use full-hand MIT
-or servo commands for trajectory replay, and use `move_*` for low-frequency
-A-to-B moves such as returning to the pre-teach posture.
-
-```python
-# Record single joint for 5 seconds at 50Hz
-recorded = await ctx.revo3_teach_joint(slave_id, joint_id=3, dt=0.02, duration=5.0)
-# → List[float], e.g. 250 position samples
-
-# Replay the recorded trajectory
-await ctx.revo3_replay_joint(slave_id, joint_id=3, positions=recorded, dt=0.02, kp=3.0, kd=0.3)
-
-# Full hand record + replay
-trajectory = await ctx.revo3_teach_hand(slave_id, dt=0.02, duration=5.0)
-# → List[List[float]], e.g. 250 frames × 21 joints
-
-await ctx.revo3_replay_hand(slave_id, trajectory=trajectory, dt=0.02, kp=3.0, kd=0.3)
-```
-
----
-
-## Tactile Sensor
-
-### Overview
-
-Revo3 has 11 touch modules. Pressure touch devices provide 416 total sampling points and Matrix touch devices provide up to 660 total sampling points.
-
-| Module ID | Name       | Pressure Points | Matrix Points | Description        |
-|-----------|------------|-----------------|---------------|--------------------|
-| 0         | Palm       | 36              | 60            | Palm pad           |
-| 1         | ThumbTip   | 31              | 60            | Thumb fingertip    |
-| 2         | ThumbPad   | 57              | 60            | Thumb pad          |
-| 3         | IndexTip   | 21              | 60            | Index fingertip    |
-| 4         | IndexPad   | 52              | 60            | Index pad          |
-| 5         | MiddleTip  | 21              | 60            | Middle fingertip   |
-| 6         | MiddlePad  | 52              | 60            | Middle pad         |
-| 7         | RingTip    | 21              | 60            | Ring fingertip     |
-| 8         | RingPad    | 52              | 60            | Ring pad           |
-| 9         | PinkyTip   | 21              | 60            | Pinky fingertip    |
-| 10        | PinkyPad   | 52              | 60            | Pinky pad          |
-
-Summary register provides 42 aggregated values (indices 0~41) mapping to the complete 42 zones of the Revo3 hand (Palm, Thumb, and 4 non-thumb fingers' tip/middle/lower pad sub-segments):
-
-| Finger | Zones Range | Segment Description |
-|--------|:-----------:|---------------------|
-| **Palm** | `0` | Palm Aggregate Force |
-| **Thumb** | `1 ~ 9` | Tip / Upper Pad / Lower Pad subdivisions |
-| **Index** | `10 ~ 17` | Tip / Upper Pad / Lower Pad subdivisions |
-| **Middle**| `18 ~ 25` | Tip / Upper Pad / Lower Pad subdivisions |
-| **Ring** | `26 ~ 33` | Tip / Upper Pad / Lower Pad subdivisions |
-| **Pinky** | `34 ~ 41` | Tip / Upper Pad / Lower Pad subdivisions |
-
-### Module Enable/Disable
-
-```python
-# Enable all 11 modules (bitmask: bits 0~10)
-all_bits = 0x7FF  # 0b111_1111_1111
-await ctx.revo3_set_all_touch_modules_enabled(slave_id, all_bits)
-
-# Read enabled modules
-enabled_bits = await ctx.revo3_get_all_touch_modules_enabled(slave_id)
-# → int (bitmask), bit i = module i enabled
-
-# Enable/disable single module
-await ctx.revo3_set_touch_module_enabled(slave_id, module_id, enabled)
-# module_id: 0~10
-# enabled: bool
-
-# Read single module enabled state
-is_enabled = await ctx.revo3_get_touch_module_enabled(slave_id, module_id)
-# → bool
-```
-
-### Data Type
-
-```python
-# Set data output type
-await ctx.revo3_set_touch_data_type(slave_id, data_type)
-# data_type: 0 = Tactile Array, 1 = Force Summary
-
-# Read current data type
-data_type = await ctx.revo3_get_touch_data_type(slave_id)
-# → int (0 or 1)
-
-# Set module data value type
-await ctx.revo3_set_touch_module_value_type(slave_id, module_value_type)
-# module_value_type: 0 = ADC Value, 1 = Raw Pressure, 2 = Force
-
-# Read current module data value type
-module_value_type = await ctx.revo3_get_touch_module_value_type(slave_id)
-# → int (0, 1, or 2)
-```
-
-For Matrix touch devices, `revo3_set_touch_module_value_type(..., Force)` maps to Matrix output mode `Force`, and `AdcValue` / `RawPressure` map to Matrix output mode `AdcValue`.
-
-### Summary Data
-
-```python
-# Read summary force values (42 aggregated pad values)
-summary = await ctx.revo3_get_touch_summary(slave_id)
-# → List[int] (42 values, in mN)
-# Layout: [palm, thumb, index, middle, ring, pinky zones]
-```
-
-### Module Data
-
-```python
-# Read single module tactile array
-data = await ctx.revo3_get_touch_module_data(slave_id, module_id)
-# module_id: 0~10
-# → List[int] (variable length per module, see table above)
-
-# Example: read palm
-palm_data = await ctx.revo3_get_touch_module_data(slave_id, 0)
-print(f"Palm: {len(palm_data)} points, total={sum(palm_data)}")
-```
-
-### All Touch Data
-
-```python
-# Read all data at once (summary + all 11 module arrays)
-touch_data = await ctx.revo3_get_all_touch_data(slave_id)
-# Revo3TouchData fields:
-#   .summary  → List[int] (42 values)
-#   .modules  → List[List[int]] (11 modules, each with variable points)
-
-# Revo3TouchData is also returned by Revo3TouchDataBuffer (DataCollector)
-```
-
-### Calibrate Touch Zero
-
-```python
-# Backward-compatible generic APIs
-await ctx.revo3_calibrate_touch_zero(slave_id)
-await ctx.revo3_calibrate_touch_zero_single(slave_id, module_id)  # module_id: 0~10
-```
-
-On Pressure touch devices, these generic APIs write the pressure-zero registers
-4011 and 4012~4022. On Matrix touch devices, they map to Matrix tare commands.
-
-### Pressure Touch
-
-```python
-# Pressure array zero calibration
-await ctx.revo3_calibrate_pressure_touch_zero(slave_id)  # register 4011, write 1
-await ctx.revo3_calibrate_pressure_touch_module_zero(
-    slave_id,
-    module_id,
-)  # register 4012 + module_id, write 1
-
-# Regional force tare / restore
-await ctx.revo3_set_pressure_touch_force_tare(
-    slave_id,
-    sdk.PressureTouchForceTareCommand.Clear,
-)  # register 4025, write 2
-
-await ctx.revo3_set_pressure_touch_force_tare(
-    slave_id,
-    sdk.PressureTouchForceTareCommand.RestoreFactory,
-)  # register 4025, write 3
-
-await ctx.revo3_set_pressure_touch_module_force_tare(
-    slave_id,
-    module_id,
-    sdk.PressureTouchForceTareCommand.Clear,
-)  # register 4026 + module_id, write 2
-
-await ctx.revo3_set_pressure_touch_module_force_tare(
-    slave_id,
-    module_id,
-    sdk.PressureTouchForceTareCommand.RestoreFactory,
-)  # register 4026 + module_id, write 3
-```
-
-The runnable touch example exposes these Pressure-specific commands as explicit
-flags so factory restore is never executed accidentally:
+From the repository root:
 
 ```bash
-# Pressure zero calibration for all modules: 4011=1
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-zero-all
-
-# Pressure zero calibration for one module: 4012+module_id=1
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-zero-module
-
-# Pressure regional force clear for all modules: 4025=2
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-force-clear-all
-
-# Pressure regional force clear for one module: 4026+module_id=2
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-force-clear-module
-
-# Pressure regional force restore factory settings for all modules: 4025=3
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --pressure-force-restore-all
-
-# Pressure regional force restore factory settings for one module: 4026+module_id=3
-python examples/python/revo3/revo3_touch.py --touch-vendor 1 --module-id 0 --pressure-force-restore-module
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install ./python
+python python/revo3/quickstart.py --help
+python python/revo3/quickstart.py
 ```
 
-### Matrix Touch
+On Windows PowerShell, create the environment with `py -3.10 -m venv .venv`
+and activate it with `.venv\Scripts\Activate.ps1`.
 
-```python
-vendor = await ctx.get_touch_vendor(slave_id)
-# TouchVendor: 0 = Unknown, 1 = Pressure, 2 = Matrix
+Connection alone never sends a motion command. Examples that move, calibrate,
+reboot, or update firmware require explicit command-line flags. Read State after
+an `SdkError` whose `operation_effect` is `Indeterminate` before deciding
+whether a command should be retried.
 
-if int(vendor) == 2:
-    module_sns = await ctx.revo3_get_all_matrix_touch_module_serial_numbers(slave_id)
-    palm_sn = await ctx.revo3_get_matrix_touch_module_serial_number(slave_id, 0)
+`quickstart.py` is the only ten-minute quick-start entry point. Use
+`discover_devices.py` only when connection discovery needs troubleshooting.
+The engineering-only `diagnostics/full_hand_motion_diagnostic.py` sequence is
+outside the quick-start path and requires an explicit `--move` flag.
 
-    point_counts = await ctx.revo3_get_all_matrix_touch_module_point_counts(slave_id)
-    palm_count = await ctx.revo3_get_matrix_touch_module_point_count(slave_id, 0)
+`touch_hybrid.py` requires a hardware layout confirmed from the target hand's
+BOM or validation record. Its `set_layout()` call changes only SDK parsing for
+the current connection session. `--test-tare` changes calibration state, and
+`--test-modes` changes the `mt_*` read mode; both are disabled by default.
 
-    await ctx.revo3_set_matrix_touch_output_mode(
-        slave_id,
-        sdk.MatrixTouchOutputMode.Force,
-    )
-    mode = await ctx.revo3_get_matrix_touch_output_mode(slave_id)
+## Troubleshooting & Serial Port Cleanup
 
-    await ctx.revo3_set_matrix_touch_module_output_mode(
-        slave_id,
-        0,
-        sdk.MatrixTouchOutputMode.AdcValue,
-    )
-    module_mode = await ctx.revo3_get_matrix_touch_module_output_mode(slave_id, 0)
-
-    await ctx.revo3_set_matrix_touch_tare(slave_id, sdk.MatrixTouchTareCommand.Tare)
-    tare_status = await ctx.revo3_get_matrix_touch_tare_status(slave_id)
-
-    await ctx.revo3_set_matrix_touch_module_tare(
-        slave_id,
-        0,
-        sdk.MatrixTouchTareCommand.Cancel,
-    )
-    module_tare_status = await ctx.revo3_get_matrix_touch_module_tare_status(slave_id, 0)
-
-    palm_data = await ctx.revo3_get_touch_module_data(slave_id, 0)
-    all_touch = await ctx.revo3_get_all_touch_data(slave_id)
-```
-
----
-
-## DataCollector (High-Frequency)
-
-For real-time monitoring, use `DataCollector` which runs a background thread polling motor/touch data into lock-free ring buffers.
-
-### Revo3 Basic (Motor Only)
-
-```python
-# Create buffer
-motor_buffer = sdk.Revo3MotorStatusBuffer(max_size=1000)
-
-# Create and start collector
-collector = sdk.DataCollector.new_revo3_basic(
-    ctx=ctx,                       # DeviceContext
-    motor_buffer=motor_buffer,     # Revo3MotorStatusBuffer
-    slave_id=slave_id,             # int
-    motor_frequency=60,            # Hz (macOS GUI-safe starting point)
-    enable_stats=False             # bool, print stats to console
-)
-collector.start()
-
-# Read data (non-blocking)
-latest = motor_buffer.peek_latest()  # → Revo3MotorStatusData or None
-if latest:
-    print(f"Position[0]: {latest.positions[0]}")
-
-all_data = motor_buffer.pop_all()    # → List[Revo3MotorStatusData], clears buffer
-
-# Stop
-collector.stop()
-collector.wait()  # Wait for background thread to finish
-```
-
-### Revo3 Full (Motor + Touch)
-
-```python
-# Create buffers
-motor_buffer = sdk.Revo3MotorStatusBuffer(max_size=1000)
-touch_buffer = sdk.Revo3TouchDataBuffer(max_size=100)
-
-# Create collector with both motor and touch
-collector = sdk.DataCollector.new_revo3_full(
-    ctx=ctx,
-    motor_buffer=motor_buffer,
-    touch_buffer=touch_buffer,
-    slave_id=slave_id,
-    motor_frequency=60,            # Hz (motor polling rate)
-    touch_frequency=5,             # Hz (touch is heavy: ~180ms per read)
-    enable_stats=False
-)
-collector.start()
-
-# Read touch data
-touch_list = touch_buffer.pop_all()  # → List[Revo3TouchData]
-for td in touch_list:
-    print(f"Summary: {td.summary}")   # 42 values
-    print(f"Modules: {len(td.modules)}")  # 11 modules
-```
-
-### Dynamic Frequency Control
-
-```python
-# Update frequencies at runtime (thread-safe, uses atomic variables)
-collector.update_motor_frequency(0)     # Disable motor collection
-collector.update_touch_frequency(20)    # 20Hz touch
-
-collector.update_motor_frequency(60)    # Re-enable motor at 60Hz
-collector.update_touch_frequency(0)     # Disable touch collection
-```
-
-Control commands should have priority over idle status reads. The SDK collector
-skips a poll when the shared device context is busy, and GUI applications should
-lower collector frequency during interactive control streams.
-
-### Buffers
-
-| Buffer Class            | Item Type            | Methods                                              |
-|-------------------------|----------------------|------------------------------------------------------|
-| `Revo3MotorStatusBuffer`   | `Revo3MotorStatusData`  | `peek_latest()`, `pop_all()`, `clear()`, `len()`     |
-| `Revo3TouchDataBuffer`     | `Revo3TouchData`        | `peek_latest()`, `pop_all()`, `clear()`, `len()`     |
-
-**Revo3MotorStatusData** fields:
-- `.positions` → `List[float]` (21 values, degrees)
-- `.velocities` → `List[float]` (21 values)
-- `.currents` → `List[float]` (21 values, mA)
-
-**Revo3TouchData** fields:
-- `.summary` → `List[int]` (42 values, mN)
-- `.modules` → `List[List[int]]` (11 modules)
-
----
-
-## Hardware Layout
-
-> 📄 Complete joint anatomy, motor photos, and spec diagrams: [revo3_joint_map.md](revo3_joint_map.md)
-
-### Motor → Finger Mapping
-
-```
-Finger    Motor IDs (top-to-bottom)        DoF
-────────  ──────────────────────────────    ───
-Thumb     M18(IP), M17(MCP), M16(CMC-Rot)   3   + M19, M20 (differential)
-Index     M15(DIP), M14(PIP), M13(MCP), M12(Abd)   4
-Middle    M11(DIP), M10(PIP), M09(MCP), M08(Abd)   4
-Ring      M07(DIP), M06(PIP), M05(MCP), M04(Abd)   4
-Pinky     M03(DIP), M02(PIP), M01(MCP), M00(Abd)   4
-                                           ──
-                                     Total: 21 motors, 21 DoF
-```
-
-### Position Ranges
-
-| Motor ID | Finger | Joint | Range |
-|----------|--------|-------|-------|
-| M0 | Pinky | Abd | -14° ~ 15° |
-| M1~M3 | Pinky | MCP/PIP/DIP | -5°~90° / -12°~90° / -20°~90° |
-| M4 | Ring | Abd | ±15° |
-| M5~M7 | Ring | MCP/PIP/DIP | -5°~90° / -12°~90° / -20°~90° |
-| M8 | Middle | Abd | ±15° |
-| M9~M11 | Middle | MCP/PIP/DIP | -5°~90° / -12°~90° / -20°~90° |
-| M12 | Index | Abd | ±15° |
-| M13~M15 | Index | MCP/PIP/DIP | -5°~90° / -12°~90° / -20°~90° |
-| M16 | Thumb | CMC Rotation | -30° ~ 90° |
-| M17 | Thumb | MCP | -10° ~ 90° |
-| M18 | Thumb | IP | -10° ~ 103° |
-| M19 | Thumb | CMC Abd (diff) | 0° ~ 110° |
-| M20 | Thumb | CMC Flex (diff) | 0° ~ 75° |
-
-### Touch Module Layout
-
-```
-Module  Name        Pts    Location
-──────  ──────────  ─────  ──────────────
- 0      Palm         36    Palm center
- 1      ThumbTip     31    Thumb fingertip
- 2      ThumbPad     57    Thumb pad
- 3      IndexTip     21    Index fingertip
- 4      IndexPad     52    Index pad
- 5      MiddleTip    21    Middle fingertip
- 6      MiddlePad    52    Middle pad
- 7      RingTip      21    Ring fingertip
- 8      RingPad      52    Ring pad
- 9      PinkyTip     21    Pinky fingertip
-10      PinkyPad     52    Pinky pad
-                    ─────
-            Total:   416   sampling points
-```
-
----
-
-## Examples
-
-| Script                    | Description                            |
-|---------------------------|----------------------------------------|
-| `revo3/revo3_motor.py`    | Motor control demo (position, current, MIT) |
-| `revo3/revo3_mit_plan.py` | Streams MIT position and velocity targets generated by a 5th-order quintic formula (full hand & sequential per-finger) |
-| `revo3/revo3_control_with_collector.py` | Control command stream with DataCollector monitor publishing |
-| `revo3/revo3_trajectory.py` | Trajectory control & teaching mode demo |
-| `revo3/revo3_teaching.py` | Interactive teaching: record & playback hand movements |
-| `revo3/revo3_dfu.py`      | Firmware upgrade (OTA via Modbus) |
-| `revo3/revo3_touch.py`    | Touch module enable, value type, summary, and module data demo |
-| `revo3/revo3_servo.py`    | High-frequency (100Hz) real-time servo control |
-| `revo3/auto_detect.py` | Revo3 auto-detection |
-| `revo3/hand_demo.py` | Revo3 hand-level info/status/touch/movement demo |
-| `revo3/hand_trajectory.py` | Revo3 hand-level trajectory demo |
-| `revo3/hand_dfu.py` | Revo3 firmware upgrade |
-| `revo3/mit_debug/trajectory_to_c.py` | Convert trajectory JSON → C header for firmware debug |
-| `revo3/jitter_analysis.py` | Analyze trajectory jitter metrics, A/B comparison |
-| `revo3/mit_debug/quintic_trajectory.h` | C header: quintic interpolator for firmware MIT tracking |
-
-### Run Examples
+If connection fails with `Failed to open ... at 5000000 bps: Invalid argument` or `No Revo3 device detected`, check if another process holds an open file descriptor on the serial port:
 
 ```bash
-# Motor control
-python revo3/revo3_motor.py
-python revo3/revo3_motor.py --port /dev/ttyUSB0
+# 1. Find process holding the serial port
+lsof /dev/tty.usbserial*
 
-# Repeating MIT plan (each repeat is an outbound/return round trip)
-python revo3/revo3_mit_plan.py --joint 13 --target 45
-python revo3/revo3_mit_plan.py --joint 13 --target 45 --duration 0.5 --repeat 1
-python revo3/revo3_mit_plan.py --port /dev/ttyUSB0 --slave-id 126
-
-# Control plus DataCollector monitoring
-python revo3/revo3_control_with_collector.py
-python revo3/revo3_control_with_collector.py --joint 13 --target 35 --control-collector-hz 10
-
-# High-frequency Real-time Servo control (100Hz)
-python revo3/revo3_servo.py
-python revo3/revo3_servo.py --port /dev/ttyUSB0
-
-# Damping overshoot test (0° -> 80° on J6)
-
-# Teaching mode (record hand movements, then replay)
-python revo3/revo3_teaching.py                                    # Interactive record + playback
-python revo3/revo3_teaching.py --save pen_spin.json               # Record and save trajectory
-python revo3/revo3_teaching.py --load pen_spin.json --loop 5      # Load and loop playback
-python revo3/revo3_teaching.py --speed 0.5                        # Half-speed playback
-python revo3/revo3_teaching.py --freq 50                          # Record at 50Hz
-
-# Convert trajectory to C header (for firmware-side playback debug)
-python revo3/mit_debug/trajectory_to_c.py trajectory.json                   # Generate trajectory_data.h
-python revo3/mit_debug/trajectory_to_c.py trajectory.json --freq 200         # Resample to 200Hz
-python revo3/mit_debug/trajectory_to_c.py trajectory.json -o my_traj.h       # Custom output path
-
-# Analyze jitter from recorded trajectory
-python revo3/jitter_analysis.py trajectory.json                    # Per-motor jitter report
-python revo3/jitter_analysis.py trajectory.json --plot             # With visualization
-python revo3/jitter_analysis.py baseline.json optimized.json       # A/B comparison
-
-# Firmware C header — quintic trajectory interpolator
-# Copy revo3/mit_debug/quintic_trajectory.h into firmware project, then:
-#   #include "quintic_trajectory.h"
-#   QuinticTraj traj;
-#   quintic_init(&traj, 0.0f, 80.0f, 2.0f);   // 0°→80° in 2s
-#   quintic_get(&traj, t, &pos, &vel);         // call in 200Hz loop
-
-# Tactile sensor
-python demo/hand_touch_revo3.py
-python demo/hand_touch_revo3.py -m /dev/ttyUSB0 5000000 1
-
-# GUI (Revo3 Modbus)
-python gui/main.py --revo3-modbus
-# Manually specify touch vendor (matrix or pressure) to override auto-detection (e.g. for older firmware)
-python gui/main.py --touch-vendor matrix
+# 2. Terminate the process
+kill -9 <PID>
 ```
 
----
-
-## Deprecated & Removed Features
-
-| Feature | Notes |
-|---------|-------|
-| LED Switch (register 104) | `set_led_enabled()` removed |
-| MaxAcceleration (register 115) | `revo3_set_max_acceleration()` removed |
-
-## Motor Status Bitmask
-
-Each motor status/error is a `u16` bitmask:
-
-| Bit | Flag | Condition | Recovery |
-|:---:|------|-----------|----------|
-| 0 | OverCurrent | Sustained ≥1.5A for 50ms | Auto-stop |
-| 1 | OverVoltage | >26V | Reduce supply |
-| 2 | UnderVoltage | <8V | Charge battery |
-| 3 | OverTemperature | >110°C | Recovers <90°C |
-| 4 | CurrentSpike | Peak 2A | Auto-stop |
-| 8 | Stalled | Motor blocked | Check obstruction |
-| 11 | Running | Motor active | Status, not error |
+Always call `hand.close()` and `manager.close()` in `try...finally` blocks or use async context managers.

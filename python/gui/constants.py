@@ -1,7 +1,7 @@
 """Shared constants for GUI panels"""
 
 # =============================================================================
-# Legacy 6-slot display constants kept for shared chart helpers.
+# Six-slot display constants used by shared chart helpers.
 # =============================================================================
 
 # Revo3-only SDK uses simple display IDs for chart helpers that still expect a
@@ -27,7 +27,7 @@ MOTOR_COUNT = 6
 # Revo3 Motor Constants (21 DOF)
 # =============================================================================
 
-REVO3_MOTOR_COUNT = 21
+REVO3_ULTRA_JOINT_COUNT = 21
 
 REVO3_MOTOR_NAMES_EN = [
     'M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10',
@@ -39,7 +39,7 @@ REVO3_MOTOR_NAMES_ZH = REVO3_MOTOR_NAMES_EN  # Same naming for Revo3
 
 def get_revo3_motor_count() -> int:
     """Get motor/joint count active Revo3 protocol version."""
-    return REVO3_MOTOR_COUNT
+    return REVO3_ULTRA_JOINT_COUNT
 
 
 # =============================================================================
@@ -59,7 +59,7 @@ TOUCH_COLORS = [
 
 TOUCH_COUNT = 5
 
-# Touch sensor configuration per finger used by legacy-compatible widgets.
+# Per-finger touch configuration used by shared widgets.
 # Each finger has different number of force sensors
 # Format: (force_groups, self_proximity_groups, mutual_proximity_groups)
 TOUCH_SENSOR_CONFIG = {

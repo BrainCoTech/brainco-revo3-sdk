@@ -4,13 +4,12 @@ A pyqtgraph-based time-series chart for displaying 6D force/torque data.
 Can be configured for:
 - Full 6D (Fx, Fy, Fz, Mx, My, Mz) — e.g., Global force, Per-finger force
 - 3D force only (Fx, Fy, Fz)
-- 5-component (Fx, Fy, Fz, Mx, My) — e.g., ArrayPressure devices
+- 5-component (Fx, Fy, Fz, Mx, My) for hp_* fingertip modules
 
 Used by:
 - touch_global_force_widget.py (GlobalForceWidget)
 - touch_per_finger_force_widget.py (PerFingerForceWidget)
 - vision_touch_window.py (VisionTouch force display)
-- vision_touch_mock_panel.py (VisionTouch mock force display)
 """
 
 from collections import deque
@@ -40,14 +39,20 @@ FORCE6D_COLORS = {
 FORCE6D_LABELS = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
 
 
+try:
+    from .touch_common import ForceCompassWidget
+except Exception:
+    ForceCompassWidget = None
+
+
 class Force6DChart(QWidget):
     """Reusable time-series chart for force/torque visualization.
 
     Supports configurable number of components (3D, 5D, or full 6D).
     Features:
     - Real-time time-series plot with auto-scrolling
+    - 2D/3D Force Vector Compass Dial
     - Numeric value display panel (optional)
-    - Configurable title, color, and axis range
     """
 
     def __init__(
@@ -56,6 +61,7 @@ class Force6DChart(QWidget):
         components: int = 6,
         max_points: int = 200,
         show_values: bool = True,
+        show_compass: bool = True,
         accent_color: tuple = None,
         force_range: tuple = None,
         torque_range: tuple = None,
@@ -66,6 +72,7 @@ class Force6DChart(QWidget):
             components: Number of force/torque components (3=Fx/Fy/Fz, 5=+Mx/My, 6=+Mz)
             max_points: Max time-series history length
             show_values: Whether to show numeric value labels
+            show_compass: Whether to embed 2D/3D Force Compass Dial
             accent_color: Optional (r,g,b) accent for title highlight
             force_range: Optional (min, max) Y-axis range for force (N)
             torque_range: Optional (min, max) Y-axis range for torque (N·m)
@@ -74,6 +81,7 @@ class Force6DChart(QWidget):
         self.components = min(components, 6)
         self.max_points = max_points
         self.show_values = show_values
+        self.show_compass = show_compass
         self.title_text = title
         self.accent_color = accent_color
 
@@ -115,26 +123,66 @@ class Force6DChart(QWidget):
 
         self.plot_widget.setLabel('bottom', 'samples', color='#888')
 
-        # Y-axis auto-range or fixed
-        if self.force_range and self.components <= 3:
+        # The primary plot contains force components only.
+        if self.force_range:
             self.plot_widget.setYRange(*self.force_range)
-            self.plot_widget.setLabel('left', 'N', color='#888')
         else:
             self.plot_widget.enableAutoRange(axis='y', enable=True)
-            self.plot_widget.setLabel('left', 'N / N·m', color='#888')
+        self.plot_widget.setLabel('left', 'N', color='#888')
 
         # Add legend (must be before plot() calls for pyqtgraph to register names)
         self.plot_widget.addLegend(offset=(-10, 10))
 
-        # Create curves
+        self.torque_plot_widget = None
+        if self.components > 3:
+            self.torque_plot_widget = pg.PlotWidget()
+            self.torque_plot_widget.setBackground('#1a1a2e')
+            self.torque_plot_widget.showGrid(x=True, y=True, alpha=0.2)
+            self.torque_plot_widget.setXRange(0, self.max_points)
+            self.torque_plot_widget.setLabel('bottom', 'samples', color='#888')
+            self.torque_plot_widget.setLabel('left', 'Nm', color='#888')
+            if self.torque_range:
+                self.torque_plot_widget.setYRange(*self.torque_range)
+            else:
+                self.torque_plot_widget.enableAutoRange(axis='y', enable=True)
+            self.torque_plot_widget.addLegend(offset=(-10, 10))
+
+        # Create curves on unit-specific plots.
         self.curves = {}
         for label in self.labels:
             r, g, b = FORCE6D_COLORS[label]
             pen = pg.mkPen(color=(r, g, b), width=2)
-            curve = self.plot_widget.plot([], [], pen=pen, name=label)
-            self.curves[label] = curve
+            target_plot = (
+                self.plot_widget
+                if label.startswith("F")
+                else self.torque_plot_widget
+            )
+            self.curves[label] = target_plot.plot([], [], pen=pen, name=label)
+        # --- Chart & Compass Layout ---
+        vis_row = QHBoxLayout()
+        vis_row.setSpacing(4)
 
-        layout.addWidget(self.plot_widget, 1)
+        if self.show_compass and ForceCompassWidget is not None:
+            compass_max = max(abs(value) for value in self.force_range) if self.force_range else 20.0
+            self.compass = ForceCompassWidget(
+                title=self.title_text,
+                max_force=compass_max,
+                force_unit="N",
+            )
+            self.compass.setMaximumHeight(160)
+            vis_row.addWidget(self.compass, 1)
+        else:
+            self.compass = None
+
+        chart_widget = QWidget()
+        chart_layout = QVBoxLayout(chart_widget)
+        chart_layout.setContentsMargins(0, 0, 0, 0)
+        chart_layout.setSpacing(4)
+        chart_layout.addWidget(self.plot_widget, 1)
+        if self.torque_plot_widget is not None:
+            chart_layout.addWidget(self.torque_plot_widget, 1)
+        vis_row.addWidget(chart_widget, 2)
+        layout.addLayout(vis_row)
 
         # --- Value display panel (optional) ---
         if self.show_values:
@@ -192,6 +240,15 @@ class Force6DChart(QWidget):
         for i, label in enumerate(self.labels):
             val = values[i] if i < len(values) else 0.0
             self.data[label].append(float(val))
+
+        if getattr(self, "compass", None) is not None:
+            fx = values[0] if len(values) > 0 else 0.0
+            fy = values[1] if len(values) > 1 else 0.0
+            fz = values[2] if len(values) > 2 else 0.0
+            mx = values[3] if len(values) > 3 else 0.0
+            my = values[4] if len(values) > 4 else 0.0
+            fn = (fx * fx + fy * fy + fz * fz) ** 0.5
+            self.compass.set_values(fx, fy, fz, mx, my, fn)
 
         # Update curves
         if self.plot_widget:
