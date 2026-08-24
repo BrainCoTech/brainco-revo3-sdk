@@ -66,12 +66,6 @@ async def run(args: argparse.Namespace) -> None:
             print("calibration command sent")
         if args.reboot:
             await wait_for_operation("reboot", hand.maintenance.reboot(), args.timeout)
-        if args.firmware:
-            await wait_for_operation(
-                "firmware update",
-                hand.maintenance.update_firmware(args.firmware, wait_secs=int(args.timeout)),
-                args.timeout,
-            )
     finally:
         if hand is not None:
             await hand.close()
@@ -85,7 +79,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--reboot", action="store_true")
-    parser.add_argument("--firmware")
     return parser.parse_args()
 
 

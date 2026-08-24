@@ -17,27 +17,39 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `subscriptions.py` | Finite State and Touch subscriptions |
 | `concurrent_control.py` | Concurrent servo control and State reads |
 | `touch_sensor.py` | Typed Touch layouts and snapshots |
-| `device_operations.py` | Config, runtime statistics, calibration, reboot, and firmware update |
+| `device_operations.py` | Config, runtime statistics, calibration, and reboot |
 | `teaching_mode.py` | Teach and Replay operations |
 | `shared_ports.py` | Trusted serial port listing and VID/PID allowlist |
 | `manager_cli.py` | JSONL recording, replay, and diagnostic bundles |
 | `streaming_control.py` | Position streaming and Servo command timeout behavior |
-| `mit_control.py` | Full-hand MIT command streaming |
+| `mit_plan.py` | Quintic full-hand MIT impedance streaming and feedback observation |
 | `units.py` | Offline scalar and batch unit conversions |
 
 These are the customer-facing entry points maintained as the primary 2.0
 examples. They do not use an adapter, operation-level `slave_id`, a collector,
 or a State buffer.
 
+`mit_plan.py` shares its default motion contract with the C++ `mit_plan.cpp`
+example. Python additionally exposes `--joint`, `--range-fraction`,
+`--duration`, `--repeat`, `--frequency`, `--command-timeout-ms`, `--kp`, and
+`--kd` for explicit tuning. `--range-fraction` is limited to `0.05~0.95`.
+Before opening a ServoSession, the example validates the initial feedback and
+generated quintic peak velocity against the configured position and speed
+envelopes. The command timeout must be at least one requested send period.
+
 ## Specialized Workflows
 
 | File | Purpose |
 | --- | --- |
 | `trajectory_control.py` | Run an explicitly enabled joint and full-hand trajectory sequence |
-| `firmware_update.py` | Update hand firmware with an explicit firmware path |
-| `firmware_resource_update.py` | Update a selected firmware resource |
+| `firmware_update.py` | Update a selected main, image, or motor firmware target |
 | `finger_motion.py` | Run an explicitly enabled finger and thumb motion workflow |
 | `touch_hybrid.py` | Verify a confirmed `hp_*` + `mt_*` hybrid touch layout |
+
+`firmware_update.py` requires `--run`, defaults to the `main` target, and also
+supports `--target image` and `--target motor`. An `Indeterminate` result does
+not prove that the device rejected the update; inspect the structured error and
+verify device state before retrying.
 
 ## Engineering Diagnostics
 
@@ -71,7 +83,6 @@ python \
   --port <PORT> --run
 ```
 
-`mit_debug/` contains MIT trajectory conversion, tracking, and plotting tools.
 Shared connection and cleanup helpers live in `python/common_init.py`.
 Offline tests for `manager_cli.py` live under `tests/python/`.
 

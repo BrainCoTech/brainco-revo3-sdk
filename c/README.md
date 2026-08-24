@@ -87,13 +87,29 @@ Device discovery and diagnostics:
 ./c/build/demo/quickstart
 ./c/build/demo/multi_hand
 ./c/build/demo/device_operations
+./c/build/demo/firmware_update --firmware <FILE> --target main --run
 ./c/build/demo/touch_sensor
 ./c/build/demo/touch_hybrid
 ./c/build/demo/streaming_control --move
-./c/build/demo/mit_plan --move
+./c/build/demo/mit_plan --run
 ./c/build/demo/teaching_mode --move
 ./c/build/diagnostics/collision_detection --run
 ```
+
+`firmware_update` is the standalone destructive maintenance workflow. It
+supports `main`, `image`, and `motor` targets, defaults to a 600-second
+operation timeout, and refuses to connect unless `--run` is present. If the
+result is `Indeterminate`, do not immediately retry: inspect the reported
+operation effect and recovery requirement, then verify device state.
+
+`mit_plan` runs the same default plan as the Python `mit_plan.py` example:
+a 100 Hz quintic trajectory from the initial feedback position to the 50% point
+of each target joint's configured position range and back, with 800 ms per
+segment, `Kp=3.0`, `Kd=0.3`, and zero feedforward current. Invalid position
+or speed limits, including a quintic peak velocity above the configured speed
+envelope, stop the example before opening the ServoSession. The demo reuses
+`common/revo3_mit_plan.hpp`, which is also shared with the EtherCAT example,
+and prints periodic position feedback plus the measured command rate.
 
 `collision_detection` enables experimental SDK-side collision detection and
 moves one joint. It exits without connecting or moving unless `--run` is

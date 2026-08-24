@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <string>
 
 int main(int argc, char **argv) {
   using namespace std::chrono_literals;
@@ -11,15 +10,11 @@ int main(int argc, char **argv) {
   revo3::DiscoveryOptions discovery;
   bool calibrate = false;
   bool reboot = false;
-  std::string firmware;
   for (int index = 1; index < argc; ++index) {
     if (std::strcmp(argv[index], "--calibrate") == 0) {
       calibrate = true;
     } else if (std::strcmp(argv[index], "--reboot") == 0) {
       reboot = true;
-    } else if (std::strcmp(argv[index], "--firmware") == 0 &&
-               index + 1 < argc) {
-      firmware = argv[++index];
     } else {
       discovery.port = argv[index];
     }
@@ -51,11 +46,6 @@ int main(int argc, char **argv) {
       auto operation = hand.maintenance().reboot();
       std::printf("Reboot state=%d\n",
                   static_cast<int>(operation.wait(30s)));
-    }
-    if (!firmware.empty()) {
-      auto operation = hand.maintenance().update_firmware(firmware);
-      std::printf("Firmware update state=%d\n",
-                  static_cast<int>(operation.wait(120s)));
     }
     return 0;
   } catch (const std::exception &error) {
