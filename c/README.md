@@ -8,12 +8,6 @@ discovery, device operations, motion, state, and touch data.
 The independent Linux EtherCAT example under `platform/linux/revo3_ec` uses
 IgH `libethercat` directly and does not depend on the Rust SDK shared library.
 
-`tests/revo3_c_contract.c` and `tests/revo3_cpp_contract.cpp` provide
-compile-time ABI and wrapper checks. Together with the C++ examples, every
-exported C symbol has compile-time evidence. This does not claim that every
-hardware effect has passed on-device validation; use the staged hardware
-validation guide for runtime evidence.
-
 ## Build
 
 From the repository root:

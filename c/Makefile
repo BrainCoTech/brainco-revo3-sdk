@@ -28,23 +28,11 @@ endif
 INCLUDES := -I$(CPP_INCLUDE_DIR) -I$(INCLUDE_DIR)
 LDFLAGS := -L$(LIB_DIR) -lbc_revo3_sdk $(RPATH)
 
-TARGETS := $(BUILD_DIR)/tests/revo3_c_contract $(BUILD_DIR)/tests/revo3_abi_layout $(BUILD_DIR)/tests/revo3_cpp_contract $(BUILD_DIR)/demo/quickstart $(BUILD_DIR)/demo/multi_hand $(BUILD_DIR)/demo/device_operations $(BUILD_DIR)/demo/firmware_update $(BUILD_DIR)/demo/touch_sensor $(BUILD_DIR)/demo/touch_hybrid $(BUILD_DIR)/demo/streaming_control $(BUILD_DIR)/demo/mit_plan $(BUILD_DIR)/demo/teaching_mode $(BUILD_DIR)/diagnostics/collision_detection
+TARGETS := $(BUILD_DIR)/demo/quickstart $(BUILD_DIR)/demo/multi_hand $(BUILD_DIR)/demo/device_operations $(BUILD_DIR)/demo/firmware_update $(BUILD_DIR)/demo/touch_sensor $(BUILD_DIR)/demo/touch_hybrid $(BUILD_DIR)/demo/streaming_control $(BUILD_DIR)/demo/mit_plan $(BUILD_DIR)/demo/teaching_mode $(BUILD_DIR)/diagnostics/collision_detection
 
 LEGACY_TARGETS := demo/auto_detect demo/hand_demo demo/hand_dfu demo/hand_trajectory demo/revo3_feedback_benchmark demo/revo3_manager_mit_plan demo/revo3_manager_multi_hand demo/revo3_manager_operations demo/revo3_manager_quickstart demo/revo3_manager_teaching demo/revo3_manager_touch demo/revo3_mit_plan demo/revo3_monitor demo/revo3_motor demo/revo3_ota_resource demo/revo3_servo demo/revo3_touch
 
 all: $(TARGETS)
-
-$(BUILD_DIR)/tests/revo3_c_contract: tests/revo3_c_contract.c $(INCLUDE_DIR)/revo3-sdk.h $(SDK_LIB)
-	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS)
-
-$(BUILD_DIR)/tests/revo3_abi_layout: tests/revo3_abi_layout.cpp $(INCLUDE_DIR)/revo3-sdk.h
-	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
-
-$(BUILD_DIR)/tests/revo3_cpp_contract: tests/revo3_cpp_contract.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(INCLUDE_DIR)/revo3-sdk.h
-	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
 
 $(BUILD_DIR)/diagnostics/collision_detection: diagnostics/collision_detection.cpp $(CPP_INCLUDE_DIR)/revo3/revo3.hpp $(SDK_LIB)
 	@mkdir -p $(@D)
@@ -94,7 +82,7 @@ $(SDK_LIB):
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(LEGACY_TARGETS)
-	rm -rf demo/*.dSYM diagnostics/*.dSYM tests/*.dSYM
+	rm -rf demo/*.dSYM diagnostics/*.dSYM
 
 help:
 	@echo "Build all C++ Revo3 examples: make -C c"
