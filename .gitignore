@@ -34,8 +34,8 @@ c/diagnostics/*
 venv/
 ENV/
 
+# Locally supplied vision-tactile deployment artifacts
+python/vts/
+
 # Python lock files
 uv.lock
-python/vts/BC_20260623/
-python/vts/checkpoints/
-python/vts/ViTaiViewer.exe

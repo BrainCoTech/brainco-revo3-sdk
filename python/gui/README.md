@@ -11,10 +11,8 @@ Panels:
 - Revo3 touch sensor
 - Data collection
 - Teaching mode
-- Timing test
 - DFU
 - System configuration
-- VisionTouch window
 
 ## Collision Test Panel
 
@@ -37,30 +35,12 @@ and activate it with `.venv\Scripts\Activate.ps1`.
 python python/gui/main.py
 python python/gui/main.py --revo3-modbus
 python python/gui/main.py --mock
-python python/gui/main.py --mock revo3-vision
 python python/gui/main.py --mock revo3-mx-touch
-python python/gui/main.py --vts-force-model-dir python/vts/checkpoints --vts-force-model-mode auto
 ```
 
-`--mock` is for GUI debugging without hardware. Supported mock types: `revo3`, `revo3-touch`, `revo3-mx-touch`, `revo3-vision`, `revo3-pro`, `revo3-pro-touch`, `revo3-basic`, `revo3-basic-touch`.
-
-After connecting a Revo3 Ultra VisionTouch device, the `VisionTouch` tab is shown based on the product model. If the same hand also reports `mt_*` or `mx_*` touch, the regular Revo3 touch tab remains available. `Tools` -> `VisionTouch Sensor...` is kept as a shortcut to the VisionTouch tab.
+`--mock` is for GUI debugging without hardware. Supported mock types: `revo3`, `revo3-touch`, `revo3-mx-touch`, `revo3-pro`, `revo3-pro-touch`, `revo3-basic`, `revo3-basic-touch`.
 
 The regular Revo3 touch UI is shown only when `hand.touch.layout` is available. If the SDK cannot identify the underlying register mapping, it fails closed; the GUI does not provide a manual override.
 
-VisionTouch force model loading is optional to keep GUI startup fast:
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--vts-force-model-dir` | Parent directory for VTS force models: `{dir}/{SN}/{SN}.onnx.enc` | Auto-detects `python/vts/checkpoints` when present |
-| `--vts-force-model-mode` | `none` = fast init without Force6D, `auto` = load matching models when present, `required` = skip sensors without models | `none` |
-
-Use `--vts-force-model-mode auto` only when Force6D values are needed. Without force models, image/depth/marker data still works and initializes faster.
-
-The `VisionTouch` tab also provides a force model mode selector, a model directory picker, and an initialization progress bar. The model directory is the parent directory that contains per-SN model folders such as `{dir}/{SN}/{SN}.onnx.enc`. Changes made while sensors are connected are applied on the next reconnect.
-
-Real VTS data requires `pyvitaisdk4bc`:
-
-```bash
-bash python/install_vts_whl.sh
-```
+Independent vision-tactile sensor channels, dedicated runtimes, force models,
+and visualization tools are not part of the public Revo3 SDK examples.

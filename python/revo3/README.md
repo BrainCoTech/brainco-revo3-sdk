@@ -51,40 +51,7 @@ supports `--target image` and `--target motor`. An `Indeterminate` result does
 not prove that the device rejected the update; inspect the structured error and
 verify device state before retrying.
 
-## Engineering Diagnostics
-
-The following scripts are intended for SDK and firmware verification rather
-than as application templates:
-
-- `diagnostics/canfd_mit_batch.py`
-- `diagnostics/collision_test.py`
-- `diagnostics/drag_scenarios.py`
-- `diagnostics/feedback_benchmark.py`
-- `diagnostics/finger_damping.py`
-- `diagnostics/full_hand_motion_diagnostic.py`
-- `diagnostics/interruption_test.py`
-- `diagnostics/io_benchmark.py`
-- `diagnostics/jitter_analysis.py`
-- `diagnostics/overshoot_test.py`
-- `diagnostics/timing_test.py`
-- `diagnostics/touch_mock.py`
-
-`public_api_exerciser.py` is the real-hardware entry point for public
-operations that do not belong in a customer workflow example. It executes one
-operation per process. Read-only operations can run directly; every operation
-that can change device state requires `--run`.
-
-```bash
-python \
-  python/revo3/public_api_exerciser.py health-motor-status --port <PORT>
-
-python \
-  python/revo3/public_api_exerciser.py software-stop-cycle \
-  --port <PORT> --run
-```
-
 Shared connection and cleanup helpers live in `python/common_init.py`.
-Offline tests for `manager_cli.py` live under `tests/python/`.
 
 Minimal Python usage:
 
@@ -135,8 +102,6 @@ whether a command should be retried.
 
 `quickstart.py` is the only ten-minute quick-start entry point. Use
 `discover_devices.py` only when connection discovery needs troubleshooting.
-The engineering-only `diagnostics/full_hand_motion_diagnostic.py` sequence is
-outside the quick-start path and requires an explicit `--move` flag.
 
 `touch_hybrid.py` requires a hardware layout confirmed from the target hand's
 BOM or validation record. Its `set_layout()` call changes only SDK parsing for

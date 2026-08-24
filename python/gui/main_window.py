@@ -29,7 +29,6 @@ from .shared_data import SharedDataManager
 from .shared_data import DEFAULT_MOTOR_FREQ
 from .system_config_panel import SystemConfigPanel
 from .teaching_panel import TeachingPanel
-from .timing_test_panel import TimingTestPanel
 from .touch_panel_revo3 import Revo3TouchSubPanel
 from .styles import is_dark_mode, get_tab_stylesheet
 
@@ -153,9 +152,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.touch_panel, "👆 " + tr("touch_sensor"))
         self.tabs.setTabVisible(self.tabs.indexOf(self.touch_panel), False)
 
-        self.timing_panel = TimingTestPanel()
-        self.tabs.addTab(self.timing_panel, "\u23f1 " + tr("timing_test"))
-
         self.teaching_panel = TeachingPanel()
         self.tabs.addTab(self.teaching_panel, "🎓 " + tr("teaching_mode"))
 
@@ -271,7 +267,6 @@ class MainWindow(QMainWindow):
             (self.config_panel_revo3, "⚙ " + tr("v3_motor_config")),
             (self.touch_panel, "👆 " + tr("touch_sensor")),
             (self.vision_touch_panel, "📷 " + tr("vision_touch_tab")),
-            (self.timing_panel, "\u23f1 " + tr("timing_test")),
             (self.teaching_panel, "🎓 " + tr("teaching_mode")),
             (self.dfu_panel, "🔄 " + tr("dfu_upgrade")),
             (self.config_panel, "\u2699 " + tr("system_config")),
@@ -338,7 +333,6 @@ class MainWindow(QMainWindow):
         else:
             self.touch_panel.clear_device()
         self.collector_panel.set_device(device, slave_id, device_info, self.shared_data)
-        self.timing_panel.set_device(device, slave_id, device_info, self.shared_data)
         self.dfu_panel.set_device(device, slave_id, device_info, self.shared_data)
         self.config_panel.set_device(device, slave_id, device_info, protocol, self.shared_data)
         if hasattr(self.config_panel, "set_connection_info"):
@@ -374,7 +368,6 @@ class MainWindow(QMainWindow):
         motor_fps_widgets = (
             self.motor_panel_revo3,
             self.config_panel_revo3,
-            self.timing_panel,
             self.teaching_panel,
         )
         if current_widget in motor_fps_widgets:
@@ -443,7 +436,6 @@ class MainWindow(QMainWindow):
             self.teaching_panel,
             self.touch_panel,
             self.collector_panel,
-            self.timing_panel,
             self.dfu_panel,
             self.config_panel,
         ]:

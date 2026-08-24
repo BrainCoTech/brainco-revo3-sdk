@@ -39,6 +39,5 @@ python -m pip install './python[gui]'
 python python/gui/main.py
 ```
 
-Install `./python[gui,vision-touch]` instead when using the optional
-vision tactile panels. The platform-specific vision tactile runtime must be
-installed separately as described in `python/vts/README.md`.
+Independent vision-tactile data channels and their platform-specific runtimes
+are outside this SDK example package.

@@ -17,12 +17,6 @@ gui = [
     "pyqtgraph>=0.13.0",
     "qasync>=0.24.0",
 ]
-vision-touch = [
-    "opencv-python>=4.8.0",
-    # PyOpenGL is only required for the optional 3D point-cloud view.
-    # Install the platform-specific vision tactile runtime separately.
-]
-
 [tool.setuptools]
 packages = []
 
