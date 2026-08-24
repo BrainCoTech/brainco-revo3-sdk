@@ -22,13 +22,6 @@ c/demo/*
 !c/demo/**/*.hpp
 !c/demo/**/*.c
 !c/demo/**/*.md
-# Ignore compiled engineering diagnostics
-c/diagnostics/*
-!c/diagnostics/**/*.cpp
-!c/diagnostics/**/*.h
-!c/diagnostics/**/*.hpp
-!c/diagnostics/**/*.c
-!c/diagnostics/**/*.md
 # Virtual environments
 .venv/
 venv/

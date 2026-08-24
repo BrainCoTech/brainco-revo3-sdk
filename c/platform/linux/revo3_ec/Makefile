@@ -10,7 +10,6 @@ LDLIBS += -lethercat -pthread
 COMMON_OBJECT := revo3_ethercat.o
 MIT_PLAN_HEADER := ../../../common/revo3_mit_plan.hpp
 TARGETS := revo3_pdo revo3_sdo revo3_benchmark
-UNIT_TEST_TARGET := revo3_units_test
 
 all: $(TARGETS)
 
@@ -33,10 +32,6 @@ grant-capabilities: revo3_pdo revo3_benchmark
 	sudo setcap cap_ipc_lock,cap_sys_nice=eip revo3_benchmark
 
 clean:
-	rm -f $(TARGETS) $(UNIT_TEST_TARGET) *.o
+	rm -f $(TARGETS) *.o
 
-test-units: revo3_units_test.cpp revo3_ethercat.hpp
-	$(CXX) $(CXXFLAGS) $< -o $(UNIT_TEST_TARGET)
-	./$(UNIT_TEST_TARGET)
-
-.PHONY: all clean grant-capabilities test-units
+.PHONY: all clean grant-capabilities

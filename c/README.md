@@ -75,7 +75,7 @@ Run the standalone EtherCAT benchmark:
 
 ## Run
 
-Device discovery and diagnostics:
+Device discovery and examples:
 
 ```bash
 ./c/build/demo/quickstart
@@ -89,7 +89,6 @@ Device discovery and diagnostics:
 ./c/build/demo/streaming_control --move
 ./c/build/demo/mit_plan --run
 ./c/build/demo/teaching_mode --move
-./c/build/diagnostics/collision_detection --run
 ```
 
 `firmware_update` is the standalone destructive maintenance workflow. It
@@ -106,10 +105,6 @@ or speed limits, including a quintic peak velocity above the configured speed
 envelope, stop the example before opening the ServoSession. The demo reuses
 `common/revo3_mit_plan.hpp`, which is also shared with the EtherCAT example,
 and prints periodic position feedback plus the measured command rate.
-
-`collision_detection` enables experimental SDK-side collision detection and
-moves one joint. It exits without connecting or moving unless `--run` is
-provided; use `--joint` and `--target` to select the test motion.
 
 `touch_hybrid` requires a confirmed `hp_*` + `mt_*` hardware layout. It changes
 only the current SDK session's parsing layout by default. Pass `--test-tare`
