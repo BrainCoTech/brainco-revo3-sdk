@@ -37,7 +37,7 @@ region's `module_ids`. `TouchFrame.sequence` records frame order and
 
 The hand has 11 physical tactile modules. The module order is shared by `mt_*` and `mx_*` touch devices.
 
-| Module Index | Location | `mt_*` Array Address | `mt_*` Points | `mx_*` Array Address | `mx_*` Capacity | Recent `mx_*` Observed Count |
+| Module Index | Location | `mt_*` Array Address | `mt_*` Points | `mx_*` Array Address | `mx_*` Capacity | Example `mx_*` Reported Count |
 |:---:|----------|:---:|:---:|:---:|:---:|:---:|
 | 0 | Palm | `4200` | 36 | `5240` | 200 | 53 |
 | 1 | Thumb Tip | `4250` | 31 | `5340` | 80 | 56 |
@@ -76,15 +76,18 @@ The SDK maps tactile code families to standardized `layout_id` strings and signa
 High-density matrix (`mx_*`) point counts are read through input-register function code `0x04`
 at addresses `5191~5201`. Capacity is only the maximum register span and must not be used as the
 module's point count or embedded in `layout_id`. The SDK generates the base ID from the reported
-count. If two hardware layouts have the same count but different point order or geometry, a controlled
+count. The example reported counts in the table are observations from one validated layout, not fixed
+protocol values or compatibility guarantees. Applications must always use the count reported by the
+connected device. If two hardware layouts have the same count but different point order or geometry, a controlled
 layout mapping may assign a suffix such as `_v2`; the suffix must come from hardware revision or module
 identity evidence and must never be inferred from point count alone. Mixed topologies use sparse
 public module IDs aligned with the protocol physical IDs: module 0 for the palm, odd IDs 1/3/5/7/9
 for `hp_*` fingertips (Thumb~Pinky), and even IDs 2/4/6/8/10 for fingerpads (Thumb~Pinky). Register 135 values `0x8113`,
 `0x8223`, and `0x8123` select `mt_*`/`mx_*` independently for the fingerpad and palm regions; legacy
-value 11 aliases `0x8113`. VisionTouch is detected by the `UVL/UVR` serial-number prefix, while `xs_*`
-is currently fingertip-only. Neither visual-tactile channel is exposed through the main-link
-`TouchFrame` API.
+value 11 aliases `0x8113`. VisionTouch is detected by the `UVL/UVR` serial-number prefix. The `xs_*`
+and `vts_*` technical identities are detection hints for fingertip visual-tactile channels, not stable
+public numeric protocol IDs. Neither visual-tactile channel is exposed through the main-link `TouchFrame`
+API.
 
 
 ## `mt_*` Piezoresistive Array Registers
@@ -138,20 +141,6 @@ registers and reads them with function code `0x04`. During the compatibility per
 the point-count range once per connection and falls back to the legacy holding-register (`0x03`)
 mapping when only that mapping returns valid counts. The selected mapping is cached for the connection;
 conflicting valid responses fail closed instead of silently selecting one.
-
-| Module | Left hand max (N) | Right hand max (N) |
-|--------|:---:|:---:|
-| Palm | 2.49 | 2.26 |
-| Thumb tip | 0.63 | 0.63 |
-| Thumb pad | 1.41 | 1.13 |
-| Index tip | 2.36 | 2.36 |
-| Index pad | 1.41 | 1.41 |
-| Middle tip | 2.36 | 2.36 |
-| Middle pad | 1.41 | 1.41 |
-| Ring tip | 2.36 | 2.36 |
-| Ring pad | 1.41 | 1.41 |
-| Pinky tip | 2.36 | 2.36 |
-| Pinky pad | 1.41 | 1.41 |
 
 ## `hp_*` Registers
 

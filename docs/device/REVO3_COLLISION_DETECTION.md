@@ -46,7 +46,7 @@ current = abs(actual_current)
 
 The SDK evaluates only newly received motor-status samples. Reusing one cached sample does not count the same Stall bit or threshold violation multiple times.
 
-When `debounce_time_ms` is greater than zero, detection uses a time window and requires multiple violating samples. A zero debounce permits a single violating sample to trigger protection. Actual response time still depends on the status-read frequency and bus latency.
+When `debounce_time_ms` is greater than zero, detection uses a bounded sliding sample window derived from the observed sampling period and requires multiple violating samples. The current implementation requires at least two violating samples and limits the retained window to 32 samples. These window details are implementation behavior of an experimental API and may change in a later 2.x minor release. A zero debounce permits a single violating sample to trigger protection. Actual response time still depends on the status-read frequency and bus latency.
 
 ## 3. Target-Motion Protection
 
@@ -106,9 +106,7 @@ These names describe SDK command strategies, not safety-certified stop categorie
 
 ## 7. GUI Test Panel
 
-The PySide GUI retains its existing collision test controls and styling while calling the 2.0 `hand.experimental_collision` API through its internal adapter. Its local yellow Stall guard is a display/control fallback for interactive drag testing; it is distinct from the SDK-confirmed red experimental collision state.
-
-GUI monitoring uses 2.0 State reads and application-owned display state. It does not restore the removed Python collector or shared-buffer API.
+The example PySide GUI adds application-level monitoring and display behavior on top of this API. Its controls and color states are example behavior, not part of the SDK contract. See the [GUI README](../../python/gui/README.md) for the current behavior.
 
 ## 8. Validation Requirements
 
@@ -121,4 +119,4 @@ Before release, hardware tests must cover:
 - Auto-clear and explicit reset behavior.
 - Concurrent State monitoring and ServoSession load on Modbus and CANFD.
 
-Until those results are recorded, this feature must be described as implemented and awaiting hardware validation, not as a guaranteed stop or hardware-damage prevention mechanism.
+The current validation scope covers supported 21 DOF devices. It does not establish collision-protection behavior for other joint layouts. Until the listed results are recorded, this feature must be described as implemented and awaiting hardware validation, not as a guaranteed stop or hardware-damage prevention mechanism.

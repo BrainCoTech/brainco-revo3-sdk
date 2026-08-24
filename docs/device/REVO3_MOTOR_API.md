@@ -52,6 +52,12 @@ The public Thumb order is Rotation, MCP, IP, Abd, Flex. Its controller channels
 are 4, 3, 0, 1, 2 respectively. This mapping is internal and must not leak into
 application arrays.
 
+The register map reserves slots for the maximum 21-joint layout. A device may
+expose fewer active joints. Applications must use `JointLayout.joint_count` and
+must not read or command reserved slots beyond the active layout. A 21-entry
+register range in the tables below describes protocol capacity, not a claim
+that every Revo3 model has 21 active joints.
+
 ## Control Modes
 
 | Value | Mode | Parameter |
