@@ -34,7 +34,7 @@ from .styles import is_dark_mode, get_tab_stylesheet
 
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from common_imports import baudrate_to_int, get_model_name, has_vision_tactile, logger, revo3_uses_motor_api, sdk
+from common_imports import baudrate_to_int, get_model_name, logger, revo3_uses_motor_api, sdk
 
 
 def _touch_layout(device):
@@ -85,8 +85,6 @@ class MainWindow(QMainWindow):
         self,
         revo3_modbus=False,
         mock_type=None,
-        vts_force_model_dir=None,
-        vts_force_model_mode="none",
         canfd=None,
     ):
         super().__init__()
@@ -98,14 +96,9 @@ class MainWindow(QMainWindow):
         self.revo3_modbus = revo3_modbus
         self.mock_type = mock_type
         self.canfd_arg = canfd
-        self.vts_force_model_dir = vts_force_model_dir
-        self.vts_force_model_mode = vts_force_model_mode
-        self.current_has_vision_touch = False
         self._handling_connection_lost = False
         self.shared_data = SharedDataManager()
         self._last_fps_tuple = (0.0, 0.0, 0.0)
-        self.vision_touch_panel = None
-        self.vision_touch_window = None
         self._setup_ui()
         self._setup_menu()
         self._setup_statusbar()
@@ -200,10 +193,6 @@ class MainWindow(QMainWindow):
         self.data_collector_action = QAction("📊 Data Collection...", self)
         self.data_collector_action.triggered.connect(self._show_data_collector)
         self.tools_menu.addAction(self.data_collector_action)
-        self.vision_touch_action = QAction("📷 VisionTouch Sensor...", self)
-        self.vision_touch_action.triggered.connect(self._show_vision_touch)
-        self.vision_touch_action.setVisible(False)
-        self.tools_menu.addAction(self.vision_touch_action)
 
         self.help_menu = menubar.addMenu("Help")
         self.about_action = QAction("About", self)
@@ -230,8 +219,6 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index):
         current_widget = self.tabs.widget(index)
-        if current_widget == self.vision_touch_panel and hasattr(current_widget, "connect_if_needed"):
-            current_widget.connect_if_needed()
         if self.shared_data and self.shared_data.data_collector:
             if current_widget == self.touch_panel:
                 self.shared_data.update_frequencies(0, 20)
@@ -266,7 +253,6 @@ class MainWindow(QMainWindow):
             (self.motor_panel_revo3, "🎮 " + tr("motor_control_v3")),
             (self.config_panel_revo3, "⚙ " + tr("v3_motor_config")),
             (self.touch_panel, "👆 " + tr("touch_sensor")),
-            (self.vision_touch_panel, "📷 " + tr("vision_touch_tab")),
             (self.teaching_panel, "🎓 " + tr("teaching_mode")),
             (self.dfu_panel, "🔄 " + tr("dfu_upgrade")),
             (self.config_panel, "\u2699 " + tr("system_config")),
@@ -298,17 +284,9 @@ class MainWindow(QMainWindow):
             bool(getattr(device, "supports_touch", False))
             or _touch_module_count(touch_layout) > 0
         )
-        has_vision_touch = supports_touch and has_vision_tactile(model)
         touch_tab_index = self.tabs.indexOf(self.touch_panel)
         if touch_tab_index >= 0:
             self.tabs.setTabVisible(touch_tab_index, supports_touch)
-        self.current_has_vision_touch = has_vision_touch
-        if hasattr(self, "vision_touch_action"):
-            self.vision_touch_action.setVisible(has_vision_touch)
-        if has_vision_touch:
-            self._ensure_vision_touch_tab()
-        else:
-            self._clear_vision_touch_tab()
 
         self.shared_data.set_device(device, slave_id, device_info)
         self.shared_data.connection_lost.connect(self._on_connection_lost)
@@ -446,12 +424,6 @@ class MainWindow(QMainWindow):
         touch_tab_index = self.tabs.indexOf(self.touch_panel)
         if touch_tab_index >= 0:
             self.tabs.setTabVisible(touch_tab_index, False)
-        self._clear_vision_touch_tab()
-        if hasattr(self, "vision_touch_action"):
-            self.vision_touch_action.setVisible(False)
-        if self.vision_touch_window is not None:
-            self.vision_touch_window.close()
-            self.vision_touch_window = None
         self.tabs.setEnabled(False)
 
     def _on_connection_lost(self):
@@ -493,7 +465,6 @@ class MainWindow(QMainWindow):
         ]:
             if hasattr(panel, "clear_device"):
                 panel.clear_device()
-        self._clear_vision_touch_tab()
         dfu_index = self.tabs.indexOf(self.dfu_panel)
         self.tabs.setCurrentIndex(dfu_index)
         for i in range(self.tabs.count()):
@@ -525,64 +496,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.collector_panel)
         dialog.exec()
         self.collector_panel.setParent(None)
-
-    def _ensure_vision_touch_tab(self):
-        if self.vision_touch_panel is not None:
-            return True
-        try:
-            from .vision_touch_window import VisionTouchPanel
-
-            if self.vts_force_model_dir:
-                force_model_dir = self.vts_force_model_dir
-            else:
-                default_model_dir = Path(__file__).resolve().parent.parent / "vts" / "checkpoints"
-                force_model_dir = str(default_model_dir) if default_model_dir.is_dir() else None
-            self.vision_touch_panel = VisionTouchPanel(
-                self,
-                auto_connect=False,
-                force_model_dir=force_model_dir,
-                force_model_mode=self.vts_force_model_mode,
-            )
-            touch_index = self.tabs.indexOf(self.touch_panel)
-            insert_index = touch_index + 1 if touch_index >= 0 else self.tabs.count()
-            self.tabs.insertTab(insert_index, self.vision_touch_panel, "📷 " + tr("vision_touch_tab"))
-            self.tabs.setTabVisible(insert_index, True)
-            return True
-        except ImportError as e:
-            QMessageBox.warning(
-                self,
-                "VisionTouch Not Available",
-                "VisionTouch real-device features require the optional vts_* runtime.\n\n"
-                "See python/gui/README.md for runtime setup.\n\n"
-                f"Error: {e}",
-            )
-            return False
-
-    def _clear_vision_touch_tab(self):
-        if self.vision_touch_panel is None:
-            return
-        panel = self.vision_touch_panel
-        index = self.tabs.indexOf(panel)
-        if index >= 0:
-            self.tabs.removeTab(index)
-        if hasattr(panel, "_disconnect"):
-            panel._disconnect()
-        panel.setParent(None)
-        panel.deleteLater()
-        self.vision_touch_panel = None
-
-    def _show_vision_touch(self):
-        if not self.current_has_vision_touch:
-            QMessageBox.information(
-                self,
-                "VisionTouch Sensor",
-                "VisionTouch sensor tools are only available for Revo3 Ultra VisionTouch devices.",
-            )
-            return
-        if self._ensure_vision_touch_tab():
-            self.tabs.setCurrentWidget(self.vision_touch_panel)
-            if hasattr(self.vision_touch_panel, "connect_if_needed"):
-                self.vision_touch_panel.connect_if_needed()
 
     def _show_about(self):
         sdk_version = "Unknown"
@@ -621,7 +534,6 @@ class MainWindow(QMainWindow):
         ]:
             if hasattr(panel, "clear_device"):
                 panel.clear_device()
-        self._clear_vision_touch_tab()
         if self.connection_panel.ctx:
             try:
                 ctx = self.connection_panel.ctx
