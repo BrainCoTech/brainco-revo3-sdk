@@ -35,7 +35,7 @@ static_assert(
 static_assert(
     std::is_same_v<decltype(std::declval<const revo3::SdkError &>().recovery_requirement()),
                    revo3::RecoveryRequirement>);
-static_assert(static_cast<std::uint32_t>(revo3::RecoveryRequirement::OperatorAction) == 4);
+static_assert(static_cast<std::uint32_t>(revo3::RecoveryRequirement::OperatorAction) == 3);
 static_assert(
     std::is_same_v<decltype(std::declval<const revo3::SdkError &>().low_level_cause()),
                    const std::optional<std::string> &>);
@@ -53,6 +53,17 @@ static_assert(std::is_same_v<decltype(revo3::TouchModuleData::force3d),
                              revo3::TouchForce3D>);
 static_assert(std::is_same_v<decltype(revo3::TouchModuleData::torque2d),
                              revo3::TouchTorque2D>);
+static_assert(
+    std::is_same_v<decltype(std::declval<const revo3::Touch &>().point_counts()),
+                   std::vector<std::uint16_t>>);
+static_assert(std::is_same_v<decltype(std::declval<const revo3::Config &>()
+                                         .set_rs485_baudrate(
+                                             revo3::Rs485Baudrate::Baud5Mbps)),
+                             void>);
+static_assert(std::is_same_v<decltype(std::declval<const revo3::Config &>()
+                                         .set_canfd_baudrate(
+                                             revo3::CanFdBaudrate::Baud5Mbps)),
+                             void>);
 
 static_assert(std::is_same_v<decltype(revo3::units::deg_to_rad(1.0f)), float>);
 static_assert(std::is_same_v<decltype(revo3::units::deg_to_rad(std::vector<float>{})),

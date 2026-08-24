@@ -806,6 +806,7 @@ Config 按职责分为：
 
 - `hand.config.snapshot()` 返回 `DeviceConfig`，包含 `slave_id`、RS485 波特率、设备开关、保护电流、位置与速度限制以及 `persistence_scope`。`hand.config` 还提供逐项命名的 setter，不提供会同时覆盖无关字段的批量更新。固件是配置持久化的唯一事实来源。
 - `hand.config.runtime_options` 返回 `RuntimeOptions`，包含 `state_subscription_period_ms`（默认 20）、`touch_subscription_period_ms`（默认 20）、`health_subscription_period_ms`（默认 1000）和 `servo_command_timeout_ms`（默认 100）。这些参数只更新当前进程，不写入设备。调用者也可以在创建订阅或流式控制会话时按场景指定参数；拉取间隔不是设备采样周期或固定频率承诺。
+- 通信参数使用 `Rs485Baudrate` / `CanFdBaudrate` 枚举设置。C ABI 对应符号为 `revo3_device_set_rs485_baudrate()` / `revo3_device_set_canfd_baudrate()`。
 - SDK 不提供 `SafetyConfig`。固件已有的限制不在 SDK 中重复定义。
 
 ```python
@@ -1058,7 +1059,7 @@ Touch API 按职责分为：读取与订阅、布局配置、模组启停、读�
 | `await hand.touch.tare(module_index=None)` | `hand.touch().tare(module_index)` | `None` | 执行零漂校准 |
 | `await hand.touch.cancel_tare(module_index=None)` | `hand.touch().cancel_tare(module_index)` | `None` | `mx_*` 恢复默认/出厂零点基线 |
 | `await hand.touch.tare_status(module_index=None)` | `hand.touch().tare_status(module_index)` | `TouchTareStatus` | `mx_*` 查询协议定义的清零状态 |
-| `await hand.touch.point_counts()` | - | `list[int]` | 读取触觉模组点数 |
+| `await hand.touch.point_counts()` | `hand.touch().point_counts()` | `list[int]` / `std::vector<uint16_t>` | 读取触觉模组点数 |
 | `await hand.touch.restart(module_index=None)` | `hand.touch().restart(module_index)` | `None` | 重启触觉模组 |
 
 Touch 操作按当前协议能力路由；不支持的组合在发送请求前返回 `UnsupportedCapability`：
@@ -1093,6 +1094,11 @@ revo3_device_touch_restart
 ```
 
 C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 module ID（纯 `mt_*` / `mx_*` 布局下等于 `TouchLayout.modules` 数组下标；组合拓扑下为与协议物理编号对齐的稀疏编号，不等于数组下标）。
+
+#### Config、Calibration 与 Maintenance
+
+| Python 写法 | C++ 写法 | 返回值 | 行为说明 |
+| --- | --- | --- | --- |
 | `await hand.config.snapshot()` | `hand.config().snapshot()` | [`DeviceConfig`](#deviceconfig) | 读取设备配置 |
 | `hand.config.runtime_options` | `hand.config().runtime_options()` | [`RuntimeOptions`](#runtimeoptions) | 读取 SDK 运行参数 |
 | `hand.config.set_runtime_options(options)` | `hand.config().set_runtime_options(options)` | `None` | 设置 SDK 运行参数 |
@@ -1107,8 +1113,8 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `await hand.config.set_joint_protect_current(i, ma)` | `hand.config().set_joint_protect_current(i, ma)` | `None` | 设置单关节保护电流 |
 | `await hand.config.set_joint_position_limits(i, min, max)` | `hand.config().set_joint_position_limits(i, min, max)` | `None` | 设置单关节位置限制 |
 | `await hand.config.set_joint_speed_limits(i, min, max)` | `hand.config().set_joint_speed_limits(i, min, max)` | `None` | 设置单关节速度限制 |
-| `await hand.config.set_rs485_baudrate(baudrate)` | - | `None` | 设置 RS485 波特率 |
-| `await hand.config.set_canfd_baudrate(baudrate)` | - | `None` | 设置 CANFD 波特率 |
+| `await hand.config.set_rs485_baudrate(baudrate)` | `hand.config().set_rs485_baudrate(baudrate)` | `None` / `void` | 设置 RS485 波特率 |
+| `await hand.config.set_canfd_baudrate(baudrate)` | `hand.config().set_canfd_baudrate(baudrate)` | `None` / `void` | 设置 CANFD 波特率 |
 | `await hand.calibration.calibrate_joints()` | `hand.calibration().calibrate_joints()` | `None` | 关节标定 |
 | `await hand.calibration.set_current(ma)` | `hand.calibration().set_current(ma)` | `None` | 设置标定电流 |
 | `await hand.calibration.zero_positions()` | `hand.calibration().zero_positions()` | `list[float]` | 读取零位 |
@@ -1207,7 +1213,7 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`operati
 | `SecondOrderCriticallyDamped` | `2` | 使用二阶临界阻尼滤波平滑目标位置 |
 
 #### StateSubscription / TouchSubscription / HealthSubscription
-数据订阅流对象，用于异步按周期推送采样：
+数据订阅流对象，用于按周期拉取采样：
 
 | 方法 | 返回值 | 描述说明 |
 | --- | --- | --- |
@@ -1215,6 +1221,8 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`operati
 | `sub.close()` | `None` | 显式关闭并释放订阅句柄 |
 
 `close()` 可从另一线程或任务调用，并会唤醒正在等待下一个采样周期的 `next()`。为保证协议事务完整性，已经进入底层设备 I/O 的单次读取不会被强制中断；关闭状态会阻止后续读取。
+
+`next()` 返回一次 SDK 拉取获得的快照；订阅对象不是固件逐帧队列，不保存两次调用之间产生的全部物理采样，也不承诺无丢帧。`period` 是 SDK 的最小拉取间隔，不是设备采样周期、固定频率或端到端交付保证。当前公共 API 不提供 DataCollector、共享 Buffer 或连续帧流；需要逐帧记录的场景必须经过单独的能力与契约评审。
 
 ### 6.3 触觉传感器数据结构 (Touch)
 

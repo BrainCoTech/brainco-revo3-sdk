@@ -789,6 +789,7 @@ Python and C++ callers must pass a defined enum member. An unknown integer is an
 
 - `hand.config.snapshot()` returns `DeviceConfig`, including `slave_id`, RS485 baud rate, device switches, protection current, position and speed limits, and `persistence_scope`. `hand.config` also provides explicitly named per-setting setters, but no bulk update that overwrites unrelated fields. Firmware is the sole source of truth for persistence.
 - `hand.config.runtime_options` returns `RuntimeOptions`, and `hand.config.set_runtime_options(...)` updates process-local defaults for pull interval and streaming-control send timeout. They are not written to the device. A pull interval is not a device sample period or a fixed-rate guarantee.
+- Communication settings use the `Rs485Baudrate` / `CanFdBaudrate` enums. The corresponding C ABI symbols are `revo3_device_set_rs485_baudrate()` / `revo3_device_set_canfd_baudrate()`.
 
 ```python
 config = await hand.config.snapshot()
@@ -997,7 +998,7 @@ Python configuration fields and constructor defaults are:
 | `await hand.touch.tare(module_index=None)` | `hand.touch().tare(module_index)` | `None` | Run zero-offset calibration |
 | `await hand.touch.cancel_tare(module_index=None)` | `hand.touch().cancel_tare(module_index)` | `None` | Cancel a protocol-supported tare operation |
 | `await hand.touch.tare_status(module_index=None)` | `hand.touch().tare_status(module_index)` | `TouchTareStatus` | Query tare status |
-| `await hand.touch.point_counts()` | - | `list[int]` | Read module point counts |
+| `await hand.touch.point_counts()` | `hand.touch().point_counts()` | `list[int]` / `std::vector<uint16_t>` | Read module point counts |
 | `await hand.touch.restart(module_index=None)` | `hand.touch().restart(module_index)` | `None` | Restart touch modules |
 | `await hand.config.snapshot()` | `hand.config().snapshot()` | [`DeviceConfig`](#deviceconfig) | Read device config |
 | `hand.config.runtime_options` | `hand.config().runtime_options()` | [`RuntimeOptions`](#runtimeoptions) | Read SDK runtime options |
@@ -1013,8 +1014,8 @@ Python configuration fields and constructor defaults are:
 | `await hand.config.set_joint_protect_current(i, ma)` | `hand.config().set_joint_protect_current(i, ma)` | `None` | Set joint protection current |
 | `await hand.config.set_joint_position_limits(i, min, max)` | `hand.config().set_joint_position_limits(i, min, max)` | `None` | Set joint position limits |
 | `await hand.config.set_joint_speed_limits(i, min, max)` | `hand.config().set_joint_speed_limits(i, min, max)` | `None` | Set joint speed limits |
-| `await hand.config.set_rs485_baudrate(baudrate)` | - | `None` | Set RS485 baudrate |
-| `await hand.config.set_canfd_baudrate(baudrate)` | - | `None` | Set CANFD baudrate |
+| `await hand.config.set_rs485_baudrate(baudrate)` | `hand.config().set_rs485_baudrate(baudrate)` | `None` / `void` | Set RS485 baudrate |
+| `await hand.config.set_canfd_baudrate(baudrate)` | `hand.config().set_canfd_baudrate(baudrate)` | `None` / `void` | Set CANFD baudrate |
 | `await hand.calibration.calibrate_joints()` | `hand.calibration().calibrate_joints()` | `None` | Joint calibration |
 | `await hand.calibration.set_current(ma)` | `hand.calibration().set_current(ma)` | `None` | Set calibration current |
 | `await hand.calibration.zero_positions()` | `hand.calibration().zero_positions()` | `list[float]` | Read zero positions |

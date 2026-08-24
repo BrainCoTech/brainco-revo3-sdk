@@ -15,6 +15,10 @@ int main(void) {
   (void)&revo3_configure_usb_vid_pid_allowlist;
   (void)&revo3_init_logging;
 
+  /* Public device-configuration symbol contracts. */
+  (void)&revo3_device_set_rs485_baudrate;
+  (void)&revo3_device_set_canfd_baudrate;
+
   if (revo3_get_api_version(&version, sizeof(version)) != 0 ||
       revo3_motion_options_init(&motion_options, sizeof(motion_options)) != 0 ||
       revo3_runtime_options_init(&runtime_options, sizeof(runtime_options)) != 0 ||
