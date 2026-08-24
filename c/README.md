@@ -79,6 +79,8 @@ Device discovery and diagnostics:
 
 ```bash
 ./c/build/demo/quickstart
+./c/build/demo/discover_devices --scan-all
+./c/build/demo/subscriptions --count 3
 ./c/build/demo/multi_hand
 ./c/build/demo/device_operations
 ./c/build/demo/firmware_update --firmware <FILE> --target main --run
@@ -113,16 +115,21 @@ provided; use `--joint` and `--target` to select the test motion.
 only the current SDK session's parsing layout by default. Pass `--test-tare`
 only when changing touch calibration state is intended.
 
-Device discovery stops after the first match by default. Add `--scan-all` to
-scan every candidate. `--stream` uses `revo3_auto_detect_start()` and prints
-devices as they are found; combine it with `--scan-all` to stream every match.
-Add `--verbose` to show SDK scan logs, or `--modbus-baudrate 5000000` to probe
-one known Modbus baudrate. By default, CANFD auto-detect tries data baudrates in order:
+`discover_devices` stops after the first match by default. Add `--scan-all` to
+scan every candidate. Use `--port`, `--protocol`, `--slave-id`,
+`--modbus-baudrate`, or `--canfd-data-baudrate` to constrain the scan. By
+default, CANFD auto-detect tries data baudrates in order:
 `5M`, `4M`, `2M`, `1M` on adapters that support them. BrainCo USB2CANFD
 supports only `5M`; add `--canfd-data-baudrate 2000000` to probe only one
 known CANFD data baudrate on compatible adapters.
 
-Minimal streaming usage:
+`subscriptions` performs finite State, optional Touch, and Health pull
+subscriptions, closes each subscription explicitly, and prints the resulting
+runtime counters. The requested period is a minimum SDK pull interval, not a
+device sampling-rate guarantee.
+
+For lower-level C integrations that need callback delivery or cancellation
+before discovery completes, use the asynchronous C ABI directly:
 
 ```cpp
 struct ScanState {

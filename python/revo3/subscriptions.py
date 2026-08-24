@@ -1,4 +1,4 @@
-"""Read finite State and optional Touch pull subscriptions with runtime statistics."""
+"""Read finite State, optional Touch, and Health pull subscriptions."""
 
 import argparse
 import asyncio
@@ -11,6 +11,7 @@ async def run(args: argparse.Namespace) -> None:
     hand = None
     state_sub = None
     touch_sub = None
+    health_sub = None
     try:
         hand = await manager.connect_auto(port=args.port, slave_id=args.slave_id)
         state_sub = hand.state.subscribe(period=args.period)
@@ -38,6 +39,15 @@ async def run(args: argparse.Namespace) -> None:
                     f"modules={module_count} force_modules={signal_modules}"
                 )
 
+        health_sub = hand.health.subscribe(period=args.health_period)
+        for _ in range(args.count):
+            health = await asyncio.wait_for(health_sub.next(), timeout=args.timeout)
+            print(
+                f"Health safety={health.safety_state} "
+                f"system={health.system_state} error={health.system_error_code} "
+                f"faulted_motors={health.faulted_motor_count}"
+            )
+
         statistics = hand.statistics
         print(
             "RuntimeStatistics: "
@@ -46,6 +56,8 @@ async def run(args: argparse.Namespace) -> None:
             f"failed_operations={statistics.failed_operations}"
         )
     finally:
+        if health_sub is not None:
+            health_sub.close()
         if touch_sub is not None:
             touch_sub.close()
         if state_sub is not None:
@@ -60,6 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port")
     parser.add_argument("--slave-id", type=lambda value: int(value, 0))
     parser.add_argument("--period", type=float, default=0.02)
+    parser.add_argument("--health-period", type=float, default=1.0)
     parser.add_argument("--count", type=int, default=3)
     parser.add_argument(
         "--timeout",
@@ -67,7 +80,14 @@ def parse_args() -> argparse.Namespace:
         default=5.0,
         help="timeout in seconds for each subscription read (default: 5.0)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.period <= 0 or args.health_period <= 0:
+        parser.error("subscription periods must be positive")
+    if args.count <= 0:
+        parser.error("count must be positive")
+    if args.timeout <= 0:
+        parser.error("timeout must be positive")
+    return args
 
 
 if __name__ == "__main__":

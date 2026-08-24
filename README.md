@@ -19,6 +19,8 @@ bash download-lib.sh
 make -C c
 ./c/build/demo/quickstart
 ./c/build/demo/quickstart --move
+./c/build/demo/discover_devices --scan-all
+./c/build/demo/subscriptions --count 3
 ./c/build/demo/multi_hand
 ./c/build/demo/device_operations --help
 ./c/build/demo/firmware_update --help
@@ -71,6 +73,8 @@ python -m pip install .
 
 # Run Revo3 2.0 Manager examples (requires a real Revo3 device)
 python revo3/quickstart.py
+python revo3/discover_devices.py --help
+python revo3/subscriptions.py --help
 python revo3/touch_sensor.py
 python revo3/device_operations.py --help
 python revo3/firmware_update.py --help

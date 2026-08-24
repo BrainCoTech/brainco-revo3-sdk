@@ -14,7 +14,7 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `quickstart.py` | Connect, inspect layouts, read State and Health, and optionally move |
 | `discover_devices.py` | Read-only device discovery and connection troubleshooting |
 | `multi_hand.py` | Multiple Hand lifecycle and shared transport behavior |
-| `subscriptions.py` | Finite State and Touch subscriptions |
+| `subscriptions.py` | Finite State, optional Touch, and Health subscriptions |
 | `concurrent_control.py` | Concurrent servo control and State reads |
 | `touch_sensor.py` | Typed Touch layouts and snapshots |
 | `device_operations.py` | Config, runtime statistics, calibration, and reboot |
