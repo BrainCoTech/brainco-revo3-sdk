@@ -713,7 +713,7 @@ Touch-module serial numbers are read from `hand.device_info.touch_serial_numbers
 
 ### 4.4 Health & Safety State API
 
-`HealthSnapshot` is read-only. It contains system state, the global error code, current, voltage, power, system temperature, faulted motor count, and `safety_state`. Per-motor fault codes remain in `HandState.fault_codes`. Motor-module temperatures and the online bitmask are health diagnostic queries exposed as `hand.health.motor_module_temperatures_c()` and `hand.health.motor_online_mask()`. These values are not duplicated in `HealthSnapshot`. A complete protection-state model and its `SafetyState` mapping still require confirmed firmware semantics and on-device fault-path tests.
+`HealthSnapshot` is read-only. It contains system state, the global error code, current, voltage, power, system temperature, per-motor fault codes, faulted motor count, and `safety_state`. Per-motor fault codes come from input registers 2120..2140 and are collected separately from the high-rate `HandState`. Motor-module temperatures and the online bitmask are health diagnostic queries exposed as `hand.health.motor_module_temperatures_c()` and `hand.health.motor_online_mask()`. These values are not duplicated in `HealthSnapshot`. A complete protection-state model and its `SafetyState` mapping still require confirmed firmware semantics and on-device fault-path tests.
 
 `HealthSnapshot` and `SafetyState` are software-level diagnostics collected and aggregated over ordinary Modbus RTU or CAN FD links. They are not functional-safety states and must not be used as evidence for an ISO 13849 PL or IEC 61508 SIL claim, a safety PLC decision, an Emergency Stop circuit, or STO. Confirmed errors produce `SafetyState::Faulted`; insufficient information produces `SafetyState::Unknown`. Software Stop and Servo timeout provide software-level control degradation only. Independent safety measures must be selected through the system risk assessment.
 
@@ -721,6 +721,7 @@ Touch-module serial numbers are read from `hand.device_info.touch_serial_numbers
 # Example: Read health diagnostic snapshot
 health = await hand.health.snapshot()
 print(f"Safety State: {health.safety_state}, Faulted Motors: {health.faulted_motor_count}")
+print(f"Motor Fault Codes: {health.motor_fault_codes}")
 
 temperatures = await hand.health.motor_module_temperatures_c()
 online_mask = await hand.health.motor_online_mask()
@@ -1045,6 +1046,7 @@ Read-only system health and safety status snapshot:
 | `voltage_v` | `int` | Bus voltage (V) |
 | `power_w` | `int` | Total system power (W) |
 | `temperature_c` | `int` | Controller chip/board temperature (°C) |
+| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | Per-joint raw fault codes from input registers 2120..2140 |
 | `faulted_motor_count` | `int` | Number of motors with a non-zero defined fault code |
 | `safety_state` | [`SafetyState`](#safetystate-enum) | System safety diagnostic state (`Normal` / `RecoveryRequired` / `Faulted` / `Unknown`) |
 | `observed_at` | [`Timestamp`](#timestamp) | Observation timestamp |
@@ -1086,7 +1088,6 @@ Single frame snapshot of motor feedback states across all 21 joints:
 | `positions_deg` | `list[float]` / `std::array<float, 21>` | Per-motor current positions (deg) |
 | `velocities_rpm` | `list[float]` / `std::array<float, 21>` | Per-motor current velocities (rpm) |
 | `currents_ma` | `list[float]` / `std::array<float, 21>` | Per-motor current values (mA) |
-| `fault_codes` | `list[int]` / `std::array<int, 21>` | Per-joint raw fault codes from input registers 2120..2140 |
 | `timestamp` | [`Timestamp`](#timestamp) | Frame arrival timestamp |
 
 #### ServoSessionState (Enum)

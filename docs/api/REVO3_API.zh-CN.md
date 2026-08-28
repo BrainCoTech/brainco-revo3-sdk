@@ -180,7 +180,7 @@ DetectedDevice / revo3::DetectedDevice
 ├── port_name                          --> 设备串口或端口名称 (如 /dev/ttyUSB0, can0)
 ├── slave_id                           --> 设备 Modbus 从机 ID
 ├── nominal_baudrate_bps              --> RS485 波特率或 CAN 仲裁段波特率 (如 115200, 1000000)
-├── data_baudrate_bps                 --> CANFD 数据段波特率 (如 5000000)
+├── data_baudrate_bps                 --> CANFD 数据段波特率 (如 5000000)；Modbus 下固定为 0
 ├── model                              --> 识别到的设备型号 (如 UltraTouch)
 ├── hand_side                          --> 识别到的左右手类型 (Left / Right)
 ├── serial_number                      --> 设备唯一序列号 (如 BCUTL40124000001)
@@ -538,7 +538,7 @@ await hand.motion.replay_hand(hand_trajectory, dt=0.01, kp=1.0, kd=0.1)
 
 ### 4.2 State 状态读取 API
 
-`HandState` 包含每个电机的 `operating_states`、position、velocity、current 和 `fault_codes`。运行状态来自输入寄存器 2000..2020，故障码来自 2120..2140，两者是独立固件数据源，不得互相回填。位置单位为 deg，速度单位为 rpm，电流单位为 mA。系统状态和全局错误码从 `HealthSnapshot` 读取。读取失败时调用返回 `SdkError`。
+`HandState` 包含每个电机的 `operating_states`、position、velocity 和 current。高频状态读取覆盖输入寄存器 2000..2110，不读取低频诊断区。位置单位为 deg，速度单位为 rpm，电流单位为 mA。逐电机故障码、系统状态和全局错误码从 `HealthSnapshot` 读取。读取失败时调用返回 `SdkError`。
 
 State 还包含一个接收 `timestamp`。Linux SocketCAN 使用最后一个状态响应的 `SO_TIMESTAMPNS` 内核软件时间，其他 CANFD 和 Modbus 路径记录 SDK 完成读取的时间。只有 `clock` 相同的 timestamp 才能比较。它不是固件采样时间，也不能用于跨设备同步。
 
@@ -730,11 +730,11 @@ Touch
 
 Health 按职责分为：
 
-- **系统健康快照**：`hand.health.snapshot()`，读取系统状态、电流、电压、功率、温度和安全状态。
+- **系统健康快照**：`hand.health.snapshot()`，读取逐电机故障码、系统状态、电流、电压、功率、温度和安全状态。
 - **电机诊断**：`motor_module_temperatures_c()`、`motor_online_mask()`，读取逐模组温度和在线状态。
 - **故障处理**：`clear_motor_faults()`，清除设备当前可清除的电机故障。
 
-`HealthSnapshot` 是只读诊断信息，包含系统状态、全局错误码、电流、电压、功率、系统温度、故障电机数量和 `safety_state`。逐电机故障码从 `HandState.fault_codes` 读取。逐电机模组温度和在线 bitmask 属于健康诊断查询，通过 `hand.health.motor_module_temperatures_c()` 和 `hand.health.motor_online_mask()` 读取。这些值当前不重复内嵌到 `HealthSnapshot`。完整保护状态及其 `SafetyState` 映射仍需固件语义和真机异常测试确认。
+`HealthSnapshot` 是只读诊断信息，包含系统状态、全局错误码、电流、电压、功率、系统温度、21 个电机的原始故障码、故障电机数量和 `safety_state`。逐电机故障码来自输入寄存器 2120..2140，与高频 `HandState` 分开采集。逐电机模组温度和在线 bitmask 属于健康诊断查询，通过 `hand.health.motor_module_temperatures_c()` 和 `hand.health.motor_online_mask()` 读取。这些值当前不重复内嵌到 `HealthSnapshot`。完整保护状态及其 `SafetyState` 映射仍需固件语义和真机异常测试确认。
 
 `HealthSnapshot` 和 `SafetyState` 均为通过普通 Modbus RTU / CANFD 链路采集、聚合的软件级诊断，不是功能安全状态，不得直接作为 ISO 13849 PL、IEC 61508 SIL、安全 PLC、Emergency Stop（紧急停止）回路或 STO 的判定证据。有明确错误时，`SafetyState` 返回 `Faulted`；信息不足时返回 `Unknown`。Software Stop（软件停止）和 Servo 超时仅提供软件层级的控制降级，不具备硬件级功能安全承诺。现场安全保护必须由系统风险评估确定的独立安全链路承担。
 
@@ -742,6 +742,7 @@ Health 按职责分为：
 # 示例：读取系统只读健康诊断与安全置信度
 health = await hand.health.snapshot()
 print(f"Safety State: {health.safety_state}, Faulted Motors: {health.faulted_motor_count}")
+print(f"Motor Fault Codes: {health.motor_fault_codes}")
 
 temperatures = await hand.health.motor_module_temperatures_c()
 online_mask = await hand.health.motor_online_mask()
@@ -1144,6 +1145,7 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `voltage_v` | `int` | 系统母线电压 (V) |
 | `power_w` | `int` | 系统总功率 (W) |
 | `temperature_c` | `int` | 主控芯片/板级温度 (°C) |
+| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | 21 个电机的原始故障码，来自输入寄存器 2120..2140 |
 | `faulted_motor_count` | `int` | 当前存在故障码的电机总数 |
 | `safety_state` | [`SafetyState`](#safetystate-枚举) | 系统安全诊断状态 (`Normal` / `RecoveryRequired` / `Faulted` / `Unknown`) |
 | `observed_at` | [`Timestamp`](#timestamp) | 观察与采样时刻时间戳 |
@@ -1189,13 +1191,12 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `positions_deg` | `list[float]` / `std::array<float, 21>` | 21 个电机的实时位置 (deg) |
 | `velocities_rpm` | `list[float]` / `std::array<float, 21>` | 21 个电机的实时速度 (rpm) |
 | `currents_ma` | `list[float]` / `std::array<float, 21>` | 21 个电机的实时电流 (mA) |
-| `fault_codes` | `list[int]` / `std::array<int, 21>` | 21 个电机的原始故障码，来自输入寄存器 2120..2140 |
 | `timestamp` | [`Timestamp`](#timestamp) | 数据帧接收时刻时间戳 |
 | `positions_rad` (Python) | `list[float]` | 21 个电机的实时位置 (rad)，按 ROS REP 103 标准转换的只读属性 |
 | `velocities_rad_s` (Python) | `list[float]` | 21 个电机的实时速度 (rad/s)，按 ROS REP 103 标准转换的只读属性 |
 | `currents_a` (Python) | `list[float]` | 21 个电机的实时电流 (A)，国际单位制只读属性 |
 
-SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`operating_states` 与 `fault_codes` 均保留固件原始整数语义，来自相互独立的寄存器数据源；应用不得在两者之间推导、回填或替代。在 Python 中，`HandState` 额外提供只读属性 `positions_rad`、`velocities_rad_s` 与 `currents_a`，方便 ROS 开发者直接接入 `sensor_msgs/JointState`。
+SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandState.operating_states` 与 `HealthSnapshot.motor_fault_codes` 均保留固件原始整数语义，来自相互独立的寄存器数据源；应用不得在两者之间推导、回填或替代。在 Python 中，`HandState` 额外提供只读属性 `positions_rad`、`velocities_rad_s` 与 `currents_a`，方便 ROS 开发者直接接入 `sensor_msgs/JointState`。
 
 #### ServoSessionState (枚举)
 - `Active (0)`: 实时流控会话处于活动中，允许持续下发高频控制帧（如位置/速度/MIT）。
