@@ -17,6 +17,9 @@ DEFAULT_MOTOR_FREQ = 60
 DEFAULT_TOUCH_FREQ = 20
 FORCE_TORQUE_TOUCH_FREQ = 5
 DRAG_MOTOR_FREQ = 0
+SUBSCRIPTION_ERROR_LOG_INTERVAL_S = 2.0
+CONNECTION_FAILED_THRESHOLD = 3
+COLLECTOR_SHUTDOWN_GRACE_S = 1.0
 COLLECTOR_CONFIG_WARN_AFTER_S = 0.5
 COLLECTOR_CONFIG_REPEAT_WARN_AFTER_S = 2.0
 COLLECTOR_LIFECYCLE_WARN_AFTER_S = 0.5
@@ -31,6 +34,15 @@ def _sdk_error_text(error) -> str:
         if value is not None and value != "":
             details.append(f"{name}={value}")
     return "; ".join(details)
+
+
+def _is_connection_failed(error) -> bool:
+    """Return whether an SDK error explicitly reports a lost connection."""
+    code = getattr(error, "code", None)
+    code_name = getattr(code, "name", None)
+    if code_name == "ConnectionFailed":
+        return True
+    return str(code).rsplit(".", 1)[-1] == "ConnectionFailed"
 
 
 class FpsCounter:
@@ -76,6 +88,87 @@ class FpsCounter:
         with self._lock:
             self._timestamps.clear()
             self._last_fps = 0.0
+
+
+class RepeatedErrorLogger:
+    """Rate-limit repeated errors while retaining periodic and recovery summaries."""
+
+    def __init__(self, label: str, interval_seconds: float = SUBSCRIPTION_ERROR_LOG_INTERVAL_S):
+        self.label = label
+        self.interval_seconds = max(0.1, float(interval_seconds))
+        self._last_error = None
+        self._last_warning_at = None
+        self._first_error_at = 0.0
+        self._consecutive_count = 0
+        self._suppressed_since_warning = 0
+        self._total_suppressed = 0
+
+    def record_error(self, error_text: str, now: float | None = None):
+        now = time.monotonic() if now is None else float(now)
+        error_changed = error_text != self._last_error
+        if self._consecutive_count == 0:
+            self._first_error_at = now
+        self._consecutive_count += 1
+
+        should_warn = (
+            error_changed
+            or self._last_warning_at is None
+            or now - self._last_warning_at >= self.interval_seconds
+        )
+        if should_warn:
+            summary = ""
+            if self._suppressed_since_warning:
+                summary = (
+                    f"; suppressed_repeats={self._suppressed_since_warning}"
+                    f"; consecutive_failures={self._consecutive_count}"
+                )
+            logger.warning("[SharedData] %s error: %s%s", self.label, error_text, summary)
+            self._last_warning_at = now
+            self._suppressed_since_warning = 0
+        else:
+            self._suppressed_since_warning += 1
+            self._total_suppressed += 1
+        self._last_error = error_text
+
+    def record_success(self, now: float | None = None):
+        if self._consecutive_count == 0:
+            return
+        now = time.monotonic() if now is None else float(now)
+        duration_seconds = max(0.0, now - self._first_error_at)
+        logger.info(
+            "[SharedData] %s recovered: consecutive_failures=%s, duration_s=%.3f, "
+            "suppressed_repeats=%s",
+            self.label,
+            self._consecutive_count,
+            duration_seconds,
+            self._total_suppressed,
+        )
+        self._reset()
+
+    def record_stop(self, now: float | None = None):
+        """Log a final summary when collection stops before a successful sample."""
+        if self._consecutive_count == 0:
+            return
+        now = time.monotonic() if now is None else float(now)
+        duration_seconds = max(0.0, now - self._first_error_at)
+        logger.info(
+            "[SharedData] %s stopped with unresolved errors: consecutive_failures=%s, "
+            "duration_s=%.3f, suppressed_repeats=%s, last_error=%s",
+            self.label,
+            self._consecutive_count,
+            duration_seconds,
+            self._total_suppressed,
+            self._last_error,
+        )
+        self._reset()
+
+    def _reset(self):
+        self._last_error = None
+        self._last_warning_at = None
+        self._first_error_at = 0.0
+        self._consecutive_count = 0
+        self._suppressed_since_warning = 0
+        self._total_suppressed = 0
 
 
 class MockBuffer:
@@ -129,21 +222,62 @@ class MockBuffer:
 class _SubscriptionCollector:
     """Run the public 2.x pull subscriptions on a dedicated event loop."""
 
-    def __init__(self, device, motor_buffer, touch_buffer, motor_frequency, touch_frequency):
+    def __init__(
+        self,
+        device,
+        motor_buffer,
+        touch_buffer,
+        motor_frequency,
+        touch_frequency,
+        connection_lost_callback=None,
+    ):
         self.device = device
         self.motor_buffer = motor_buffer
         self.touch_buffer = touch_buffer
         self.motor_frequency = motor_frequency
         self.touch_frequency = touch_frequency
+        self.connection_lost_callback = connection_lost_callback
         self._thread = None
         self._stop = threading.Event()
+        self._connection_failed_counts = {"motor": 0, "touch": 0}
+        self._connection_lost_reported = threading.Event()
 
     def start(self):
         if self._thread and self._thread.is_alive():
             return True
         self._stop.clear()
+        self._connection_failed_counts = {"motor": 0, "touch": 0}
+        self._connection_lost_reported.clear()
         self._thread = threading.Thread(target=self._thread_main, daemon=True)
         self._thread.start()
+        return True
+
+    def _record_read_result(self, source, error=None):
+        if self._connection_lost_reported.is_set():
+            return True
+        if error is None or not _is_connection_failed(error):
+            self._connection_failed_counts[source] = 0
+            return False
+
+        self._connection_failed_counts[source] += 1
+        failure_count = self._connection_failed_counts[source]
+        if failure_count < CONNECTION_FAILED_THRESHOLD:
+            return False
+        self._connection_lost_reported.set()
+        self._stop.set()
+        logger.warning(
+            "[SharedData] Connection lost after %s consecutive %s read failures",
+            failure_count,
+            source,
+        )
+        if self.connection_lost_callback is not None:
+            try:
+                self.connection_lost_callback()
+            except Exception as callback_error:
+                logger.warning(
+                    "[SharedData] Failed to notify connection loss: %s",
+                    callback_error,
+                )
         return True
 
     def stop(self):
@@ -190,33 +324,45 @@ class _SubscriptionCollector:
             touch_subscription = self.device.subscribe_touch(period=touch_period)
 
         async def collect_motor():
-            while not self._stop.is_set() and motor_subscription is not None:
-                try:
-                    self.motor_buffer.push(await motor_subscription.next())
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    logger.warning("[SharedData] collect_motor error: %s", _sdk_error_text(e))
-                    await asyncio.sleep(0.01)
+            error_logger = RepeatedErrorLogger("collect_motor")
+            try:
+                while not self._stop.is_set() and motor_subscription is not None:
+                    try:
+                        self.motor_buffer.push(await motor_subscription.next())
+                        self._record_read_result("motor")
+                        error_logger.record_success()
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        if self._stop.is_set():
+                            break
+                        error_logger.record_error(_sdk_error_text(e))
+                        if self._record_read_result("motor", e):
+                            break
+                        await asyncio.sleep(0.01)
+            finally:
+                error_logger.record_stop()
 
         async def collect_touch():
-            last_error = None
-            last_warning_at = 0.0
-            while not self._stop.is_set() and touch_subscription is not None:
-                try:
-                    frame = await touch_subscription.next()
-                    self.touch_buffer.push(self.device.touch_frame_payload(frame))
-                    last_error = None
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    now = time.monotonic()
-                    error_text = _sdk_error_text(e)
-                    if error_text != last_error or now - last_warning_at >= 2.0:
-                        logger.warning("[SharedData] collect_touch error: %s", error_text)
-                        last_error = error_text
-                        last_warning_at = now
-                    await asyncio.sleep(max(touch_period, 0.1))
+            error_logger = RepeatedErrorLogger("collect_touch")
+            try:
+                while not self._stop.is_set() and touch_subscription is not None:
+                    try:
+                        frame = await touch_subscription.next()
+                        self.touch_buffer.push(self.device.touch_frame_payload(frame))
+                        self._record_read_result("touch")
+                        error_logger.record_success()
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        if self._stop.is_set():
+                            break
+                        error_logger.record_error(_sdk_error_text(e))
+                        if self._record_read_result("touch", e):
+                            break
+                        await asyncio.sleep(max(touch_period, 0.1))
+            finally:
+                error_logger.record_stop()
 
         tasks = []
         if motor_subscription is not None:
@@ -231,9 +377,14 @@ class _SubscriptionCollector:
                 motor_subscription.close()
             if touch_subscription is not None:
                 touch_subscription.close()
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            if tasks:
+                _, pending = await asyncio.wait(
+                    tasks,
+                    timeout=COLLECTOR_SHUTDOWN_GRACE_S,
+                )
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
 
 class SharedDataManager(QObject):
@@ -394,12 +545,19 @@ class SharedDataManager(QObject):
             if not is_touch_device:
                 touch_freq = 0
 
+            collector = None
+
+            def _notify_connection_lost():
+                if self.data_collector is collector:
+                    self.connection_lost.emit()
+
             self.data_collector = _SubscriptionCollector(
                 self._device,
                 self.revo3_motor_buffer,
                 self.revo3_touch_buffer,
                 motor_freq,
                 touch_freq,
+                connection_lost_callback=_notify_connection_lost,
             )
             collector = self.data_collector
             self.is_running = True

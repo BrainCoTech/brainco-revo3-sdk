@@ -149,6 +149,7 @@ class AutoDetectWorker(AsyncConnectionWorker):
             raise TimeoutError(
                 f"Timed out connecting to the detected device after {CONNECT_TIMEOUT_SECONDS:.0f}s"
             ) from error
+        await ctx.initialize_touch_metadata()
         device_info = await ctx.get_device_info(device.slave_id)
         protocol_key = sdk_protocol_to_key(device.protocol_type) or PROTO_AUTO
         protocol_label = get_protocol_display_name(device.protocol_type)
@@ -156,28 +157,47 @@ class AutoDetectWorker(AsyncConnectionWorker):
 
     async def _auto_detect(self):
         self.progress.emit("Scanning Revo3 devices...")
+        protocols = (
+            [self.protocol]
+            if self.protocol is not None
+            else [sdk.ProtocolType.Modbus, sdk.ProtocolType.CanFd]
+        )
+        last_error = None
         for attempt in range(3):
-            try:
+            for protocol in protocols:
+                protocol_label = get_protocol_display_name(protocol)
+                self.progress.emit(
+                    f"Scanning Revo3 devices over {protocol_label}..."
+                )
                 manager = sdk.Manager()
                 try:
+                    # Do not wrap discovery in asyncio.wait_for(). Cancelling the
+                    # Python awaitable does not stop an already-running native
+                    # CANFD scan, which can leave the global scan reservation busy
+                    # while the GUI starts its next retry.
                     devices = await manager.discover(
                         scan_all=False,
                         port=self.port,
-                        protocol=self.protocol,
+                        protocol=protocol,
                         slave_id=self.slave_id,
                         modbus_baudrate=self.modbus_baudrate,
                         broadcast=False,
                     )
+                    last_error = None
+                except Exception as error:
+                    last_error = error
+                    devices = []
                 finally:
                     await manager.close()
                 if devices:
                     return devices[0]
-            except Exception as e:
-                if attempt == 2:
-                    raise e
             if attempt < 2:
                 await asyncio.sleep(1.5)
 
+        if last_error is not None:
+            raise RuntimeError(
+                f"No Revo3 device found; last error: {last_error}"
+            ) from last_error
         raise RuntimeError("No Revo3 device found")
 
     async def _auto_detect_streaming(self):
@@ -252,6 +272,7 @@ class ManualConnectWorker(AsyncConnectionWorker):
                 raise TimeoutError(
                     f"Timed out connecting to the detected device after {CONNECT_TIMEOUT_SECONDS:.0f}s"
                 ) from error
+            await ctx.initialize_touch_metadata()
             return ctx, device.slave_id, await ctx.get_device_info(device.slave_id)
 
         raise RuntimeError(f"Unsupported protocol: {self.protocol_key}")
@@ -548,6 +569,7 @@ class ConnectionPanel(QWidget):
 
     async def _init_detected_device(self, device):
         ctx = await GuiHandAdapter.connect(sdk, device)
+        await ctx.initialize_touch_metadata()
         device_info = await ctx.get_device_info(device.slave_id)
 
         protocol_key = sdk_protocol_to_key(device.protocol_type)

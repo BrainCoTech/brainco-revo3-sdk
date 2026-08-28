@@ -62,7 +62,9 @@ def parse_modbus_baudrate(value):
 
 
 def baudrate_to_int(baudrate) -> int:
-    """Convert a Baudrate enum to the actual bps value."""
+    """Convert an SDK baudrate enum or an existing bps integer to bps."""
+    if isinstance(baudrate, int) and not isinstance(baudrate, bool):
+        return baudrate if baudrate > 0 else 0
     if sdk is None:
         return 0
     baud_cls = getattr(sdk, "Rs485Baudrate", None)

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 try:
-    from common_imports import sdk
+    from common_imports import logger, sdk
 except ImportError:
-    from ..common_imports import sdk
+    from ..common_imports import logger, sdk
 
 
 TOUCH_VALUE_MODE_ADC = 0
@@ -117,6 +117,7 @@ class GuiHandAdapter:
         self._servo_damping_omega = 25.0
         self._servo_lpf_alpha = 1.0
         self._active_servo_drag_joints = set()
+        self._starting_servo_drag_joints = set()
 
     @classmethod
     async def connect(cls, sdk, detected):
@@ -155,7 +156,30 @@ class GuiHandAdapter:
 
     @property
     def supports_touch(self):
-        return self.hand.touch.layout is not None
+        touch = getattr(self.hand, "touch", None)
+        if getattr(touch, "layout", None) is not None:
+            return True
+        info = getattr(self.hand, "device_info", None)
+        model = getattr(info, "model", None)
+        model_name = str(getattr(model, "name", model) or "")
+        return "Touch" in model_name
+
+    async def initialize_touch_metadata(self):
+        """Populate dynamic touch layout metadata before GUI capability checks."""
+        touch = getattr(self.hand, "touch", None)
+        if touch is None or not self.supports_touch:
+            return None
+        layout = getattr(touch, "layout", None)
+        if layout is not None:
+            return layout
+        point_counts = getattr(touch, "point_counts", None)
+        if not callable(point_counts):
+            return None
+        try:
+            await point_counts()
+        except Exception as error:
+            logger.warning("Failed to initialize touch layout metadata: %s", error)
+        return getattr(touch, "layout", None)
 
     @property
     def supports_touch_layout_override(self):
@@ -179,7 +203,7 @@ class GuiHandAdapter:
         )
 
     async def get_touch_layout(self, _slave_id=None):
-        return getattr(getattr(self.hand, "touch", None), "layout", None)
+        return await self.initialize_touch_metadata()
 
     async def set_touch_layout(self, _slave_id, layout):
         return await self.hand.touch.set_layout(layout)
@@ -285,22 +309,48 @@ class GuiHandAdapter:
         self._currents = list(snapshot.currents_ma)
 
     async def _send_servo_action(self, action_fn):
+        if self._servo_drag_controls_hand():
+            return False
         try:
             session = await self._servo_session()
+            if self._servo_drag_controls_hand():
+                self._close_servo()
+                return False
             return await action_fn(session)
         except Exception as e:
+            if self._servo_drag_controls_hand():
+                return False
             err_msg = str(e)
             if "closed" in err_msg or "expired" in err_msg or "not ready" in err_msg:
                 self._servo = None
                 await asyncio.sleep(0.1)
+                if self._servo_drag_controls_hand():
+                    return False
                 session = await self._servo_session()
+                if self._servo_drag_controls_hand():
+                    self._close_servo()
+                    return False
                 return await action_fn(session)
             raise
 
+    def _servo_drag_controls_hand(self):
+        return bool(
+            self._starting_servo_drag_joints
+            or self._active_servo_drag_joints
+        )
+
     async def set_joint_position(self, _slave_id, motor_id, value):
+        if self._servo_drag_controls_hand():
+            return False
         await self._refresh_control_state()
+        # A queued direct command can finish its snapshot after a slider drag
+        # has acquired whole-hand control on the dedicated control runner.
+        if self._servo_drag_controls_hand():
+            return False
         self._positions[int(motor_id)] = float(value)
-        await self._send_servo_action(lambda s: s.send_position(self._positions))
+        return await self._send_servo_action(
+            lambda s: s.send_position(self._positions)
+        )
 
     async def set_all_motor_positions(self, _slave_id, values):
         self._positions = list(values)
@@ -439,29 +489,34 @@ class GuiHandAdapter:
         filter_mode=0,
         omega=35.0,
     ):
-        self._close_servo()
-        filter_mode = _to_sdk_enum(
-            "ServoFilterMode",
-            filter_mode,
-            {
-                0: "Disabled",
-                1: "FirstOrderLpf",
-                2: "SecondOrderCriticallyDamped",
-            },
-        )
-        result = await self.hand.motion.start_servo_drag(
-            int(motor_id),
-            float(target_position),
-            float(kp),
-            float(kd),
-            float(vel_cap_rpm),
-            int(interval_ms),
-            int(idle_timeout_ms),
-            filter_mode,
-            float(omega),
-        )
-        self._active_servo_drag_joints.add(int(motor_id))
-        return result
+        motor_id = int(motor_id)
+        self._starting_servo_drag_joints.add(motor_id)
+        try:
+            self._close_servo()
+            filter_mode = _to_sdk_enum(
+                "ServoFilterMode",
+                filter_mode,
+                {
+                    0: "Disabled",
+                    1: "FirstOrderLpf",
+                    2: "SecondOrderCriticallyDamped",
+                },
+            )
+            result = await self.hand.motion.start_servo_drag(
+                motor_id,
+                float(target_position),
+                float(kp),
+                float(kd),
+                float(vel_cap_rpm),
+                int(interval_ms),
+                int(idle_timeout_ms),
+                filter_mode,
+                float(omega),
+            )
+            self._active_servo_drag_joints.add(motor_id)
+            return result
+        finally:
+            self._starting_servo_drag_joints.discard(motor_id)
 
     def update_servo_drag(self, _slave_id, motor_id, target_position):
         return self.hand.motion.update_servo_drag(int(motor_id), float(target_position))

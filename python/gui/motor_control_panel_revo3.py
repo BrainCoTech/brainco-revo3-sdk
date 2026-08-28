@@ -1158,6 +1158,8 @@ class Revo3MotorControlPanel(QWidget):
         self._collision_reset_succeeded = False
         self._servo_drag_next_token = 0
         self._servo_drag_locks = {}
+        self._motion_control_lock = None
+        self._servo_drag_priority_active = False
         self._servo_drag_tokens = {}
         self._collision_active = [False] * REVO3_ULTRA_JOINT_COUNT
         self._last_motor_online = None
@@ -2186,9 +2188,13 @@ class Revo3MotorControlPanel(QWidget):
         return result
 
     def _on_read_diagnostics(self):
+        if self._servo_drag_blocks_direct_command():
+            logger.debug("[Diag] Skipping periodic diagnostics while Servo Drag owns control")
+            return
+
         async def fetch_diag():
             device = self.device
-            if not device:
+            if not device or self._servo_drag_blocks_direct_command():
                 return
             try:
                 hw = await device.get_hardware_revision(self.slave_id)
@@ -2452,9 +2458,26 @@ class Revo3MotorControlPanel(QWidget):
             if motor_id in self._active_servo_drags:
                 self._update_servo_drag_target(motor_id, value)
             else:
-                run_async(lambda: self._send_motor_command(motor_id, value))
+                self._run_direct_motion_async(
+                    lambda: self._send_motor_command(motor_id, value)
+                )
             return
-        run_async(lambda: self._send_motor_command(motor_id, value))
+        self._run_direct_motion_async(
+            lambda: self._send_motor_command(motor_id, value)
+        )
+
+    def _servo_drag_blocks_direct_command(self):
+        return bool(
+            self._servo_drag_priority_active
+            or self._servo_drag_has_control_work()
+        )
+
+    def _servo_drag_has_control_work(self):
+        return bool(
+            self._active_servo_drags
+            or self._servo_drag_starting
+            or self._servo_drag_pending_stop
+        )
 
     def _get_servo_drag_params(self):
         return {
@@ -2493,13 +2516,31 @@ class Revo3MotorControlPanel(QWidget):
     def _run_servo_drag_async(self, motor_id, coro_fn):
         return run_control_async(lambda: self._run_servo_drag_locked(motor_id, coro_fn))
 
+    def _run_direct_motion_async(self, coro_fn):
+        return run_control_async(
+            lambda: self._run_motion_control_locked(coro_fn, direct=True)
+        )
+
+    async def _run_motion_control_locked(self, coro_fn, direct=False):
+        lock = self._motion_control_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._motion_control_lock = lock
+        async with lock:
+            if direct and self._servo_drag_blocks_direct_command():
+                logger.debug(
+                    "[Motor] Dropping queued direct motion while Servo Drag owns control"
+                )
+                return False
+            return await coro_fn()
+
     async def _run_servo_drag_locked(self, motor_id, coro_fn):
         lock = self._servo_drag_locks.get(motor_id)
         if lock is None:
             lock = asyncio.Lock()
             self._servo_drag_locks[motor_id] = lock
         async with lock:
-            return await coro_fn()
+            return await self._run_motion_control_locked(coro_fn)
 
     def _start_servo_drag(self, motor_id, value):
         if self.current_mode != MODE_POSITION or not self.device:
@@ -2564,7 +2605,7 @@ class Revo3MotorControlPanel(QWidget):
             self._servo_drag_tokens.pop(motor_id, None)
             self._servo_drag_pending_stop.pop(motor_id, None)
             if was_last_drag:
-                self._end_servo_drag_control_priority()
+                self._maybe_end_servo_drag_control_priority()
             self.sig_collision_active_fetched.emit(list(self._collision_active))
             raise
 
@@ -2577,22 +2618,12 @@ class Revo3MotorControlPanel(QWidget):
 
         latest = self._servo_drag_latest_targets.get(motor_id, value)
         self._servo_drag_starting.discard(motor_id)
-        pending_stop = self._servo_drag_pending_stop.pop(motor_id, None)
+        pending_stop = self._servo_drag_pending_stop.get(motor_id)
         if pending_stop is not None:
             self._active_servo_drags.discard(motor_id)
-            try:
-                await self._await_servo_drag_sdk(
-                    f"stop pending M{motor_id:02d}",
-                    lambda: device.stop_servo_drag(slave_id, motor_id, pending_stop),
-                )
-            except asyncio.TimeoutError:
-                print(f"[ServoDrag] pending stop M{motor_id:02d} timed out; clearing local drag state")
-            if self._is_servo_drag_token_current(motor_id, token):
-                self._servo_drag_latest_targets.pop(motor_id, None)
-                self._clear_servo_drag_timing(motor_id)
-                self._servo_drag_tokens.pop(motor_id, None)
-                if not self._active_servo_drags:
-                    self._end_servo_drag_control_priority()
+            await self._stop_servo_drag_task(
+                device, slave_id, motor_id, pending_stop, token
+            )
             self.sig_collision_active_fetched.emit(list(self._collision_active))
             return
         if motor_id not in self._active_servo_drags:
@@ -2650,15 +2681,12 @@ class Revo3MotorControlPanel(QWidget):
         if motor_id not in self._active_servo_drags:
             return
         final_value = value
-        was_last_drag = len(self._active_servo_drags) == 1
         self._servo_drag_latest_targets[motor_id] = final_value
         self._servo_drag_pending_stop[motor_id] = final_value
         self._active_servo_drags.discard(motor_id)
         self._update_finger_collision_state()
         self._update_collision_ui_timer()
         token = self._servo_drag_tokens.get(motor_id)
-        if was_last_drag:
-            self._end_servo_drag_control_priority()
         if motor_id in self._servo_drag_starting:
             return
         device = self.device
@@ -2727,19 +2755,47 @@ class Revo3MotorControlPanel(QWidget):
         self._update_finger_collision_state()
         self._update_collision_ui_timer()
         self._poll_collision_state(force=True)
+        self._maybe_end_servo_drag_control_priority()
 
     async def _stop_servo_drag_task(self, device, slave_id, motor_id, value, token):
         current_token = self._servo_drag_tokens.get(motor_id)
-        if current_token is not None and current_token != token:
+        if current_token != token:
             return
         try:
             await self._await_servo_drag_sdk(
                 f"stop M{motor_id:02d}",
                 lambda: device.stop_servo_drag(slave_id, motor_id, value),
             )
-        except asyncio.TimeoutError:
-            print(f"[ServoDrag] stop M{motor_id:02d} timed out; clearing local drag state")
-        self.sig_servo_drag_stopped.emit(motor_id, token)
+        except asyncio.TimeoutError as e:
+            logger.warning(
+                "[ServoDrag] stop M%02d timed out; attempting stream cancellation: %s",
+                motor_id,
+                e,
+            )
+            try:
+                await self._call_cancel_servo_drag(device, slave_id, motor_id)
+            except Exception as cancel_error:
+                logger.warning(
+                    "[ServoDrag] cancel M%02d after stop timeout also failed: %s",
+                    motor_id,
+                    cancel_error,
+                )
+        except Exception as e:
+            logger.warning(
+                "[ServoDrag] stop M%02d failed; attempting local stream cancellation: %s",
+                motor_id,
+                e,
+            )
+            try:
+                await self._call_cancel_servo_drag(device, slave_id, motor_id)
+            except Exception as cancel_error:
+                logger.warning(
+                    "[ServoDrag] cancel M%02d after stop failure also failed: %s",
+                    motor_id,
+                    cancel_error,
+                )
+        finally:
+            self.sig_servo_drag_stopped.emit(motor_id, token)
 
     async def _cancel_servo_drag_task(self, device, slave_id, motor_id, token):
         try:
@@ -2772,7 +2828,6 @@ class Revo3MotorControlPanel(QWidget):
             self._stop_servo_drag(motor_id, target)
         self._active_servo_drags.clear()
         self._servo_drag_starting.clear()
-        self._servo_drag_pending_stop.clear()
         self._servo_drag_blocked_until_release.clear()
         self._servo_drag_stall_counts.clear()
         self._servo_drag_started_at.clear()
@@ -2782,6 +2837,9 @@ class Revo3MotorControlPanel(QWidget):
         self._update_collision_ui_timer()
 
     def _begin_servo_drag_control_priority(self):
+        if self._servo_drag_priority_active:
+            return
+        self._servo_drag_priority_active = True
         motor_freq = None
         if threading.current_thread() is not threading.main_thread():
             self.sig_control_priority.emit(True, motor_freq or 0)
@@ -2793,11 +2851,19 @@ class Revo3MotorControlPanel(QWidget):
                 self.shared_data.begin_control_priority()
 
     def _end_servo_drag_control_priority(self):
+        if not self._servo_drag_priority_active:
+            return
+        self._servo_drag_priority_active = False
         if threading.current_thread() is not threading.main_thread():
             self.sig_control_priority.emit(False, 0)
             return
         if self.shared_data and hasattr(self.shared_data, "end_control_priority"):
             self.shared_data.end_control_priority()
+
+    def _maybe_end_servo_drag_control_priority(self):
+        if self._servo_drag_has_control_work():
+            return
+        self._end_servo_drag_control_priority()
 
     def _set_servo_drag_control_priority(self, enabled, motor_freq=0):
         if enabled:
@@ -2812,6 +2878,12 @@ class Revo3MotorControlPanel(QWidget):
 
     async def _send_motor_command(self, motor_id, value):
         try:
+            if self._servo_drag_blocks_direct_command():
+                logger.debug(
+                    "[Motor] Dropping queued direct command for M%02d while Servo Drag owns control",
+                    motor_id,
+                )
+                return
             device = self.device
             sid = self.slave_id
             if self.current_mode == MODE_POSITION:
@@ -2831,7 +2903,9 @@ class Revo3MotorControlPanel(QWidget):
         device = self.device
         if not device:
             return
-        run_async(lambda: self._send_mit_command(motor_id, params))
+        self._run_direct_motion_async(
+            lambda: self._send_mit_command(motor_id, params)
+        )
 
     async def _send_mit_command(self, motor_id, params):
         try:
@@ -2975,6 +3049,11 @@ class Revo3MotorControlPanel(QWidget):
 
     def clear_device(self):
         self._stop_all_servo_drags()
+        # The connection teardown releases SDK control ownership. Do not carry
+        # pending tokens or local priority state into the next connection.
+        self._servo_drag_pending_stop.clear()
+        self._servo_drag_tokens.clear()
+        self._servo_drag_priority_active = False
         self.update_timer.stop()
         self.diag_timer.stop()
         self.collision_ui_timer.stop()
@@ -3055,7 +3134,9 @@ class Revo3MotorControlPanel(QWidget):
                 target = get_motor_close_position(mid)
             targets[mid] = target
             slider.set_value_silent(target)
-        run_async(lambda: self.device.set_all_motor_positions(self.slave_id, targets))
+        self._run_direct_motion_async(
+            lambda: self.device.set_all_motor_positions(self.slave_id, targets)
+        )
 
     def _move_all_to_ratio(self, ratio):
         """Move all motors to a specific ratio of their max position (0.0=open, 1.0=close)"""
@@ -3072,17 +3153,23 @@ class Revo3MotorControlPanel(QWidget):
                 slider.set_value_silent(target)
 
         if self.current_mode == MODE_POSITION:
-            run_async(lambda: self.device.set_all_motor_positions(self.slave_id, targets))
+            self._run_direct_motion_async(
+                lambda: self.device.set_all_motor_positions(self.slave_id, targets)
+            )
         elif self.current_mode == MODE_TRAJECTORY:
             p = self._get_traj_params()
             if p['speed'] > 0:
-                run_async(lambda: self.device.move_hand_with_speed_and_gains(
-                    self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-                ))
+                self._run_direct_motion_async(
+                    lambda: self.device.move_hand_with_speed_and_gains(
+                        self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
+                    )
+                )
             else:
-                run_async(lambda: self.device.move_hand_with_gains(
-                    self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-                ))
+                self._run_direct_motion_async(
+                    lambda: self.device.move_hand_with_gains(
+                        self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
+                    )
+                )
 
     def _open_all(self):
         """Open hand: flexion joints → 0°, abduction/rotation → neutral (0°)"""
@@ -3099,7 +3186,9 @@ class Revo3MotorControlPanel(QWidget):
         print("[MotorControlPanel] 'Default Gesture' clicked")
         if not self.device:
             return
-        run_async(lambda: self.device.reset_finger_defaults(self.slave_id))
+        self._run_direct_motion_async(
+            lambda: self.device.reset_finger_defaults(self.slave_id)
+        )
 
     def _zero_all(self):
         """All controls -> 0"""
@@ -3114,29 +3203,56 @@ class Revo3MotorControlPanel(QWidget):
                     slider.set_value_silent(0.0)
 
             if self.current_mode == MODE_POSITION:
-                run_async(lambda: self.device.set_all_motor_positions(self.slave_id, targets))
+                self._run_direct_motion_async(
+                    lambda: self.device.set_all_motor_positions(self.slave_id, targets)
+                )
             elif self.current_mode == MODE_CURRENT:
-                run_async(lambda: self.device.set_all_motor_currents(self.slave_id, targets))
+                self._run_direct_motion_async(
+                    lambda: self.device.set_all_motor_currents(self.slave_id, targets)
+                )
             elif self.current_mode in (MODE_IMPEDANCE, MODE_DAMPING):
                 mode_val = 4 if self.current_mode == MODE_IMPEDANCE else 5
                 params = [0] * 21  # 21 joints, all zero
-                run_async(lambda: self.device.multi_joint_control(self.slave_id, mode_val, params))
+                self._run_direct_motion_async(
+                    lambda: self.device.multi_joint_control(
+                        self.slave_id, mode_val, params
+                    )
+                )
             elif self.current_mode == MODE_TRAJECTORY:
                 p = self._get_traj_params()
                 if p['speed'] > 0:
-                    run_async(lambda: self.device.move_hand_with_speed_and_gains(
-                        self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']))
+                    self._run_direct_motion_async(
+                        lambda: self.device.move_hand_with_speed_and_gains(
+                            self.slave_id,
+                            targets,
+                            p['speed'],
+                            p['dt'],
+                            p['kp'],
+                            p['kd'],
+                        )
+                    )
                 else:
-                    run_async(lambda: self.device.move_hand_with_gains(
-                        self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']))
+                    self._run_direct_motion_async(
+                        lambda: self.device.move_hand_with_gains(
+                            self.slave_id,
+                            targets,
+                            p['T'],
+                            p['dt'],
+                            p['kp'],
+                            p['kd'],
+                        )
+                    )
 
         elif self.current_mode == MODE_MIT:
             for group in self.mit_groups.values():
                 group.zero_all()
             # Send batch zeroes
             targets = [0.0] * get_revo3_motor_count()
-            run_async(lambda: self.device.set_all_mit_params(
-                self.slave_id, targets, targets, targets, targets, targets))
+            self._run_direct_motion_async(
+                lambda: self.device.set_all_mit_params(
+                    self.slave_id, targets, targets, targets, targets, targets
+                )
+            )
 
     # ========================================================================
     # Trajectory Execution
@@ -3156,13 +3272,29 @@ class Revo3MotorControlPanel(QWidget):
         if not self.device: return
         p = self._get_traj_params()
         if p['speed'] > 0:
-            run_async(lambda: self.device.move_joint_with_speed_and_gains(
-                self.slave_id, motor_id, target, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_joint_with_speed_and_gains(
+                    self.slave_id,
+                    motor_id,
+                    target,
+                    p['speed'],
+                    p['dt'],
+                    p['kp'],
+                    p['kd'],
+                )
+            )
         else:
-            run_async(lambda: self.device.move_joint_with_gains(
-                self.slave_id, motor_id, target, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_joint_with_gains(
+                    self.slave_id,
+                    motor_id,
+                    target,
+                    p['T'],
+                    p['dt'],
+                    p['kp'],
+                    p['kd'],
+                )
+            )
 
     def _on_run_finger_trajectory(self, finger_name, targets_dict):
         if not self.device: return
@@ -3181,13 +3313,17 @@ class Revo3MotorControlPanel(QWidget):
             targets[mid] = val
 
         if p['speed'] > 0:
-            run_async(lambda: self.device.move_hand_with_speed_and_gains(
-                self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_hand_with_speed_and_gains(
+                    self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
+                )
+            )
         else:
-            run_async(lambda: self.device.move_hand_with_gains(
-                self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_hand_with_gains(
+                    self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
+                )
+            )
 
     def _on_run_all(self):
         if not self.device or self.current_mode != MODE_TRAJECTORY:
@@ -3199,10 +3335,14 @@ class Revo3MotorControlPanel(QWidget):
                 targets[mid] = slider.spin.value()
 
         if p['speed'] > 0:
-            run_async(lambda: self.device.move_hand_with_speed_and_gains(
-                self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_hand_with_speed_and_gains(
+                    self.slave_id, targets, p['speed'], p['dt'], p['kp'], p['kd']
+                )
+            )
         else:
-            run_async(lambda: self.device.move_hand_with_gains(
-                self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
-            ))
+            self._run_direct_motion_async(
+                lambda: self.device.move_hand_with_gains(
+                    self.slave_id, targets, p['T'], p['dt'], p['kp'], p['kd']
+                )
+            )
