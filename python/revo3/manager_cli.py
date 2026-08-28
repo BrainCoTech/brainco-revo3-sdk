@@ -35,7 +35,7 @@ def snapshot_record(hand, state, health) -> dict:
         "positions_degree": list(state.positions_deg),
         "velocities_rpm": list(state.velocities_rpm),
         "currents_ma": list(state.currents_ma),
-        "motor_fault_codes": list(state.fault_codes),
+        "motor_fault_codes": list(health.motor_fault_codes),
         "received_at": timestamp_record(state.timestamp),
         "system_state": health.system_state,
         "system_error_code": health.error_code,

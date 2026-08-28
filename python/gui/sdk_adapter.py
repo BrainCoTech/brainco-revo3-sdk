@@ -220,7 +220,7 @@ class GuiHandAdapter:
         return (await self.get_all_motor_sns(slave_id))[int(motor_id)]
 
     async def get_all_joint_fault_codes(self, _slave_id=None):
-        return list((await self.get_motor_status_data()).fault_codes)
+        return list((await self.hand.health.snapshot()).motor_fault_codes)
 
     async def get_all_motor_module_temperatures(self, _slave_id=None):
         return await self.hand.health.motor_module_temperatures_c()

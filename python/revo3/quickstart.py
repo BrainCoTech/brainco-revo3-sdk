@@ -38,11 +38,11 @@ def active_motor_faults(fault_codes) -> dict[int, str]:
     }
 
 
-def motion_preflight_findings(health, fault_codes) -> list[str]:
+def motion_preflight_findings(health) -> list[str]:
     findings = []
-    active_faults = active_motor_faults(fault_codes)
+    active_faults = active_motor_faults(health.motor_fault_codes)
     if active_faults:
-        findings.append(f"state_motor_faults={active_faults}")
+        findings.append(f"motor_faults={active_faults}")
     if health.safety_state in (
         sdk.SafetyState.Faulted,
         sdk.SafetyState.RecoveryRequired,
@@ -57,8 +57,8 @@ def motion_preflight_findings(health, fault_codes) -> list[str]:
     return findings
 
 
-def report_motion_preflight(health, fault_codes, strict: bool) -> None:
-    findings = motion_preflight_findings(health, fault_codes)
+def report_motion_preflight(health, strict: bool) -> None:
+    findings = motion_preflight_findings(health)
     if not findings:
         return
     if strict:
@@ -121,17 +121,9 @@ async def run(args: argparse.Namespace) -> None:
         )
         print(f"Positions ({len(snapshot.positions_deg)}): {[round(value, 2) for value in snapshot.positions_deg]}")
 
-        active_errors = {
-            idx: parse_motor_fault_code(err)
-            for idx, err in enumerate(snapshot.fault_codes)
-            if err != 0
-        }
-        if active_errors:
-            print(f"Motor faults: {active_errors}")
-        else:
-            print("Motor faults: None")
-
         health = await hand.health.snapshot()
+        active_errors = active_motor_faults(health.motor_fault_codes)
+        print(f"Motor faults: {active_errors or 'None'}")
         print(
             f"Health: safety={health.safety_state}, system_state={health.system_state}, "
             f"error_code={health.error_code}, faulted_motor_count={health.faulted_motor_count}"
@@ -140,7 +132,6 @@ async def run(args: argparse.Namespace) -> None:
         if args.move or args.move_joint or args.move_finger or args.move_thumb:
             report_motion_preflight(
                 health,
-                snapshot.fault_codes,
                 strict=args.strict_health or not args.allow_unhealthy,
             )
             ultra_models = {

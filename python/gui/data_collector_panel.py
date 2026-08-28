@@ -81,7 +81,7 @@ class CollectorWorker(QObject):
         with open(filename, "w", encoding="utf-8") as f:
             headers = ["index"]
             if self.collect_motor:
-                for prefix in ("status", "pos", "vel", "cur", "err"):
+                for prefix in ("status", "pos", "vel", "cur"):
                     headers.extend(f"{prefix}_{i}" for i in range(REVO3_ULTRA_JOINT_COUNT))
             if self.collect_touch:
                 headers.extend(f"touch_summary_{i}" for i in range(42))
@@ -95,7 +95,6 @@ class CollectorWorker(QObject):
                         list(getattr(motor, "positions", []) or []),
                         list(getattr(motor, "velocities", []) or []),
                         list(getattr(motor, "currents", []) or []),
-                        list(getattr(motor, "fault_codes", []) or []),
                     ]
                     for arr in values:
                         row.extend(str(arr[i] if i < len(arr) else 0) for i in range(REVO3_ULTRA_JOINT_COUNT))

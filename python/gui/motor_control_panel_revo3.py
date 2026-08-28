@@ -2257,6 +2257,7 @@ class Revo3MotorControlPanel(QWidget):
                 self._last_motor_online = online
                 self._last_motor_temps = temps or []
                 self._last_motor_fault_codes = errors or []
+                self._update_active_drag_stall_guard(advance=True)
 
                 # Build offline motor ID list
                 offline_ids = [f"M{i:02d}" for i in range(total) if not (online & (1 << i))]
@@ -2317,6 +2318,7 @@ class Revo3MotorControlPanel(QWidget):
                 self._update_motor_diagnostic_badges()
 
                 self._update_finger_collision_state()
+                self._update_collision_ui_timer()
 
             else:
                 msg = hw  # error message is in hw
@@ -2895,15 +2897,6 @@ class Revo3MotorControlPanel(QWidget):
                 values = status.positions_deg
             else:
                 values = []
-
-            fault_codes = getattr(status, "fault_codes", None)
-            if fault_codes:
-                self._last_motor_fault_codes = list(fault_codes)
-                self._log_motor_fault_sample_debug(self._last_motor_fault_codes, status_sequence, is_new_sample)
-                self._update_active_drag_stall_guard(advance=is_new_sample, status_sequence=status_sequence)
-                self._update_finger_collision_state()
-                self._update_motor_diagnostic_badges()
-                self._update_collision_ui_timer()
 
             # Update motor slider groups (Position/Velocity/Current)
             if self.current_mode <= MODE_CURRENT:
