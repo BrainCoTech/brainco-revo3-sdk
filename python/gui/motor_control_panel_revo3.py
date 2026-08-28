@@ -2149,10 +2149,13 @@ class Revo3MotorControlPanel(QWidget):
                 async def _fetch():
                     try:
                         raw = await func()
+                        if self.device is not device:
+                            return
                         active = [bool(v) for v in raw]
                         self.sig_collision_active_fetched.emit(active)
                     except Exception as ex:
-                        print(f"[Collision] Poll active state failed: {ex}")
+                        if self.device is device:
+                            print(f"[Collision] Poll active state failed: {ex}")
                     finally:
                         self._collision_poll_in_flight = False
 
@@ -2167,10 +2170,13 @@ class Revo3MotorControlPanel(QWidget):
                     async def _fetch_awaitable():
                         try:
                             raw = await active_raw
+                            if self.device is not device:
+                                return
                             active = [bool(v) for v in raw]
                             self.sig_collision_active_fetched.emit(active)
                         except Exception as ex:
-                            print(f"[Collision] Poll active state failed: {ex}")
+                            if self.device is device:
+                                print(f"[Collision] Poll active state failed: {ex}")
                         finally:
                             self._collision_poll_in_flight = False
 
@@ -2179,7 +2185,8 @@ class Revo3MotorControlPanel(QWidget):
                     active = [bool(v) for v in active_raw]
                     self.sig_collision_active_fetched.emit(active)
         except Exception as e:
-            print(f"[Collision] Poll active state failed: {e}")
+            if self.device is device:
+                print(f"[Collision] Poll active state failed: {e}")
 
     async def _await_collision_sdk(self, label, call_fn):
         result = call_fn()
