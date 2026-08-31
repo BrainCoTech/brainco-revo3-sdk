@@ -3,6 +3,7 @@
 #include <cstdio>
 
 int main() {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   try {
     revo3::Manager manager;
     revo3::DiscoveryOptions options;

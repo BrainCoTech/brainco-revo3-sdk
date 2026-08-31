@@ -57,6 +57,7 @@ long parse_non_negative(const char *value, const char *option, bool positive) {
 }  // namespace
 
 int main(int argc, char **argv) {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   revo3::DiscoveryOptions discovery;
   std::string firmware;
   std::string target_name = "main";

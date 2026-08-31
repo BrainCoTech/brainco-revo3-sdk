@@ -61,6 +61,7 @@ void print_usage(const char *program) {
 }  // namespace
 
 int main(int argc, char **argv) {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   try {
     revo3::DiscoveryOptions options;
     for (int index = 1; index < argc; ++index) {

@@ -124,6 +124,7 @@ std::size_t run_plan(revo3::Hand &hand, revo3::ServoSession &session,
 }  // namespace
 
 int main(int argc, char **argv) {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   std::signal(SIGINT, signal_handler);
   try {
     const auto options = parse_options(argc, argv);

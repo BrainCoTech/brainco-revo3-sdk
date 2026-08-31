@@ -5,6 +5,7 @@
 #include <cstring>
 
 int main(int argc, char **argv) {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   using namespace std::chrono_literals;
 
   revo3::DiscoveryOptions discovery;

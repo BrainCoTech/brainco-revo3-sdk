@@ -23,6 +23,19 @@ the move-only `revo3::Manager`, `revo3::Hand`, and `revo3::OperationHandle` API.
 The C++ object methods omit the redundant `revo3_` prefix; only C ABI symbols
 retain it.
 
+SDK logging writes to both the terminal and a timestamped file under `logs/`
+by default. Select the level and whether a file is created when initializing
+logging:
+
+```cpp
+revo3::init_logging(LOG_LEVEL_INFO, true);   // Terminal and log file
+revo3::init_logging(LOG_LEVEL_DEBUG, false); // Terminal only
+```
+
+Call logging initialization once, before creating a `revo3::Manager`. The first
+call selects the output mode for the process; later calls can update the level
+but cannot replace the logger outputs.
+
 Minimal C++ usage:
 
 ```cpp

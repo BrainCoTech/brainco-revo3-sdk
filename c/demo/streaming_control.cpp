@@ -15,6 +15,7 @@ void signal_handler(int) { g_running = false; }
 }
 
 int main(int argc, char **argv) {
+  revo3::init_logging(LOG_LEVEL_INFO, true);
   std::signal(SIGINT, signal_handler);
   using namespace std::chrono_literals;
 

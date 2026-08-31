@@ -53,6 +53,7 @@ static revo3::TouchLayout build_hp_mt_layout() {
 
 int main(int argc, char **argv) {
   using namespace std::chrono_literals;
+  revo3::init_logging(LOG_LEVEL_INFO, true);
 
   try {
     revo3::DiscoveryOptions discovery;
