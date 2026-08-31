@@ -160,16 +160,25 @@ int main(int argc, char **argv) {
       }
       std::printf("\n");
     }
+    bool has_mt = false;
+    bool has_mx = false;
     for (const auto &module : layout.modules) {
       std::printf("  module=%u region=%u[%u] points=%u layout=%s signals=%zu\n",
                   module.module_id, static_cast<unsigned>(module.region),
                   module.region_index, module.point_count,
                   module.layout_id.c_str(), module.signals.size());
+      has_mt = has_mt || module.layout_id.rfind("mt_", 0) == 0;
+      has_mx = has_mx || module.layout_id.rfind("mx_", 0) == 0;
     }
     std::printf("Enabled mask: 0x%04x\n", touch.enabled_mask());
-    std::printf("Read mode: %u value mode: %u\n",
-                static_cast<unsigned>(touch.read_mode()),
-                static_cast<unsigned>(touch.value_mode()));
+    if (has_mt) {
+      std::printf("Read mode: %u\n",
+                  static_cast<unsigned>(touch.read_mode()));
+    }
+    if (has_mt || has_mx) {
+      std::printf("Value mode: %u\n",
+                  static_cast<unsigned>(touch.value_mode()));
+    }
 
     auto subscription = touch.subscribe(20ms);
     for (int index = 0; index < 3; ++index) {
