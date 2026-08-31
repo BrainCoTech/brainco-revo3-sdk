@@ -3,21 +3,151 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace {
+
+struct Options {
+  revo3::DiscoveryOptions discovery;
+  bool override_ultra_vision_touch = false;
+  std::string layout = "auto";
+  std::vector<std::uint16_t> mx_point_counts;
+};
+
+const char *require_value(int argc, char **argv, int &index,
+                          const char *option) {
+  if (index + 1 >= argc) {
+    throw std::invalid_argument(std::string(option) + " requires a value");
+  }
+  return argv[++index];
+}
+
+std::vector<std::uint16_t> parse_point_counts(const std::string &value) {
+  std::vector<std::uint16_t> counts;
+  std::size_t begin = 0;
+  while (begin <= value.size()) {
+    const auto end = value.find(',', begin);
+    const auto item = value.substr(begin, end - begin);
+    std::size_t consumed = 0;
+    const auto count = std::stoul(item, &consumed, 0);
+    if (item.empty() || consumed != item.size() || count > UINT16_MAX) {
+      throw std::invalid_argument("invalid --mx-point-counts value");
+    }
+    counts.push_back(static_cast<std::uint16_t>(count));
+    if (end == std::string::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+  if (counts.size() != 11) {
+    throw std::invalid_argument(
+        "--mx-point-counts requires exactly 11 comma-separated values");
+  }
+  return counts;
+}
+
+Options parse_options(int argc, char **argv) {
+  Options options;
+  for (int index = 1; index < argc; ++index) {
+    const std::string argument = argv[index];
+    if (argument == "--port") {
+      options.discovery.port = require_value(argc, argv, index, "--port");
+    } else if (argument == "--model") {
+      const std::string value = require_value(argc, argv, index, "--model");
+      if (value != "ultra-vision-touch") {
+        throw std::invalid_argument("--model must be ultra-vision-touch");
+      }
+      options.override_ultra_vision_touch = true;
+    } else if (argument == "--layout") {
+      options.layout = require_value(argc, argv, index, "--layout");
+      if (options.layout != "auto" && options.layout != "vision-mt" &&
+          options.layout != "vision-mx") {
+        throw std::invalid_argument(
+            "--layout must be auto, vision-mt, or vision-mx");
+      }
+    } else if (argument == "--mx-point-counts") {
+      options.mx_point_counts = parse_point_counts(
+          require_value(argc, argv, index, "--mx-point-counts"));
+    } else if (!argument.empty() && argument.front() != '-') {
+      options.discovery.port = argument;
+    } else {
+      throw std::invalid_argument("unknown option: " + argument);
+    }
+  }
+  return options;
+}
+
+revo3::TouchLayout build_vision_array_layout(
+    const std::string &layout_name,
+    const std::vector<std::uint16_t> &mx_point_counts) {
+  revo3::TouchLayout layout;
+  const std::uint16_t physical_ids[] = {2, 4, 6, 8, 10};
+  const std::uint16_t mt_point_counts[] = {57, 52, 52, 52, 52};
+  if (layout_name == "vision-mx" && mx_point_counts.size() != 11) {
+    throw std::invalid_argument(
+        "vision-mx requires --mx-point-counts for physical modules 0..10");
+  }
+  for (std::uint8_t index = 0; index < 5; ++index) {
+    const auto physical_id = physical_ids[index];
+    const auto point_count = layout_name == "vision-mt"
+                                 ? mt_point_counts[index]
+                                 : mx_point_counts[physical_id];
+    revo3::TouchModuleLayout module{};
+    module.module_id = physical_id;
+    module.region = revo3::TouchRegion::FingerPad;
+    module.region_index = index;
+    module.signals = {revo3::TouchSignal::TouchPoint};
+    module.point_count = point_count;
+    module.layout_id = layout_name == "vision-mt"
+                           ? (index == 0 ? "mt_thumbpad_57"
+                                         : "mt_fingerpad_52")
+                           : "mx_fingerpad_" + std::to_string(point_count);
+    layout.modules.push_back(std::move(module));
+  }
+  revo3::TouchModuleLayout palm{};
+  palm.module_id = 0;
+  palm.region = revo3::TouchRegion::Palm;
+  palm.region_index = 0;
+  palm.signals = {revo3::TouchSignal::TouchPoint};
+  palm.point_count =
+      layout_name == "vision-mt" ? 36 : mx_point_counts.front();
+  palm.layout_id = layout_name == "vision-mt"
+                       ? "mt_palm_36"
+                       : "mx_palm_" + std::to_string(palm.point_count);
+  layout.modules.push_back(std::move(palm));
+  return layout;
+}
+
+}  // namespace
 
 int main(int argc, char **argv) {
   revo3::init_logging(LOG_LEVEL_INFO, true);
   using namespace std::chrono_literals;
 
   try {
-    revo3::DiscoveryOptions discovery;
-    if (argc > 1) {
-      discovery.port = argv[1];
-    }
+    const auto options = parse_options(argc, argv);
 
     revo3::Manager manager;
-    auto hand = manager.connect_auto(discovery);
+    auto devices = manager.discover(options.discovery);
+    if (devices.empty()) {
+      throw revo3::SdkError("no Revo3 hand found");
+    }
+    auto detected = devices.front();
+    if (options.override_ultra_vision_touch) {
+      detected.model =
+          static_cast<Revo3Model>(REVO3_MODEL_ULTRA_VISION_TOUCH);
+    }
+    auto hand = manager.connect(detected);
 
     auto touch = hand.touch();
+    if (options.layout != "auto") {
+      touch.set_layout(
+          build_vision_array_layout(options.layout, options.mx_point_counts));
+      std::printf("Applied model/layout override: UltraVisionTouch + %s\n",
+                  options.layout.c_str());
+    }
     const auto layout = touch.layout();
     std::printf("Touch modules: %zu regions=%zu\n", layout.modules.size(),
                 layout.regions.size());

@@ -12,7 +12,7 @@
 
 SDK 2.0 可识别 Revo3 Ultra (21 DOF)、Pro (16 DOF) 和 Basic (13 DOF) 系列，并通过 `JointLayout` 报告当前设备的逻辑关节数量和布局。当前 SDK runtime 仅对 Ultra 21 DOF 系列开放功能域；Pro 和 Basic 系列当前仅提供设备识别与 `JointLayout`，其他运行时能力保持 fail-closed：尚未验证的能力返回 `NotVerified`，型号不包含对应硬件时返回 `HardwareMissing`。产品生命周期与 SDK runtime 支持状态是两个独立维度：Ultra、Ultra Touch、Pro 和 Pro Touch 为已发布型号；Ultra VisionTouch、Basic 和 Basic Touch 为 Hardware Pilot。产品已发布不表示对应 SDK runtime 能力已开放。
 
-Ultra VisionTouch 的整手运动、状态和运维能力与 Ultra 相同，但指尖视觉触觉数据由触觉供应商 SDK 通过独立 USB 或 serial 通道提供，不经过本 SDK 的 Modbus/CANFD 通道，也不属于 `hand.touch` 快照。两条通道没有原子同步保证，应用需要分别管理其生命周期和时间对齐。
+Ultra VisionTouch 的整手运动、状态和运维能力与 Ultra 相同。指尖视触觉数据由独立 SDK 通过 USB 或 serial 通道提供，不经过本 SDK 的 Modbus/CANFD 通道，也不属于 `hand.touch` 快照。设备只读探测确认主链路存在 `mt_*` 或 `mx_*` 指腹/手掌阵列后，`hand.touch` 仅公开 5 个指腹和 1 个手掌模组。两条通道没有原子同步保证，应用需要分别管理其生命周期和时间对齐。
 
 ### 1.2 对象模型架构
 
@@ -311,7 +311,7 @@ Thumb 公共逻辑顺序为 Rotation、MCP、IP、Abd、Flex。协议适配层�
 | :--- | :--- | :---: | :--- | :--- | :--- | :--- |
 | `Ultra` | `REVO3_MODEL_ULTRA` | 21 | 无触觉 | `UBL` / `UBR` | 已发布 | 已开放；Modbus/CANFD |
 | `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | 点阵触觉 (Array Touch) | `UTL` / `UTR` | 已发布 | 已开放；Modbus/CANFD 集成触觉 |
-| `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | 视触觉 (Vision Touch) | `UVL` / `UVR` | Hardware Pilot | 整手功能已开放；视觉触觉使用独立供应商 SDK |
+| `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | 视触觉 + 可选主链路阵列 | `UVL` / `UVR` | Hardware Pilot | 整手功能已开放；指尖视触觉使用独立 SDK；探测到的 `mt_*`/`mx_*` 指腹和手掌通过 Touch API 读取 |
 | `Pro` | `REVO3_MODEL_PRO` | 16 | 无触觉 | `PBL` / `PBR` | 已发布 | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
 | `ProTouch` | `REVO3_MODEL_PRO_TOUCH` | 16 | 点阵触觉 (Array Touch) | `PTL` / `PTR` | 已发布 | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
 | `Basic` | `REVO3_MODEL_BASIC` | 13 | 无触觉 | `DBL` / `DBR` | Hardware Pilot | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
@@ -565,6 +565,7 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 - `hp_* + mt_*`：组合触觉，11 个公开 module 采用与协议物理 ID 对齐的稀疏编号：module 0 为 `mt_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mt_*` 指腹。指尖与指腹各自的序号按拇指、食指、中指、无名指、小指递增（1/3/5/7/9 与 2/4/6/8/10 分别对应拇指至小指）；不公开组合硬件中未纳入布局的 `mt_*` 指尖通道。
 - `hp_* + mx_*`：组合触觉，稀疏编号同上：module 0 为 `mx_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mx_*` 指腹。
 - `hp_* + mx_* + mt_*`：分区组合触觉，module 0 为 `mt_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mx_*` 指腹。
+- Ultra VisionTouch 主链路阵列：只读元数据明确识别 `mt_*` 或 `mx_*` 后，公开 6 个 module；module 0 为手掌，module 2/4/6/8/10 为拇指至小指的指腹。独立视触觉指尖不出现在该布局或快照中。
 
 触觉 API 的基础能力范围如下。组合触觉布局按其包含的模组类型路由操作；不支持的操作返回 `UnsupportedCapability`，且不会向设备发送命令。
 
@@ -580,7 +581,7 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 `value_mode()` / `set_value_mode()` 对外仅提供 `Adc` (0) 与 `Force` (2)。`mt_*` 寄存器 `4024` 的值 `1` 未使用，不属于公开枚举。表格用于快速判断基础能力，具体参数、返回值和组合布局行为以本节后续契约为准。
 
-以上均指通过灵巧手主通信链路读取的集成触觉模组。Ultra VisionTouch 当前采用两家供应商方案，指尖视觉触觉均通过供应商 SDK 和独立 USB/serial 通道读取，不进入 `hand.touch`、`TouchLayout`、`TouchFrame` 或 `TouchSubscription`。SDK 不把供应商帧与 Modbus/CANFD 状态拼接成表面上的同一原子帧。
+以上均指通过灵巧手主通信链路读取的集成触觉模组。Ultra VisionTouch 的 5 个指尖视触觉模组通过独立 SDK 和 USB/serial 通道读取，不进入 `hand.touch`、`TouchLayout`、`TouchFrame` 或 `TouchSubscription`；部分整手还组合 `mt_*` 或 `mx_*` 指腹/手掌模组。设备发现会通过只读元数据识别这类主链路阵列模组，并显示为 `vision_tips+mt_pads+mt_palm` 或 `vision_tips+mx_pads+mx_palm`。识别成功时，公共 Touch API 返回 module 0/2/4/6/8/10 对应的手掌和 5 个指腹；不会创建缺失的指尖 module，也不会拼接独立通道数据。两类元数据同时有效或都无有效证据时保持未解析，Touch 能力 fail-closed。
 
 当前声明的组合触觉布局包括 `hp_*` 指尖 + `mt_*` 指腹/手掌、`hp_*` 指尖 + `mx_*` 指腹/手掌，以及 `hp_*` 指尖 + `mx_*` 指腹 + `mt_*` 手掌。三种布局均使用 11 个稳定公开 module ID。其他未确认逐模块寄存器映射的组合拓扑保持 fail-closed，不会伪造或拼接不完整的触觉帧。
 
@@ -608,7 +609,7 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 Python 的 `hand.touch.layout` 返回 `TouchLayout | None`。C++ 的 `hand.touch().layout()` 返回 `TouchLayout`，触觉布局不可用时抛出 `SdkError`，不会返回空布局。
 
-当 Revo3 Ultra Touch 的设备描述未烧录、寄存器 135 无效或当前固件尚未提供可识别 topology 时，SDK 不按产品型号猜测布局。应用在依据实物 BOM、受控生产记录或真机对照确认布局后，可调用 `await hand.touch.set_layout(layout)` 主动配置当前连接会话。该方法只更新 SDK 的解析路由和 layout 缓存，不写设备寄存器；设备重连后必须重新确认并设置。输入必须完整匹配 SDK 支持的 `mt_*`、`mx_*`、`hp_*` 或已批准组合布局，包括 module ID、region、region index、signals、point count 和 `layout_id`，否则在发送任何设备请求前返回参数错误。其他型号不支持此 override；Ultra VisionTouch 的独立数据通道不进入公共 Touch API。
+当 Revo3 Ultra Touch 或 Ultra VisionTouch 的设备描述未烧录、寄存器 135 无效或当前固件尚未提供可识别 topology 时，SDK 不按产品型号猜测布局。若 SN 也无法识别产品型号，连接时必须先通过 Python `Manager.connect(..., model=Revo3Model.UltraVisionTouch)` / `connect_auto(..., model=...)` 或 C/C++ `DetectedDevice.model` 显式覆盖型号。应用在依据实物 BOM、受控生产记录或真机对照确认布局后，可调用 `await hand.touch.set_layout(layout)` 主动配置当前连接会话。该方法只更新 SDK 的解析路由和 layout 缓存，不写设备寄存器；设备重连后必须重新确认并设置。输入必须完整匹配 SDK 支持的 `mt_*`、`mx_*`、`hp_*` 或已批准组合布局，包括 module ID、region、region index、signals、point count 和 `layout_id`，否则在发送任何设备请求前返回参数错误。Ultra VisionTouch 只接受由 module 0/2/4/6/8/10 组成的主链路 `mt_*` 或 `mx_*` 指腹/手掌布局；独立视触觉指尖不得写入该布局，也不进入公共 Touch API。其他型号不支持此 override。
 
 部分早期组合硬件的寄存器 135 仍返回纯 `hp_*` 兼容值。对该值，SDK 会在发现阶段执行无重试、只读的模组元数据探测：有效的 `mt_*` enable 元数据可将会话布局细化为 `hp_* + mt_*`，有效的 `mx_*` SN 元数据可细化为 `hp_* + mx_*`。读取成功但内容全零不构成硬件存在证据；两类元数据同时有效时保持纯 `hp_*` 并记录歧义，不猜测分区组合。`mt_*` 模组全部关闭时，enable 元数据无法提供肯定证据，应用仍需依据已确认的实物布局调用 `set_layout()`。探测只影响当前连接会话，不写回寄存器 135。
 
@@ -1021,7 +1022,7 @@ Touch API 按职责分为：读取与订阅、布局配置、模组启停、读�
 #### 布局配置
 
 - `await hand.touch.set_layout(layout)`：为当前连接会话设置经确认的完整布局；不写设备寄存器，仅更新 SDK 解析路由。
-- 仅支持允许布局覆盖的 Revo3 Ultra Touch；未知或不完整布局在发送设备请求前失败。
+- 支持 Revo3 Ultra Touch 的完整集成布局，以及 Ultra VisionTouch 的主链路指腹/手掌布局；未知、不完整或包含独立视触觉指尖的 Ultra VisionTouch 布局在发送设备请求前失败。
 
 #### 模组启停
 
@@ -1228,12 +1229,12 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandSta
 ### 6.3 触觉传感器数据结构 (Touch)
 
 #### TouchLayout
-触觉传感器阵列与区域布局定义，用于描述设备接入的触觉硬件拓扑（包括纯 `mt_*`、`mx_*`、`hp_*`，以及 `hp_* + mt_*`、`hp_* + mx_*`、`hp_* + mx_* + mt_*` 组合拓扑）：
+触觉传感器阵列与区域布局定义，用于描述设备接入的触觉硬件拓扑（包括纯 `mt_*`、`mx_*`、`hp_*`，`hp_* + mt_*`、`hp_* + mx_*`、`hp_* + mx_* + mt_*` 组合拓扑，以及 Ultra VisionTouch 上自动探测到的稀疏 `mt_*`/`mx_*` 指腹与手掌布局）：
 
 应用通过 `TouchLayout` 动态识别当前手爪的触觉分布，以 `regions` 获取解剖学区域分组（手掌/指尖/指腹），以 `modules` 获取各模块的 `layout_id`、`point_count` 及 `signals` 数据形态。`LegacyForceSummary` 兼容模式的二次标定区域合力直接从对应 `TouchModuleData.regional_forces_mn` 读取。
 
 > [!NOTE]
-> 独立视触觉（如 Ultra VisionTouch 及独立视触觉指尖模组）采用专用供应商数据链路，不并入主链路 `TouchLayout` 与 `TouchFrame`。
+> Ultra VisionTouch 的独立视触觉指尖采用专用数据链路，不并入主链路 `TouchLayout` 与 `TouchFrame`。同一设备上自动探测到的 `mt_*`/`mx_*` 指腹和手掌属于主链路，可以出现在上述结构中。
 
 | 属性字段 | 数据类型 | 描述说明 |
 | --- | --- | --- |

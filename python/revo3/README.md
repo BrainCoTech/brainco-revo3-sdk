@@ -16,7 +16,7 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `multi_hand.py` | Multiple Hand lifecycle and shared transport behavior |
 | `subscriptions.py` | Finite State, optional Touch, and Health subscriptions |
 | `concurrent_control.py` | Concurrent servo control and State reads |
-| `touch_sensor.py` | Typed Touch layouts and snapshots |
+| `touch_sensor.py` | Typed Touch layouts and snapshots, including detected VisionTouch main-link finger-pad/palm arrays |
 | `device_operations.py` | Config, runtime statistics, calibration, and reboot |
 | `teaching_mode.py` | Teach and Replay operations |
 | `shared_ports.py` | Trusted serial port listing and VID/PID allowlist |
@@ -107,6 +107,21 @@ whether a command should be retried.
 BOM or validation record. Its `set_layout()` call changes only SDK parsing for
 the current connection session. `--test-tare` changes calibration state, and
 `--test-modes` changes the `mt_*` read mode; both are disabled by default.
+
+When an Ultra VisionTouch serial number and register 135 cannot identify the
+product or its main-link array, use the explicit session overrides in
+`touch_sensor.py` only after checking the target hand's BOM or validation
+record:
+
+```bash
+python python/revo3/touch_sensor.py --port /dev/ttyUSB0 \
+  --model ultra-vision-touch --layout vision_mt
+```
+
+For `vision_mx`, pass the target hand's 11 physical module point counts with
+`--mx-point-counts` when the device cannot provide them before layout setup.
+The layout contains only main-link finger-pad and palm modules; independent
+vision tactile fingertips remain outside this SDK snapshot.
 
 ## Troubleshooting & Serial Port Cleanup
 

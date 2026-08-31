@@ -20,6 +20,63 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         sdk.TouchSignal.SensorStatus,
     ]
 
+    if norm in ("vision_mt", "vision_tips_mt_pads_mt_palm"):
+        modules = []
+        for i, count in enumerate([57, 52, 52, 52, 52]):
+            modules.append(
+                sdk.TouchModuleLayout(
+                    "mt_thumbpad_57" if i == 0 else "mt_fingerpad_52",
+                    (i + 1) * 2,
+                    sdk.TouchRegion.FingerPad,
+                    i,
+                    [sdk.TouchSignal.TouchPoint],
+                    count,
+                )
+            )
+        modules.append(
+            sdk.TouchModuleLayout(
+                "mt_palm_36",
+                0,
+                sdk.TouchRegion.Palm,
+                0,
+                [sdk.TouchSignal.TouchPoint],
+                36,
+            )
+        )
+        return sdk.TouchLayout(modules)
+
+    if norm in ("vision_mx", "vision_tips_mx_pads_mx_palm"):
+        if mx_point_counts is None or len(mx_point_counts) != 11:
+            raise ValueError(
+                "vision_mx requires 11 physical module point counts; "
+                "pass --mx-point-counts when they cannot be read automatically"
+            )
+        modules = []
+        for i, physical_id in enumerate([2, 4, 6, 8, 10]):
+            count = mx_point_counts[physical_id]
+            modules.append(
+                sdk.TouchModuleLayout(
+                    f"mx_fingerpad_{count}",
+                    physical_id,
+                    sdk.TouchRegion.FingerPad,
+                    i,
+                    [sdk.TouchSignal.TouchPoint],
+                    count,
+                )
+            )
+        palm_count = mx_point_counts[0]
+        modules.append(
+            sdk.TouchModuleLayout(
+                f"mx_palm_{palm_count}",
+                0,
+                sdk.TouchRegion.Palm,
+                0,
+                [sdk.TouchSignal.TouchPoint],
+                palm_count,
+            )
+        )
+        return sdk.TouchLayout(modules)
+
     if norm in ("hp_mt", "hp_tips_mt_pads"):
         modules = []
         for i in range(5):
@@ -127,7 +184,10 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         ]
         return sdk.TouchLayout(modules)
 
-    raise ValueError(f"Unknown layout type: {layout_type}. Supported: auto, hp_mt, hp_mx, hp, mt")
+    raise ValueError(
+        f"Unknown layout type: {layout_type}. Supported: "
+        "auto, vision_mt, vision_mx, hp_mt, hp_mx, hp, mt"
+    )
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -144,16 +204,20 @@ async def run(args: argparse.Namespace) -> None:
         baudrate = sdk.Rs485Baudrate.Baud5Mbps
 
     try:
+        model = None
+        if args.model == "ultra-vision-touch":
+            model = sdk.Revo3Model.UltraVisionTouch
         hand = await manager.connect_auto(
             port=args.port,
             slave_id=args.slave_id,
-            modbus_baudrate=baudrate
+            modbus_baudrate=baudrate,
+            model=model,
         )
 
         if args.layout:
-            mx_counts = None
+            mx_counts = args.mx_point_counts
             norm_layout = args.layout.lower().replace("+", "_")
-            if "mx" in norm_layout:
+            if "mx" in norm_layout and mx_counts is None:
                 try:
                     mx_counts = await hand.touch.point_counts()
                 except Exception:
@@ -164,6 +228,12 @@ async def run(args: argparse.Namespace) -> None:
                 print(f"Applied manual touch layout override: {args.layout}")
 
         layout = hand.touch.layout
+        if layout is None:
+            try:
+                await hand.touch.point_counts()
+            except sdk.SdkError:
+                pass
+            layout = hand.touch.layout
         if layout is None:
             raise RuntimeError("This hand does not provide the Touch snapshot capability")
 
@@ -285,16 +355,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=30, help="Number of snapshots to read")
     parser.add_argument("--interval", type=float, default=0.1, help="Delay between snapshots in seconds")
     parser.add_argument(
+        "--model",
+        choices=("auto", "ultra-vision-touch"),
+        default="auto",
+        help="Model override for devices whose serial number cannot identify the product",
+    )
+    parser.add_argument(
         "--layout",
         type=str,
         default="auto",
-        help="Touch layout override: auto, hp_mt (hp+mt), hp_mx (hp+mx), hp, mt",
+        help=(
+            "Touch layout override: auto, vision_mt, vision_mx, "
+            "hp_mt (hp+mt), hp_mx (hp+mx), hp, mt"
+        ),
+    )
+    parser.add_argument(
+        "--mx-point-counts",
+        type=lambda value: [int(item, 0) for item in value.split(",")],
+        help="Comma-separated point counts for physical mx_* modules 0..10",
     )
     args = parser.parse_args()
     if args.count <= 0:
         parser.error("count must be positive")
     if args.interval < 0.0:
         parser.error("interval must be non-negative")
+    if args.mx_point_counts is not None and len(args.mx_point_counts) != 11:
+        parser.error("--mx-point-counts requires exactly 11 comma-separated values")
     return args
 
 

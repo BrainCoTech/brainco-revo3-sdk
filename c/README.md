@@ -104,6 +104,22 @@ Device discovery and examples:
 ./c/build/demo/teaching_mode --move
 ```
 
+`touch_sensor` is read-only. On Ultra VisionTouch it reports only detected
+main-link `mt_*`/`mx_*` finger-pad and palm modules; independent vision tactile
+fingertips are outside this SDK snapshot.
+
+If the serial number and register 135 cannot identify an Ultra VisionTouch
+hand with an `mt_*` main-link array, apply confirmed session overrides:
+
+```bash
+./c/build/demo/touch_sensor --port /dev/ttyUSB0 \
+  --model ultra-vision-touch --layout vision-mt
+```
+
+Use `--layout vision-mx --mx-point-counts <11 comma-separated counts>` for a
+confirmed `mx_*` array. These overrides do not write device registers, and the
+layout intentionally excludes the independent vision tactile fingertips.
+
 `firmware_update` is the standalone destructive maintenance workflow. It
 supports `main`, `image`, and `motor` targets, defaults to a 600-second
 operation timeout, and refuses to connect unless `--run` is present. If the

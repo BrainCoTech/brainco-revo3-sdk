@@ -17,8 +17,11 @@ through their own vendor SDK and a separate USB or serial connection. Their
 images and derived tactile data do not pass through the hand's Modbus/CANFD
 registers and are not returned by `hand.touch`. Applications must own the
 vendor-channel lifecycle and align its timestamps with hand state themselves.
-Fingerpad hardware may use a different integrated tactile technology, so the
-SDK must not infer a combined VisionTouch layout from the product model alone.
+Some hands also contain `mt_*` or `mx_*` finger-pad and palm arrays on the main
+link. After read-only metadata detection resolves that array family,
+`hand.touch` returns only the five finger-pad modules and one palm module. It
+does not fabricate or merge fingertip samples. The SDK must not infer this
+sparse layout from the product model alone.
 
 When an integrated register mapping cannot be identified, the SDK treats it as
 unavailable instead of guessing a data shape. The
@@ -86,8 +89,9 @@ for `hp_*` fingertips (Thumb~Pinky), and even IDs 2/4/6/8/10 for fingerpads (Thu
 `0x8223`, and `0x8123` select `mt_*`/`mx_*` independently for the fingerpad and palm regions; legacy
 value 11 aliases `0x8113`. VisionTouch is detected by the `UVL/UVR` serial-number prefix. The `xs_*`
 and `vts_*` technical identities are detection hints for fingertip visual-tactile channels, not stable
-public numeric protocol IDs. Neither visual-tactile channel is exposed through the main-link `TouchFrame`
-API.
+public numeric protocol IDs. Neither visual-tactile fingertip channel is
+exposed through the main-link `TouchFrame` API. A detected VisionTouch main-link
+array layout uses only public module IDs 0/2/4/6/8/10.
 
 
 ## `mt_*` Piezoresistive Array Registers
@@ -177,6 +181,14 @@ For public SDK callers, prefer `hand.touch.tare()` or `hand.touch.tare(module_in
 - `hp_*`: module force/torque zeroing commands at `6510~6514`; the protocol does not define a cancel or zero-status register for these modules.
 
 Configuration and maintenance methods are exposed directly through `hand.touch`. The SDK routes supported operations by the current layout and returns `UnsupportedCapability` before sending a command when the active touch protocol does not provide the requested operation.
+
+`set_layout(layout)` accepts confirmed integrated layouts on Revo3 Ultra Touch.
+On Revo3 Ultra VisionTouch it accepts only the main-link `mt_*` or `mx_*`
+finger-pad and palm modules (physical module IDs 0/2/4/6/8/10); independent
+vision tactile fingertips remain outside `TouchLayout` and `TouchFrame`. If the
+serial number cannot identify the product, callers must also provide an
+UltraVisionTouch model override while connecting. Both overrides are scoped to
+the current SDK session and do not write device registers.
 
 ## Python SDK Examples
 
