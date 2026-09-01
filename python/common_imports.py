@@ -20,6 +20,19 @@ except ImportError:
     logger.error("bc_revo3_sdk not found. Install: pip install bc-revo3-sdk")
 
 
+def configure_example_logging(level=None):
+    """Route SDK logs into the Python example's shared root log file."""
+    if sdk is None:
+        return
+    sdk.init_logging(
+        sdk.LogLevel.Info if level is None else level,
+        enable_file_logging=False,
+    )
+
+
+configure_example_logging()
+
+
 def check_sdk():
     """Return the SDK module or exit with a clear install hint."""
     if sdk is None:

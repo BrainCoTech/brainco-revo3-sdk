@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common_imports import (
     baudrate_to_int,
     check_sdk,
+    configure_example_logging,
     get_model_name,
     get_protocol_display_name,
     parse_modbus_baudrate,
@@ -82,7 +83,7 @@ async def main():
     parser.add_argument("--protocol", choices=("auto", "modbus", "canfd"), default="auto")
     args = parser.parse_args()
 
-    sdk.init_logging(sdk.LogLevel.Info if args.verbose else sdk.LogLevel.Warn)
+    configure_example_logging(sdk.LogLevel.Info if args.verbose else sdk.LogLevel.Warn)
 
     manager = sdk.Manager()
     devices = await manager.discover(
