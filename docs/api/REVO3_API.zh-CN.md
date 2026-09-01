@@ -355,7 +355,7 @@ Python 连接 API 使用该强类型枚举；C++ `DiscoveryOptions.canfd_data_ba
 
 #### LogLevel (枚举)
 
-该枚举用于 Python `init_logging()`。C++ 对象 API 当前不提供对应的日志初始化入口。
+该枚举用于 Python `init_logging()`、C ABI `revo3_init_logging()` 和 C++ `revo3::init_logging()`。
 
 | 枚举项 | 数值 | 描述说明 |
 | --- | ---: | --- |
@@ -1586,27 +1586,23 @@ except sdk.SdkError as error:
 - **接收时间戳**：`State` 与 `Touch` 快照中的 `timestamp` 表示 SDK 接收到数据包的时间。Linux SocketCAN 优先使用内核接收时间戳，其他传输层使用进程单调时钟。
 - **定位与限制**：`timestamp` 不是固件物理采样时刻，不可用于多设备间的硬件时钟同步。多帧拼接的快照可能存在微小传输时差，`timestamp` 表示整组数据接收完成的时间，不保证各字段同一时刻采样。
 
-### 9.3 单位转换工具 (Unit Conversion Tools)
+### 9.3 物理单位转换 (Physical Unit Conversion)
 
-为方便 ROS / ROS 2 机器人算法与国际单位制 (SI Units) 场景对接，SDK 在各语言层提供显式物理量转换函数与批量数组转换接口：
+为方便 ROS / ROS 2 机器人算法与国际单位制 (SI Units) 场景对接，SDK 在各语言层提供显式物理量换算基准与转换工具函数：
 
 #### 物理量换算基准
 - **角度 (Angle)**: `1 degree = (π / 180) rad` (约 `0.0174533 rad`), `1 rad = (180 / π) degree` (约 `57.2958 degree`)
 - **角速度 (Angular Velocity)**: `1 rpm = (π / 30) rad/s` (约 `0.10472 rad/s`), `1 rad/s = (30 / π) rpm` (约 `9.5493 rpm`)
 - **电流 (Current)**: `1 mA = 0.001 A`, `1 A = 1000 mA`
 
-#### C ABI 与 C++ 工具
+#### C ABI 与 C++ 单位工具
 - **C ABI (`revo3-sdk.h`)**：
   - 标量转换：`revo3_deg_to_rad(float)`, `revo3_rad_to_deg(float)`, `revo3_rpm_to_rad_s(float)`, `revo3_rad_s_to_rpm(float)`, `revo3_ma_to_a(float)`, `revo3_a_to_ma(float)`
   - 批量数组转换：`revo3_deg_to_rad_array(const float* in, float* out, size_t count)`, `revo3_rad_to_deg_array(...)`, `revo3_rpm_to_rad_s_array(...)`, `revo3_rad_s_to_rpm_array(...)`, `revo3_ma_to_a_array(...)`, `revo3_a_to_ma_array(...)`
 - **C++ 命名空间 (`revo3::units`)**：
   - 提供 `revo3::units::deg_to_rad(...)` 等重载，支持 `float`、`std::vector<float>` 与 `std::array<float, N>`。
 
-#### Python 模块工具
-- `main_mod.get_sdk_version()`：返回包含预发布后缀的精确 SDK 版本字符串。
-- `main_mod.init_logging(level=LogLevel.Info)`：初始化 SDK 日志级别。
-- `main_mod.list_available_ports()`：返回 `list[SerialPortInfo]`，只枚举本机候选端口，不探测设备。
-- `main_mod.configure_usb_vid_pid_allowlist(custom_ids=[], include_defaults=True)`：配置 USB 适配器 VID/PID 白名单；`include_defaults=False` 时只使用调用方提供的条目。
+#### Python 单位转换
 - `main_mod.deg_to_rad(value)`：支持传入单数值或浮点数列表/元组，返回对应的弧度值或列表。
 - `main_mod.rad_to_deg(value)`：将弧度转为角度。
 - `main_mod.rpm_to_rad_s(value)`：将转速 rpm 转为角速度 rad/s。
@@ -1621,6 +1617,23 @@ from bc_revo3_sdk import main_mod as sdk
 rad_positions = sdk.deg_to_rad(state.positions_deg)  # list[float] 批量转为 rad
 target_deg = sdk.rad_to_deg(ros_command_rad)      # 将 ROS rad 指令转为 deg
 ```
+
+### 9.4 基础运行时与模块级工具 (Runtime Utilities & Logging)
+
+SDK 提供跨语言的基础环境配置、日志管理、版本查询及端口探测工具：
+
+#### 日志系统初始化与契约
+- **C ABI (`revo3-sdk.h`)**：`revo3_init_logging(level, enable_file_logging)`；`enable_file_logging=true` 时同时写入 `logs/revo3_<timestamp>.log`。
+- **C++ (`revo3::init_logging`)**：`revo3::init_logging(level=LOG_LEVEL_INFO, enable_file_logging=true)`。建议在进程启动时初始化一次；后续调用可更新日志级别，但输出目标由首次调用确定。
+- **Python (`main_mod.init_logging`)**：`main_mod.init_logging(level=LogLevel.Info, enable_file_logging=True)`。设置 SDK 日志级别；启用文件日志时添加 SDK 专用的 Python `logging.FileHandler`，写入 `logs/revo3_<timestamp>.log`。重复调用会替换该专用文件 handler，不影响应用自行配置的其他 handler。
+
+#### 版本与硬件工具
+- **版本查询**：
+  - Python：`main_mod.get_sdk_version()` 返回包含预发布后缀的精确 SDK 版本字符串。
+  - C++：`revo3::api_version()` 返回编码版本号与语义版本字符串。
+- **端口枚举与白名单配置**：
+  - `main_mod.list_available_ports()`：返回 `list[SerialPortInfo]`，只枚举本机候选端口，不主动探测设备。
+  - `main_mod.configure_usb_vid_pid_allowlist(custom_ids=[], include_defaults=True)`：配置 USB 适配器 VID/PID 白名单；`include_defaults=False` 时只使用调用方提供的条目。
 
 ## 10. 语言与适配规范
 

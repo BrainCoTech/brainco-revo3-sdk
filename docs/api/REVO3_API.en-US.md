@@ -22,15 +22,18 @@ while Ultra VisionTouch, Basic, and Basic Touch are Hardware Pilot products.
 
 Ultra VisionTouch hand motion, state, and maintenance use the same hand
 transport as other Ultra models. Vision-tactile fingertip data is supplied by a
-separate vendor SDK over another USB or serial connection; it does not traverse
-this SDK's Modbus/CANFD transport and is not exposed by `hand.touch`. The two
-channels have independent lifecycles and no atomic timestamp guarantee.
+separate SDK over another USB or serial connection; it does not traverse this
+SDK's Modbus/CANFD transport and is not exposed by `hand.touch`. When read-only
+discovery identifies `mt_*` or `mx_*` finger-pad and palm arrays on the primary
+link, `hand.touch` exposes only those five finger-pad modules and the palm
+module. The two channels have independent lifecycles and no atomic timestamp
+guarantee.
 
 | Product Line | DoF | Tactile Sensing | Product Status | SDK Runtime Status |
 | --- | ---: | --- | --- | --- |
 | Revo3 Ultra | 21 | None | Released | Supported |
 | Revo3 Ultra Touch | 21 | Integrated array touch | Released | Supported |
-| Revo3 Ultra VisionTouch | 21 | Vendor SDK over separate USB/serial | Hardware Pilot | Hand functions supported; vision touch external |
+| Revo3 Ultra VisionTouch | 21 | Vision-tactile fingertips plus optional primary-link arrays | Hardware Pilot | Hand functions supported; detected `mt_*`/`mx_*` finger-pad and palm arrays supported |
 | Revo3 Pro / Pro Touch | 16 | Integrated touch on Touch SKU | Released | Identity and `JointLayout` only; runtime domains are not enabled |
 | Revo3 Basic / Basic Touch | 13 | Integrated touch on Touch SKU | Hardware Pilot | Identity and `JointLayout` only; runtime domains are not enabled |
 
@@ -322,7 +325,7 @@ the product has entered SDK runtime validation; use the status column below.
 | :--- | :--- | :---: | :--- | :---: | :--- | :--- |
 | `Ultra` | `REVO3_MODEL_ULTRA` | 21 | No Touch | `UBL` / `UBR` | Released | Enabled; Modbus/CANFD |
 | `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | Integrated Array Touch | `UTL` / `UTR` | Released | Enabled; integrated touch over Modbus/CANFD |
-| `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | External Vision Touch | `UVL` / `UVR` | Hardware Pilot | Hand domains enabled; vision touch uses a separate vendor SDK |
+| `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | Vision-tactile fingertips plus optional primary-link arrays | `UVL` / `UVR` | Hardware Pilot | Hand domains enabled; independent fingertips use a separate SDK; detected `mt_*`/`mx_*` finger-pad and palm arrays use the Touch API |
 | `Pro` | `REVO3_MODEL_PRO` | 16 | No Touch | `PBL` / `PBR` | Released | Identity and `JointLayout` only; runtime domains are not enabled |
 | `ProTouch` | `REVO3_MODEL_PRO_TOUCH` | 16 | Integrated Array Touch | `PTL` / `PTR` | Released | Identity and `JointLayout` only; runtime domains are not enabled |
 | `Basic` | `REVO3_MODEL_BASIC` | 13 | No Touch | `DBL` / `DBR` | Hardware Pilot | Identity and `JointLayout` only; runtime domains are not enabled |
@@ -366,7 +369,7 @@ Python connection APIs use this strongly typed enum. C++ currently represents `D
 
 #### LogLevel (Enum)
 
-Python uses this enum with `init_logging()`. The C++ object API does not currently expose a corresponding logging initialization entry point.
+Python uses this enum with `init_logging()`, the C ABI uses it with `revo3_init_logging()`, and C++ uses it with `revo3::init_logging()`.
 
 | Option | Value | Description |
 | --- | ---: | --- |
@@ -591,7 +594,7 @@ The SDK exposes raw touch data through `TouchLayout` and a normalized `TouchFram
 - `hp_* + mx_*`: Hybrid tactile topology with the same sparse numbering: module 0 is the `mx_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mx_*` fingerpads.
 - `hp_* + mx_* + mt_*`: Region-split hybrid tactile topology; module 0 is the `mt_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mx_*` fingerpads.
 
-All descriptions above refer to integrated tactile modules read over the hand's primary communication transport. Ultra VisionTouch fingertip sensors are accessed through vendor SDKs over separate USB/serial channels and do not enter `hand.touch`, `TouchLayout`, `TouchFrame`, or `TouchSubscription`. The SDK does not stitch supplier frames with Modbus/CANFD states into an ostensibly atomic frame.
+All descriptions above refer to integrated tactile modules read over the hand's primary communication transport. Ultra VisionTouch's five independent vision-tactile fingertip modules are accessed through a separate SDK and dedicated communication channels; they do not enter `hand.touch`, `TouchLayout`, `TouchFrame`, or `TouchSubscription`. For hardware variants equipped with primary-link `mt_*` or `mx_*` finger-pad and palm arrays, read-only discovery automatically resolves the topology: module 0 corresponds to the palm and modules 2/4/6/8/10 correspond to the finger pads. The Touch API does not synthesize nonexistent fingertip modules or stitch independent-channel frames into Modbus/CANFD frames. If both array-family metadata sources are valid, or neither provides valid evidence, the layout remains unresolved and Touch fails closed.
 
 Declared hybrid tactile layouts are `hp_*` fingertips + `mt_*` fingerpads/palm, `hp_*` fingertips + `mx_*` fingerpads/palm, and `hp_*` fingertips + `mx_*` fingerpads + `mt_*` palm. All three layouts use 11 stable public module IDs. Other unconfirmed module-by-module register mapping combinations remain fail-closed without fabricating or stitching incomplete touch frames.
 
@@ -1001,6 +1004,11 @@ Python configuration fields and constructor defaults are:
 | `await hand.touch.tare_status(module_index=None)` | `hand.touch().tare_status(module_index)` | `TouchTareStatus` | Query tare status |
 | `await hand.touch.point_counts()` | `hand.touch().point_counts()` | `list[int]` / `std::vector<uint16_t>` | Read module point counts |
 | `await hand.touch.restart(module_index=None)` | `hand.touch().restart(module_index)` | `None` | Restart touch modules |
+
+#### Config, Calibration, And Maintenance
+
+| Python | C++ | Returns | Behavior |
+| --- | --- | --- | --- |
 | `await hand.config.snapshot()` | `hand.config().snapshot()` | [`DeviceConfig`](#deviceconfig) | Read device config |
 | `hand.config.runtime_options` | `hand.config().runtime_options()` | [`RuntimeOptions`](#runtimeoptions) | Read SDK runtime options |
 | `hand.config.set_runtime_options(options)` | `hand.config().set_runtime_options(options)` | `None` | Set SDK runtime options |
@@ -1121,7 +1129,7 @@ Touch sensor module topology and layout, including pure `mt_*`, `mx_*`, and `hp_
 Applications dynamically inspect the hand's touch distribution via `TouchLayout`, obtaining anatomical region groupings (Palm / Fingertips / Fingerpads) via `regions`, and layout ID, point count, and signal modalities via `modules`. Secondary-calibrated regional forces from `LegacyForceSummary` are read directly from each `TouchModuleData.regional_forces_mn`.
 
 > [!NOTE]
-> Independent vision-tactile sensing (such as Ultra VisionTouch and independent vision-tactile fingertip modules) uses dedicated supplier data channels and is not merged into the main-link `TouchLayout` or `TouchFrame`.
+> Ultra VisionTouch's independent vision-tactile fingertips use a dedicated data channel and are not merged into the primary-link `TouchLayout` or `TouchFrame`. Automatically detected `mt_*`/`mx_*` finger-pad and palm arrays on the same hand belong to the primary link and can appear in those structures.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -1471,25 +1479,42 @@ except sdk.SdkError as error:
 
 ### 9.3 Unit Conversion Tools
 
-Physical unit conversion utilities are provided across languages for ROS / ROS 2 and SI compatibility:
+Physical unit conversion utilities and conversions are provided across languages for ROS / ROS 2 and SI compatibility:
 
 #### Physical Unit Conversion Constants
 - **Angle**: `deg_to_rad`, `rad_to_deg` (`1 deg = π / 180 rad`)
 - **Velocity**: `rpm_to_rad_s`, `rad_s_to_rpm` (`1 rpm = π / 30 rad/s`)
 - **Current**: `ma_to_a`, `a_to_ma` (`1 mA = 0.001 A`)
 
-#### C ABI and C++ Tools
-- **C ABI (`revo3-sdk.h`)**: `revo3_deg_to_rad`, `revo3_deg_to_rad_array`, etc.
-- **C++ (`revo3::units`)**: `revo3::units::deg_to_rad`, `StateSnapshot.positions_rad`, etc.
+#### C ABI and C++ Conversion Tools
+- **C ABI (`revo3-sdk.h`)**: `revo3_deg_to_rad(float)`, `revo3_rad_to_deg(float)`, `revo3_rpm_to_rad_s(float)`, `revo3_rad_s_to_rpm(float)`, `revo3_ma_to_a(float)`, `revo3_a_to_ma(float)` and batch array counterparts (`revo3_deg_to_rad_array(...)`, etc.).
+- **C++ (`revo3::units`)**: `revo3::units::deg_to_rad(...)` overloads supporting `float`, `std::vector<float>`, and `std::array<float, N>`. `StateSnapshot.positions_rad`, `velocities_rad_s`, and `currents_a` provide converted feedback views.
 
-#### Python Module Tools
-- Import `main_mod` with `from bc_revo3_sdk import main_mod as sdk`.
-- `sdk.get_sdk_version()` returns the exact SDK version string, including a pre-release suffix.
-- `sdk.init_logging(level=LogLevel.Info)` initializes SDK logging.
-- `sdk.list_available_ports()` returns `list[SerialPortInfo]` without probing devices.
-- `sdk.configure_usb_vid_pid_allowlist(custom_ids=[], include_defaults=True)` configures the USB adapter VID/PID allowlist; set `include_defaults=False` to use only caller-provided entries.
-- Unit helpers include `sdk.deg_to_rad`, `rad_to_deg`, `rpm_to_rad_s`, `rad_s_to_rpm`, `ma_to_a`, and `a_to_ma`; scalar and sequence inputs are supported.
+#### Python Conversion Functions
+- `sdk.deg_to_rad(value)`: accepts a float or a sequence of floats and returns radians.
+- `sdk.rad_to_deg(value)`: converts radians to degrees.
+- `sdk.rpm_to_rad_s(value)`: converts rotational speed rpm to angular velocity rad/s.
+- `sdk.rad_s_to_rpm(value)`: converts angular velocity rad/s to rotational speed rpm.
+- `sdk.ma_to_a(value)`: converts milliampere (mA) to ampere (A).
+- `sdk.a_to_ma(value)`: converts ampere (A) to milliampere (mA).
 - `HandState.positions_rad`, `velocities_rad_s`, and `currents_a` provide converted feedback views.
+
+### 9.4 Module Utilities and Logging
+
+The SDK exposes environment setup, logging initialization, version inspection, and port discovery tools across languages:
+
+#### Logging System Initialization
+- **C ABI (`revo3-sdk.h`)**: `revo3_init_logging(level, enable_file_logging)` initializes logging; when file output is enabled it writes to `logs/revo3_<timestamp>.log`.
+- **C++ (`revo3::init_logging`)**: `revo3::init_logging(level=LOG_LEVEL_INFO, enable_file_logging=true)` initializes logging. Applications should initialize logging once during process startup; subsequent calls can update the log level, while the initial call sets the target sinks (console/file).
+- **Python (`main_mod.init_logging`)**: `sdk.init_logging(level=LogLevel.Info, enable_file_logging=True)` configures SDK logging. When file logging is enabled, it installs an SDK-owned Python `logging.FileHandler` that writes to `logs/revo3_<timestamp>.log`. Repeated calls replace that SDK file handler without removing handlers configured by the application.
+
+#### Version and Hardware Utilities
+- **Version Query**:
+  - Python: `sdk.get_sdk_version()` returns the exact SDK version string, including pre-release suffixes.
+  - C++: `revo3::api_version()` returns encoded version numbers and semantic strings.
+- **Port Enumeration and VID/PID Allowlist**:
+  - Python: `sdk.list_available_ports()` returns `list[SerialPortInfo]` without probing devices.
+  - Python: `sdk.configure_usb_vid_pid_allowlist(custom_ids=[], include_defaults=True)` configures the USB adapter VID/PID allowlist; set `include_defaults=False` to use only caller-provided entries.
 
 ## 10. Language Binding Conventions
 
