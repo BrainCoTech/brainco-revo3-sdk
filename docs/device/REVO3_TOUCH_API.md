@@ -70,8 +70,8 @@ The SDK maps tactile code families to standardized `layout_id` strings and signa
 | 3, 5, 7, 9 | Fingertips | `mx_fingertip_<actual_count>`; observed: `mx_fingertip_21` | Runtime | `[TouchPoint]` |
 | 2 | Thumb Pad | `mx_fingerpad_<actual_count>`; observed: `mx_fingerpad_22` | Runtime | `[TouchPoint]` |
 | 4, 6, 8, 10 | Fingerpads | `mx_fingerpad_<actual_count>`; observed: `mx_fingerpad_27` | Runtime | `[TouchPoint]` |
-| 0~4 | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce, ModuleStatus, SensorStatus]` |
-| 1, 3, 5, 7, 9 (`hp+mt`) | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce, ModuleStatus, SensorStatus]` |
+| 0~4 | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce]` |
+| 1, 3, 5, 7, 9 (`hp+mt`) | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce]` |
 | 2 (`hp+mt`) | Thumb Pad | `mt_thumbpad_57` | 57 | `[TouchPoint]` |
 | 4, 6, 8, 10 (`hp+mt`) | Fingerpads (Index~Pinky) | `mt_fingerpad_52` | 52 | `[TouchPoint]` |
 | 0 (`hp+mt`) | Palm | `mt_palm_36` | 36 | `[TouchPoint]` |
@@ -160,7 +160,7 @@ Within each module block, offsets 0 and 1 contain module status and sensor statu
 
 Offsets 12 and 13 contain `Fn`, exposed as `resultant_force_mn`. It is the calibrated scalar resultant force over the entire tactile area of the module, in mN; it is not the local z-axis component and must not be interpreted as `Fz`. Offsets 14 through 37 contain 48 raw `uint8` points, with the odd-numbered point in the high byte and the even-numbered point in the low byte.
 
-`hp_*` module status maps to `TouchSampleState`: `0` is `WarmingUp`, `1` with a normal sensor is `Valid`, and `2` or an unknown module status is `Unavailable`. A nonzero sensor status on a ready module is `SensorFault`. Force, torque, resultant-force, and point data are only published when the state is `Valid`.
+`hp_*` module status maps to `TouchSampleState`: `0` is `WarmingUp`, `1` with a normal sensor is `Valid`, and `2` or an unknown module status is `Unavailable`. A nonzero sensor status on a ready module is `SensorFault`. Force, torque, resultant-force, and point data are only published when the state is `Valid`. Applications use `TouchModuleData.sample_state` as the normalized state. Optional `TouchModuleData.diagnostics` preserves the raw values as `module_status_raw` and `sensor_fault_code_raw` for troubleshooting.
 
 ## Public API Organization
 

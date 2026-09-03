@@ -12,7 +12,6 @@ static revo3::TouchLayout build_hp_mt_layout() {
   std::vector<revo3::TouchSignal> hp_signals = {
       revo3::TouchSignal::TouchPoint,     revo3::TouchSignal::Force3D,
       revo3::TouchSignal::Torque2D,       revo3::TouchSignal::ResultantForce,
-      revo3::TouchSignal::ModuleStatus,   revo3::TouchSignal::SensorStatus,
   };
   // 5 HP Fingertips (module_id: 1, 3, 5, 7, 9)
   for (uint8_t i = 0; i < 5; ++i) {

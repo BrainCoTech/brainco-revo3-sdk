@@ -600,9 +600,9 @@ Declared hybrid tactile layouts are `hp_*` fingertips + `mt_*` fingerpads/palm, 
 
 1. `TouchLayout`: `TouchRegion` groupings plus per-module point layout and `TouchSignal` data shape.
 2. `TouchFrame`: receive timestamp, sequence number, and a normalized list of `TouchModuleData` modules; regional force values are stored per module.
-3. `TouchModuleData`: region, region-local index, stable module ID, layout ID, and sample state. `points`, `regional_forces_mn`, `force3d`, `torque2d`, `resultant_force_mn`, `module_status`, and `sensor_status` are optional according to frame mode and module capability. All public force values use mN.
+3. `TouchModuleData`: region, region-local index, stable module ID, layout ID, and normalized sample state. `points`, `regional_forces_mn`, `force3d`, `torque2d`, and `resultant_force_mn` are optional according to frame mode and module capability. Raw protocol status is available only through the optional `diagnostics` field. All public force values use mN.
 
-`TouchLayout.regions` stores only region groupings and `module_ids`; `TouchLayout.modules` stores module-level layout: `module_id`, `region`, `region_index`, `signals`, `point_count`, and `layout_id`; per-module compatibility-mode regional forces are read from `TouchModuleData.regional_forces_mn`. `layout_id` is the public, code-based schema key for module layout and capability, not a supplier name. `TouchSignal` includes `TouchPoint`, `Force3D`, `Torque2D`, `ResultantForce`, `ModuleStatus`, and `SensorStatus`. `LegacyForceSummary` is a frame-level read mode rather than a per-module signal, so it is not part of `TouchSignal`. The public API does not expose supplier names or a `TouchPayloadType`. `TouchReadMode` (`4023`) applies only to `mt_*`: `PointArray` (0) returns point-array data whose value type is selected by register `4024` (`Adc` (0) or `Force` (2)); `LegacyForceSummary` (1) returns secondary-calibrated regional resultant-force values for a small number of shipped devices and is scheduled for removal. New applications should not depend on it. `mx_*` uses its own `output_mode`. If the touch register mapping cannot be identified, `snapshot()` returns an unsupported error instead of guessing an existing data shape.
+`TouchLayout.regions` stores only region groupings and `module_ids`; `TouchLayout.modules` stores module-level layout: `module_id`, `region`, `region_index`, `signals`, `point_count`, and `layout_id`; per-module compatibility-mode regional forces are read from `TouchModuleData.regional_forces_mn`. `layout_id` is the public, code-based schema key for module layout and capability, not a supplier name. `TouchSignal` includes `TouchPoint`, `Force3D`, `Torque2D`, and `ResultantForce`. Every frame reports module status through `sample_state`, so status is not an optional signal. `LegacyForceSummary` is a frame-level read mode rather than a per-module signal, so it is not part of `TouchSignal`. The public API does not expose supplier names or a `TouchPayloadType`. `TouchReadMode` (`4023`) applies only to `mt_*`: `PointArray` (0) returns point-array data whose value type is selected by register `4024` (`Adc` (0) or `Force` (2)); `LegacyForceSummary` (1) returns secondary-calibrated regional resultant-force values for a small number of shipped devices and is scheduled for removal. New applications should not depend on it. `mx_*` uses its own `output_mode`. If the touch register mapping cannot be identified, `snapshot()` returns an unsupported error instead of guessing an existing data shape.
 
 `LegacyForceSummary` and `ResultantForce` describe different layers: the former is the `mt_*` secondary-calibrated compatibility mode represented by `TouchModuleData.regional_forces_mn`; the latter is a per-`hp_*`-module signal represented by `TouchModuleData.resultant_force_mn`. It is the scalar resultant over the entire module tactile area in mN, not the local `Fz` component.
 
@@ -1182,8 +1182,16 @@ Multi-channel sensor data for a single touch module:
 | `force3d` | [`TouchForce3D`](#touchforce3d-touchtorque2d) \| None | `hp_*` module `Fx/Fy/Fz` in the module-local coordinate system, in mN |
 | `torque2d` | [`TouchTorque2D`](#touchforce3d-touchtorque2d) \| None | `hp_*` module `Mx/My` around the module-local x/y axes, in Nm |
 | `resultant_force_mn` | `float \| None` | Scalar resultant `Fn` over the entire `hp_*` module tactile area, in mN; not `Fz` |
-| `module_status` | `int \| None` | Module status code |
-| `sensor_status` | `int \| None` | Sensor status code |
+| `diagnostics` | [`TouchModuleDiagnostics`](#touchmodulediagnostics) \| None | Optional raw protocol diagnostics for troubleshooting; do not use it as the application state |
+
+#### TouchModuleDiagnostics
+
+`TouchModuleDiagnostics` preserves raw device status for logging and protocol troubleshooting. Applications should use `TouchModuleData.sample_state` to determine whether module data is valid.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `module_status_raw` | `int` | Raw module status: `0` means warming up, `1` means ready, and `2` or an unknown value means unavailable |
+| `sensor_fault_code_raw` | `int` | Raw sensor fault code: `0` means normal; a nonzero value indicates a fault |
 
 #### TouchForce3D / TouchTorque2D
 3D Force and 2D Torque Vectors:
@@ -1237,8 +1245,6 @@ The C ABI additionally defines `C_REVO3_TOUCH_REGION_UNKNOWN = 0` so unused regi
 | `Force3D` | 3D contact force (`Fx`, `Fy`, `Fz`) |
 | `Torque2D` | 2D contact torque (`Mx`, `My`) |
 | `ResultantForce` | Normal resultant contact force (`Fn`) |
-| `ModuleStatus` | Module hardware status |
-| `SensorStatus` | Sensor fault status |
 
 #### TouchReadMode (Enum)
 Touch data mode:

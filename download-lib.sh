@@ -7,7 +7,7 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 VERSION_FILE="${SCRIPT_DIR}/VERSION"
 
 # Configuration
-LIB_VERSION="v2.0.0-rc.6"
+LIB_VERSION="v2.0.0-rc.7"
 BASE_URL="https://app.brainco.cn/universal/bc-revo3-sdk/libs/${LIB_VERSION}"
 
 # Colorful output functions

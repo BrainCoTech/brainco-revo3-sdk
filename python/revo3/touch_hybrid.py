@@ -47,8 +47,6 @@ def build_hp_mt_layout() -> sdk.TouchLayout:
         sdk.TouchSignal.Force3D,
         sdk.TouchSignal.Torque2D,
         sdk.TouchSignal.ResultantForce,
-        sdk.TouchSignal.ModuleStatus,
-        sdk.TouchSignal.SensorStatus,
     ]
     modules = []
     # 5 HP Fingertips (0..4)
@@ -186,10 +184,12 @@ async def run(args):
                 fname = finger_names[region_index] if region_index < len(finger_names) else f"Tip {region_index}"
                 force = getattr(mod, "force3d", None)
                 torque = getattr(mod, "torque2d", None)
+                diagnostics = getattr(mod, "diagnostics", None)
                 points = list(getattr(mod, "points", None) or [])
                 print(
                     f"     [{fname:6s} Tip] module_id={mod.module_id} "
-                    f"state={enum_name(mod.sample_state)} sensor_status={getattr(mod, 'sensor_status', None)!r} | "
+                    f"state={enum_name(mod.sample_state)} "
+                    f"sensor_fault={getattr(diagnostics, 'sensor_fault_code_raw', None)!r} | "
                     f"Fx={getattr(force, 'x', 0.0):+8.1f} mN "
                     f"Fy={getattr(force, 'y', 0.0):+8.1f} mN "
                     f"Fz={getattr(force, 'z', 0.0):+8.1f} mN | "

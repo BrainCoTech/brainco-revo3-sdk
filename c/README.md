@@ -6,7 +6,7 @@ compliant compiler or newer and use the RAII wrapper from
 discovery, device operations, motion, state, and touch data.
 
 The independent Linux EtherCAT example under `platform/linux/revo3_ec` uses
-IgH `libethercat` directly and does not depend on the Rust SDK shared library.
+IgH `libethercat` directly and does not depend on the main Revo3 SDK shared library.
 
 ## Build
 

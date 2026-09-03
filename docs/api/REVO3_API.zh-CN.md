@@ -587,9 +587,9 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 1. `TouchLayout`：按 `TouchRegion` 提供区域分组，并按 module 提供点阵 layout 与 `TouchSignal` 数据形态。
 2. `TouchFrame`：包含接收 timestamp、序列号和统一的 `TouchModuleData` 数组；区域合力按模块写入 `TouchModuleData.regional_forces_mn`。
-3. `TouchModuleData`：每个模块都包含区域、区域内序号、稳定 module ID、layout ID 和采样状态；点阵 `points` 及 `force3d`、`torque2d`、`resultant_force_mn`、`module_status`、`sensor_status` 按帧模式和模块能力选择性返回。所有公开力值统一使用 mN。
+3. `TouchModuleData`：每个模块都包含区域、区域内序号、稳定 module ID、layout ID 和统一采样状态；点阵 `points` 及 `force3d`、`torque2d`、`resultant_force_mn` 按帧模式和模块能力选择性返回。原始协议状态仅通过可选的 `diagnostics` 提供。所有公开力值统一使用 mN。
 
-`TouchLayout.regions` 只保存区域与 `module_ids` 分组；`TouchLayout.modules` 保存完整 module 级布局，包括 `module_id`、`region`、`region_index`、`signals`、`point_count` 和 `layout_id`。其中 `layout_id` 是公开的 schema key，用来描述模块布局和能力。`TouchSignal` 包含 `TouchPoint`、`Force3D`、`Torque2D`、`ResultantForce`、`ModuleStatus` 和 `SensorStatus`。`LegacyForceSummary` 是读取模式，不属于单模组信号，因此不加入 `TouchSignal`。`TouchFrame` 和 `TouchLayout` 不暴露 `TouchPayloadType`。`TouchReadMode`（`4023`）仅用于 `mt_*` 模组：`PointArray` (0) 返回点阵数据，点值类型由 `4024` 的 `Adc` (0) / `Force` (2) 决定；`LegacyForceSummary` (1) 返回二次标定区域合力值，仅兼容少量已发货设备，后续将删除。新应用不应形成依赖；`mx_*` 使用自己的 `output_mode`。该寄存器不是 layout 标识。其他触觉协议不保证存在该寄存器或该语义。无法识别触觉寄存器映射时，`snapshot()` 返回不支持错误。
+`TouchLayout.regions` 只保存区域与 `module_ids` 分组；`TouchLayout.modules` 保存完整 module 级布局，包括 `module_id`、`region`、`region_index`、`signals`、`point_count` 和 `layout_id`。其中 `layout_id` 是公开的 schema key，用来描述模块布局和能力。`TouchSignal` 包含 `TouchPoint`、`Force3D`、`Torque2D` 和 `ResultantForce`。模组状态由每帧必有的 `sample_state` 统一表达，不作为可选信号。`LegacyForceSummary` 是读取模式，不属于单模组信号，因此不加入 `TouchSignal`。`TouchFrame` 和 `TouchLayout` 不暴露 `TouchPayloadType`。`TouchReadMode`（`4023`）仅用于 `mt_*` 模组：`PointArray` (0) 返回点阵数据，点值类型由 `4024` 的 `Adc` (0) / `Force` (2) 决定；`LegacyForceSummary` (1) 返回二次标定区域合力值，仅兼容少量已发货设备，后续将删除。新应用不应形成依赖；`mx_*` 使用自己的 `output_mode`。该寄存器不是 layout 标识。其他触觉协议不保证存在该寄存器或该语义。无法识别触觉寄存器映射时，`snapshot()` 返回不支持错误。
 
 `mt_*` 固件可能在写 ACK 后延迟应用 `read_mode` 或 `value_mode`。对应 setter 在返回成功前会回读目标寄存器，最长等待 5 秒；因此成功返回后的下一帧可以按新模式解释。设备明确拒绝写入时返回 `NotApplied`，超时或回读失败时不假定模式已经切换。
 
@@ -1287,8 +1287,16 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandSta
 | `force3d` | [`TouchForce3D`](#touchforce3d-touchtorque2d) \| None | `hp_*` 模组局部坐标系的 `Fx/Fy/Fz`，单位 mN |
 | `torque2d` | [`TouchTorque2D`](#touchforce3d-touchtorque2d) \| None | `hp_*` 模组绕局部 X/Y 轴的 `Mx/My`，单位 Nm |
 | `resultant_force_mn` | `float \| None` | `hp_*` 模组触觉区域的标量合力 `Fn`，单位 mN；不是 `Fz` |
-| `module_status` | `int \| None` | 模组状态码 |
-| `sensor_status` | `int \| None` | 传感器状态码 |
+| `diagnostics` | [`TouchModuleDiagnostics`](#touchmodulediagnostics) \| None | 可选的协议级原始诊断值；仅用于故障排查，不作为业务状态判断依据 |
+
+#### TouchModuleDiagnostics
+
+`TouchModuleDiagnostics` 保留设备上报的原始状态，供日志记录和协议故障排查使用。应用应使用 `TouchModuleData.sample_state` 判断数据是否有效。
+
+| 属性字段 | 数据类型 | 描述说明 |
+| --- | --- | --- |
+| `module_status_raw` | `int` | 模组原始状态：`0` 表示预热中，`1` 表示已就绪，`2` 或未知值表示不可用 |
+| `sensor_fault_code_raw` | `int` | 传感器原始故障码：`0` 表示正常，非零值表示异常 |
 
 #### TouchForce3D / TouchTorque2D
 三维力与二维力矩向量：
@@ -1342,8 +1350,6 @@ C ABI 额外定义 `C_REVO3_TOUCH_REGION_UNKNOWN = 0`，用于保证零初始化
 | `Force3D` | 三维接触力 (`Fx`, `Fy`, `Fz`) |
 | `Torque2D` | 二维接触力矩 (`Mx`, `My`) |
 | `ResultantForce` | 接触法向标量合力 (`Fn`) |
-| `ModuleStatus` | 模组硬件运行状态 |
-| `SensorStatus` | 传感器故障状态 |
 
 C ABI 额外定义 `C_REVO3_TOUCH_SIGNAL_UNKNOWN = 0`，用途同上。它只能出现在 `signal_count` 范围外的未使用槽位；有效信号列表包含该值时，布局设置失败。Python 和 C++ 对象 API 不公开该哨兵成员。
 

@@ -1,8 +1,8 @@
 # Revo3 EtherCAT Pure C++ Example
 
 This Linux-only example controls a BrainCo Revo3 hand directly through the
-IgH EtherCAT master (`libethercat`). It does not link to the Rust SDK or the
-Revo3 SDK shared library.
+IgH EtherCAT master (`libethercat`). It does not link to the main Revo3 SDK
+shared library.
 
 The implementation starts from the Revo3 fixed PDO mapping and then detects the
 assigned PDO layout exposed by the connected slave SII:

@@ -670,8 +670,6 @@ class Revo3TouchSubPanel(QWidget):
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
             sdk.TouchSignal.ResultantForce,
-            sdk.TouchSignal.ModuleStatus,
-            sdk.TouchSignal.SensorStatus,
         ]
         modules = []
         for i in range(5):
@@ -724,8 +722,6 @@ class Revo3TouchSubPanel(QWidget):
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
             sdk.TouchSignal.ResultantForce,
-            sdk.TouchSignal.ModuleStatus,
-            sdk.TouchSignal.SensorStatus,
         ]
         modules = []
         for i in range(5):
@@ -773,8 +769,6 @@ class Revo3TouchSubPanel(QWidget):
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
             sdk.TouchSignal.ResultantForce,
-            sdk.TouchSignal.ModuleStatus,
-            sdk.TouchSignal.SensorStatus,
         ]
         modules = [
             sdk.TouchModuleLayout(

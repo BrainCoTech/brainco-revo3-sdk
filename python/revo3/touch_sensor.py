@@ -16,8 +16,6 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         sdk.TouchSignal.Force3D,
         sdk.TouchSignal.Torque2D,
         sdk.TouchSignal.ResultantForce,
-        sdk.TouchSignal.ModuleStatus,
-        sdk.TouchSignal.SensorStatus,
     ]
 
     if norm in ("vision_mt", "vision_tips_mt_pads_mt_palm"):
@@ -299,8 +297,9 @@ async def run(args: argparse.Namespace) -> None:
                 for mod in hp_modules:
                     region_index = mod.region_index
                     name = names[region_index] if region_index < len(names) else f"Tip{region_index}"
-                    st = "Ready(1)" if mod.module_status == 1 else f"Status({mod.module_status})"
-                    s_st = "Normal(0)" if mod.sensor_status == 0 else f"Sensor({mod.sensor_status})"
+                    diagnostics = mod.diagnostics
+                    module_status = diagnostics.module_status_raw if diagnostics is not None else None
+                    sensor_fault = diagnostics.sensor_fault_code_raw if diagnostics is not None else None
                     pts = mod.points or []
                     pts_max = max(pts) if pts else 0
                     fx = mod.force3d.x if mod.force3d is not None else 0.0
@@ -311,7 +310,8 @@ async def run(args: argparse.Namespace) -> None:
                     my = mod.torque2d.y if mod.torque2d is not None else 0.0
                     print(
                         f"  [{name:<8}] Module {mod.module_id:02d} | "
-                        f"Status: {st:<10} | Sensor: {s_st:<10} | "
+                        f"State: {mod.sample_state!s:<12} | "
+                        f"Raw: ({module_status!r}, {sensor_fault!r}) | "
                         f"Fx:{fx:+8.1f}, Fy:{fy:+8.1f}, Fz:{fz:+9.1f} mN | "
                         f"Mx:{mx:+8.4f}, My:{my:+8.4f} Nm | "
                         f"Fn:{fn:8.1f} mN | Points({len(pts)}): max={pts_max}"

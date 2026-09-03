@@ -3,7 +3,7 @@ set -e
 
 # BrainCo Revo3 SDK - Install .whl from OSS
 # Usage: bash install_whl.sh [version]
-# Example: bash install_whl.sh 2.0.0-rc.6
+# Example: bash install_whl.sh 2.0.0-rc.7
 
 OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 
@@ -11,7 +11,7 @@ OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 if [ -n "$1" ]; then
   VERSION="$1"
 else
-  VERSION="2.0.0-rc.6"
+  VERSION="2.0.0-rc.7"
 fi
 
 # Cargo prerelease versions use SemVer spelling while wheel filenames use

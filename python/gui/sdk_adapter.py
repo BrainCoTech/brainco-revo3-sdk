@@ -903,12 +903,13 @@ class GuiHandAdapter:
                 resultant_force_mn = float(resultant_force or 0.0)
                 region_index = int(getattr(module, "region_index", module_id) or 0)
                 sample_state = getattr(module, "sample_state", None)
+                diagnostics = getattr(module, "diagnostics", None)
                 ft_modules_by_index[module_id] = SimpleNamespace(
                     module_id=module_id,
                     region_index=region_index,
                     sample_state=sample_state,
-                    status=int(getattr(module, "module_status", 0) or 0),
-                    sensor_status=int(getattr(module, "sensor_status", 0) or 0),
+                    status=int(getattr(diagnostics, "module_status_raw", 0) or 0),
+                    sensor_status=int(getattr(diagnostics, "sensor_fault_code_raw", 0) or 0),
                     fx=float(getattr(force3d, "x", 0.0) if force3d is not None else 0.0),
                     fy=float(getattr(force3d, "y", 0.0) if force3d is not None else 0.0),
                     fz=float(getattr(force3d, "z", 0.0) if force3d is not None else 0.0),
