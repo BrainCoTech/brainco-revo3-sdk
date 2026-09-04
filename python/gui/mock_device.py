@@ -225,21 +225,37 @@ class MockHand:
     @property
     def touch_layout(self):
         class MockTouchModule:
-            def __init__(self, layout_id):
+            def __init__(self, layout_id, module_id, point_count):
                 self.layout_id = layout_id
+                self.module_id = module_id
+                self.point_count = point_count
         class MockTouchLayout:
             def __init__(self, modules):
                 self.modules = modules
 
         if not self.supports_touch:
-            lids = []
+            modules = []
         elif self.has_mx_touch:
-            lids = [f"mx_module_{i}" for i in range(11)]
+            modules = [
+                MockTouchModule(f"mx_module_{i}", i, MX_TOUCH_POINT_COUNTS[i])
+                for i in range(11)
+            ]
         elif self.is_hp_touch:
-            lids = [f"hp_fingertip_48_{i}" for i in range(5)]
+            force_torque_only = "hp-ft" in self.mock_type.lower()
+            layout_id = "hp_fingertip_ft" if force_torque_only else "hp_fingertip_48"
+            point_count = 0 if force_torque_only else 48
+            modules = [
+                MockTouchModule(layout_id, i, point_count)
+                for i in range(5)
+            ]
         else:
-            lids = [f"mt_module_{i}" for i in range(11)]
-        return MockTouchLayout([MockTouchModule(lid) for lid in lids])
+            modules = [
+                MockTouchModule(f"mt_module_{i}", i, count)
+                for i, count in enumerate(
+                    [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
+                )
+            ]
+        return MockTouchLayout(modules)
 
     async def get_touch_layout(self, _slave_id=None):
         return self.touch_layout

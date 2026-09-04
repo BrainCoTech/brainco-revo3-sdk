@@ -324,12 +324,29 @@ the product has entered SDK runtime validation; use the status column below.
 | Enum Identifier (Revo3Model) | Generated C Symbol | DoF | Touch Type | SN Prefix | Product Status | SDK Runtime Status |
 | :--- | :--- | :---: | :--- | :---: | :--- | :--- |
 | `Ultra` | `REVO3_MODEL_ULTRA` | 21 | No Touch | `UBL` / `UBR` | Released | Enabled; Modbus/CANFD |
-| `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | Integrated Array Touch | `UTL` / `UTR` | Released | Enabled; integrated touch over Modbus/CANFD |
+| `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | Integrated Touch | `UTL` / `UTR` / `UFL` / `UFR` | Released | Enabled; exact product codes take precedence, while legacy SNs fall back to read-only register detection |
 | `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | Vision-tactile fingertips plus optional primary-link arrays | `UVL` / `UVR` | Hardware Pilot | Hand domains enabled; independent fingertips use a separate SDK; detected `mt_*`/`mx_*` finger-pad and palm arrays use the Touch API |
 | `Pro` | `REVO3_MODEL_PRO` | 16 | No Touch | `PBL` / `PBR` | Released | Identity and `JointLayout` only; runtime domains are not enabled |
 | `ProTouch` | `REVO3_MODEL_PRO_TOUCH` | 16 | Integrated Array Touch | `PTL` / `PTR` | Released | Identity and `JointLayout` only; runtime domains are not enabled |
 | `Basic` | `REVO3_MODEL_BASIC` | 13 | No Touch | `DBL` / `DBR` | Hardware Pilot | Identity and `JointLayout` only; runtime domains are not enabled |
 | `BasicTouch` | `REVO3_MODEL_BASIC_TOUCH` | 13 | Integrated Array Touch | `DTL` / `DTR` | Hardware Pilot | Identity and `JointLayout` only; runtime domains are not enabled |
+
+After removing the optional `BC` prefix, the first four characters of an Ultra-series SN refine the
+touch configuration:
+
+| Product Code | Main-Link Touch Configuration |
+| --- | --- |
+| `UTL1` / `UTR1` | Uniform `mt_*` full-hand array |
+| `UTL2` / `UTR2` | Uniform `mx_*` full-hand array |
+| `UFL1` / `UFR1` | Five `hp_fingertip_ft` modules only |
+| `UFL2` / `UFR2` | `hp_fingertip_ft` fingertips plus `mt_*` fingerpads and palm |
+| `UFL3` / `UFR3` | `hp_fingertip_48` fingertips plus `mt_*` fingerpads and palm |
+| `UVL1` / `UVR1`, `UVL2` / `UVR2` | Independent vision-tactile fingertips plus main-link `mt_*` fingerpads and palm |
+| `UVL3` / `UVR3`, `UVL4` / `UVR4` | Independent vision-tactile fingertips plus main-link `mx_*` fingerpads and palm |
+
+The SDK treats a known four-character product code as authoritative and does not replace it with
+possibly stale registers 135 or 136. SNs without a variant, and unknown variants, retain the existing
+register and read-only metadata detection path.
 
 ### 3.6 Connection, Logging, And Firmware Target Enums
 
@@ -589,7 +606,7 @@ The SDK exposes raw touch data through `TouchLayout` and a normalized `TouchFram
 
 - `mt_*`: Contains 11 palm/finger modules, supporting `PointArray` and the 42-value `LegacyForceSummary` compatibility mode used by a small number of shipped devices; the latter is scheduled for removal.
 - `mx_*`: Contains 11 palm/finger modules; point counts are dynamically read from device input registers.
-- `hp_*`: Contains 5 fingertip modules, providing 48-point arrays, 3D force, 2D torque, and module resultant force.
+- `hp_*`: Contains 5 fingertip modules. `hp_fingertip_48` provides a 48-point array, 3D force, 2D torque, and module resultant force; `hp_fingertip_ft` omits the point array and provides the latter three signals only.
 - `hp_* + mt_*`: Hybrid tactile topology; the 11 public modules use sparse numbering aligned with the protocol physical IDs: module 0 is the `mt_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mt_*` fingerpads. Fingertip and fingerpad indices each increase from Thumb to Pinky (1/3/5/7/9 and 2/4/6/8/10 respectively); unused `mt_*` fingertip channels in the hybrid hardware are not exposed.
 - `hp_* + mx_*`: Hybrid tactile topology with the same sparse numbering: module 0 is the `mx_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mx_*` fingerpads.
 - `hp_* + mx_* + mt_*`: Region-split hybrid tactile topology; module 0 is the `mt_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mx_*` fingerpads.
@@ -605,6 +622,8 @@ Declared hybrid tactile layouts are `hp_*` fingertips + `mt_*` fingerpads/palm, 
 `TouchLayout.regions` stores only region groupings and `module_ids`; `TouchLayout.modules` stores module-level layout: `module_id`, `region`, `region_index`, `signals`, `point_count`, and `layout_id`; per-module compatibility-mode regional forces are read from `TouchModuleData.regional_forces_mn`. `layout_id` is the public, code-based schema key for module layout and capability, not a supplier name. `TouchSignal` includes `TouchPoint`, `Force3D`, `Torque2D`, and `ResultantForce`. Every frame reports module status through `sample_state`, so status is not an optional signal. `LegacyForceSummary` is a frame-level read mode rather than a per-module signal, so it is not part of `TouchSignal`. The public API does not expose supplier names or a `TouchPayloadType`. `TouchReadMode` (`4023`) applies only to `mt_*`: `PointArray` (0) returns point-array data whose value type is selected by register `4024` (`Adc` (0) or `Force` (2)); `LegacyForceSummary` (1) returns secondary-calibrated regional resultant-force values for a small number of shipped devices and is scheduled for removal. New applications should not depend on it. `mx_*` uses its own `output_mode`. If the touch register mapping cannot be identified, `snapshot()` returns an unsupported error instead of guessing an existing data shape.
 
 `LegacyForceSummary` and `ResultantForce` describe different layers: the former is the `mt_*` secondary-calibrated compatibility mode represented by `TouchModuleData.regional_forces_mn`; the latter is a per-`hp_*`-module signal represented by `TouchModuleData.resultant_force_mn`. It is the scalar resultant over the entire module tactile area in mN, not the local `Fz` component.
+
+When the SN has no known four-character product code and older firmware does not identify the `hp_*` layout explicitly, the SDK probes the first module during connection. It first requests 38 input registers and falls back to 14 only when the device explicitly returns `Illegal Data Address`; timeouts and other communication failures do not change the detected layout. All five modules retain the fixed 38-register address stride.
 
 Hybrid tactile `snapshot()` reads `hp_*` fingertips, the declared fingerpad modules, and the declared palm module in sequence during a single SDK operation. If any branch read fails, the entire snapshot fails without publishing partially stitched frames. An `mt_*` region returns point arrays in `PointArray` mode. In `LegacyForceSummary`, its modules are `Valid`, their `points` are `None`, and secondary-calibrated regional force values are written to `regional_forces_mn`. An `mx_*` region returns module data using its runtime `point_count` and `output_mode`; one frame mode is not used to summarize these data shapes when they coexist.
 
@@ -1152,7 +1171,7 @@ Topology and channel configuration of a single touch module:
 | `module_id` | `int` | Stable module ID (0~10) |
 | `region` | [`TouchRegion`](#touchregion-enum) | Touch region enum |
 | `region_index` | `int` | Index within the region |
-| `layout_id` | `str` | Tactile layout ID (e.g. `mt_palm_36`, `hp_fingertip_48`) |
+| `layout_id` | `str` | Tactile layout ID (e.g. `mt_palm_36`, `hp_fingertip_48`, `hp_fingertip_ft`) |
 | `point_count` | `int` | Total tactile array point count |
 | `signals` | list[[`TouchSignal`](#touchsignal-enum)] | Supported tactile signal modalities |
 
@@ -1221,7 +1240,7 @@ The base `layout_id` format is `<prefix>_<region>_<actual_point_count>`:
 
 - `mt_*`: e.g., `mt_palm_36`, `mt_thumbtip_31`, `mt_fingertip_21`, `mt_thumbpad_57`, `mt_fingerpad_52`
 - `mx_*`: generated from runtime-reported point counts. Recent hardware observations include `mx_palm_53`, `mx_fingertip_56`, `mx_fingerpad_22`, `mx_fingertip_21`, and `mx_fingerpad_27`. Protocol capacities `200/80/120` are not actual counts and must not be used to construct layout IDs
-- `hp_*`: e.g., `hp_fingertip_48`
+- `hp_*`: `hp_fingertip_48` identifies a fingertip module with a 48-point array; `hp_fingertip_ft` identifies a force/torque fingertip module without a point array
 
 The base ID distinguishes only region and actual point count. If modules with the same count use different point order or geometry, a controlled hardware-revision or module-identity mapping must provide a suffix such as `_v2` or `_v3`. The SDK must not infer a layout revision from point count. Automatic detection currently emits only base IDs; a revision suffix must be added to the SDK's controlled layout mapping before it is published as a public ID. Applications encountering an unknown ID must not apply an existing coordinate map, although they may still consume the one-dimensional data using `point_count`.
 

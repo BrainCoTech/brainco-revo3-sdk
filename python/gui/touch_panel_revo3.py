@@ -9,7 +9,7 @@ Tabs:
 - Per-finger heatmap tabs (Palm, Thumb, Index, Middle, Ring, Pinky)
 """
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QTabWidget, QGroupBox, QCheckBox,
     QFrame, QLabel, QComboBox, QPushButton, QMessageBox, QScrollArea
@@ -82,6 +82,9 @@ REVO3_MODULE_POINTS = {
     "RingTip": 21, "RingPad": 52,
     "PinkyTip": 21, "PinkyPad": 52,
 }
+
+TOUCH_RENDER_INTERVAL_MS = 16
+STATUS_UPDATE_INTERVAL_S = 0.1
 
 # mt_* force display ceiling pending a confirmed physical measurement range.
 MT_FORCE_LIMIT_MN = 20000.0
@@ -223,6 +226,21 @@ def _mx_channel_grid(point_count: int):
     return rows, cols
 
 
+def _hp_module_point_count(layout, module_id: int) -> int:
+    """Return the declared point count for one hp_* module."""
+    for module in list(getattr(layout, "modules", []) or []):
+        if int(getattr(module, "module_id", -1)) != int(module_id):
+            continue
+        layout_id = str(getattr(module, "layout_id", "") or "")
+        if not layout_id.startswith("hp_"):
+            continue
+        declared_count = getattr(module, "point_count", None)
+        if declared_count is not None:
+            return max(0, int(declared_count))
+        return 48 if layout_id.startswith("hp_fingertip_48") else 0
+    return 0
+
+
 try:
     from bc_revo3_sdk import main_mod as sdk
 except ImportError:
@@ -276,6 +294,14 @@ class Revo3TouchSubPanel(QWidget):
         self._hand_side = None
         self._last_touch_fps = 0.0
         self._last_log_time = 0.0
+        self._latest_touch_payload = None
+        self._latest_touch_sequence = 0
+        self._rendered_touch_sequence = 0
+        self._last_status_update = 0.0
+        self._render_timer = QTimer(self)
+        self._render_timer.setInterval(TOUCH_RENDER_INTERVAL_MS)
+        self._render_timer.setTimerType(Qt.PreciseTimer)
+        self._render_timer.timeout.connect(self._render_latest_data)
         self._mx_frame_counts_synced = False
         self.mx_point_counts = [0] * 11
         self.mx_module_sns = []
@@ -947,6 +973,9 @@ class Revo3TouchSubPanel(QWidget):
                     module_idx=mod_idx,
                     universal_id=universal_id,
                     color=color,
+                    point_count=_hp_module_point_count(
+                        self._active_touch_layout, universal_id
+                    ),
                     on_zero_cb=self._on_hp_module_zero,
                 )
                 self.hp_force_torque_cards.append(card)
@@ -1010,6 +1039,9 @@ class Revo3TouchSubPanel(QWidget):
                     module_idx=mod_idx,
                     universal_id=universal_id,
                     color=color,
+                    point_count=_hp_module_point_count(
+                        self._active_touch_layout, mod_idx
+                    ),
                     on_zero_cb=self._on_hp_module_zero,
                 )
                 self.hp_force_torque_cards.append(card)
@@ -1177,11 +1209,42 @@ class Revo3TouchSubPanel(QWidget):
         self._refresh_detail_chart_units()
 
     def update_data(self, revo3_data):
+        """Render one payload immediately for snapshots and direct callers."""
+        self.enqueue_data(revo3_data)
+        self._render_latest_data(force=True)
+
+    def enqueue_data(self, revo3_data):
+        """Cache the newest streaming sample for bounded-rate UI rendering."""
+        self._latest_touch_payload = revo3_data
+        self._latest_touch_sequence += 1
+
+    def _render_latest_data(self, force=False):
+        if self._latest_touch_payload is None:
+            return
+        if not force and not self.isVisible():
+            return
+        if not force and self._rendered_touch_sequence == self._latest_touch_sequence:
+            return
+        self._rendered_touch_sequence = self._latest_touch_sequence
+        self._render_data(self._latest_touch_payload, force=force)
+
+    def _render_data(self, revo3_data, force=False):
         """Process Revo3 Touch data.
 
         revo3_data: GUI payload with summary_values and module-indexed point arrays.
         """
         self._log_throttled_touch_data(revo3_data)
+        summary_visible = self.tabs.currentIndex() == 0
+        now = time.monotonic()
+        status_update_due = (
+            summary_visible
+            and (
+                force
+                or now - self._last_status_update >= STATUS_UPDATE_INTERVAL_S
+            )
+        )
+        if status_update_due:
+            self._last_status_update = now
 
         ft_modules_by_id = {}
         force_torque_modules = list(getattr(revo3_data, "force_torque_modules", []) or [])
@@ -1199,10 +1262,10 @@ class Revo3TouchSubPanel(QWidget):
                     getattr(ft_modules_by_id.get(i), "resultant_force_mn", 0.0)
                     for i in range(slot_count)
                 ]
-                if hasattr(self, "summary_chart") and self.summary_chart is not None:
+                if summary_visible and self.summary_chart is not None:
                     self.summary_chart.add_data(fn_list)
                 for idx, val in enumerate(fn_list):
-                    if idx < len(self.sensor_bars):
+                    if status_update_due and idx < len(self.sensor_bars):
                         bar_max = max(int(HP_FORCE_DISPLAY_BASELINE_MN), int(val * 1.1))
                         self.sensor_bars[idx].setRange(0, bar_max)
                         self.sensor_bars[idx].setValue(int(min(val, float(bar_max))))
@@ -1213,8 +1276,12 @@ class Revo3TouchSubPanel(QWidget):
                 lookup_id = idx * 2 + 1 if self.is_hybrid else idx
                 m = ft_modules_by_id.get(lookup_id)
                 if card is not None and m is not None:
-                    card.update_payload(m)
-                if hasattr(self, "summary_compasses") and idx < len(self.summary_compasses) and self.summary_compasses[idx] is not None:
+                    card.update_payload(
+                        m,
+                        render_visuals=card.isVisible(),
+                        force_text=force,
+                    )
+                if summary_visible and idx < len(self.summary_compasses) and self.summary_compasses[idx] is not None:
                     if m is not None:
                         self.summary_compasses[idx].set_values(
                             getattr(m, "fx", 0.0),
@@ -1253,7 +1320,7 @@ class Revo3TouchSubPanel(QWidget):
                     fn_val = float(getattr(m, "resultant_force_mn", 0.0) or 0.0) if m is not None else 0.0
                     st = getattr(m, "status", 0) if m is not None else 0
                     summary_11[i] = fn_val
-                    if i < len(self.sensor_bars):
+                    if status_update_due and i < len(self.sensor_bars):
                         bar_max = max(
                             int(HP_FORCE_DISPLAY_BASELINE_MN), int(fn_val * 1.1)
                         )
@@ -1272,23 +1339,24 @@ class Revo3TouchSubPanel(QWidget):
                     sum_v = float(sum(pts)) if pts else 0.0
                     avg_v = sum_v / len(pts) if pts else 0.0
                     summary_11[i] = max_v
-                    if i < len(self.sensor_bars):
+                    if status_update_due and i < len(self.sensor_bars):
                         value_unit, limit_val, _ = self._array_chart_scale(i)
                         unit_str = "mN" if value_unit == "force" else "ADC"
                         self.sensor_bars[i].setRange(0, int(limit_val))
                         self.sensor_bars[i].setValue(int(min(max(max_v, 0.0), limit_val)))
                         self.sensor_labels[i].setText(f"max:{max_v:.0f} avg:{avg_v:.0f}\nsum:{sum_v:.0f} {unit_str}")
 
-            if hasattr(self, "summary_chart") and self.summary_chart is not None:
+            if summary_visible and self.summary_chart is not None:
                 self.summary_chart.add_data(summary_11)
         elif self.has_mx_touch and modules:
             summary_11 = [0.0] * 11
             for i, module_points in enumerate(modules[:11]):
                 summary_11[i] = max(list(module_points or [0.0]))
 
-            self.summary_chart.add_data(summary_11)
+            if summary_visible:
+                self.summary_chart.add_data(summary_11)
             for i, val in enumerate(summary_11):
-                if i < len(self.sensor_bars):
+                if status_update_due and i < len(self.sensor_bars):
                     is_force = (
                         self.mx_modes[i] == TOUCH_VALUE_MODE_FORCE
                         if i < len(self.mx_modes)
@@ -1348,11 +1416,12 @@ class Revo3TouchSubPanel(QWidget):
                         )
         elif summary and len(summary) >= 42:
             summary_42 = list(summary[:42])
-            self.summary_chart.add_data(summary_42)
+            if summary_visible:
+                self.summary_chart.add_data(summary_42)
             value_unit, limit_val, _ = self._mt_chart_scale()
             is_force = value_unit == "force"
             for i, val in enumerate(summary_42):
-                if i < len(self.sensor_bars):
+                if status_update_due and i < len(self.sensor_bars):
                     self.sensor_bars[i].setRange(0, int(limit_val))
                     self.sensor_bars[i].setValue(min(int(val), int(limit_val)))
                     if is_force:
@@ -1367,7 +1436,10 @@ class Revo3TouchSubPanel(QWidget):
         # Update detail
         if modules:
             for i, module_points in enumerate(modules):
-                if i < len(self.detail_charts) and self.detail_charts[i] is not None:
+                if (
+                    i < len(self.detail_charts)
+                    and self.detail_charts[i] is not None
+                ):
                     is_enabled = True
                     if i < len(self.module_checks):
                         is_enabled = self.module_checks[i].isChecked()
@@ -1392,13 +1464,16 @@ class Revo3TouchSubPanel(QWidget):
                     elif hasattr(self, "read_mode_combo") and self.read_mode_combo is not None:
                         value_unit, limit, stats_limit = self._mt_chart_scale()
 
-                    self.detail_charts[i].add_data(
-                        points,
-                        is_enabled=is_enabled,
-                        max_limit=limit,
-                        value_unit=value_unit,
-                        stats_max_limit=stats_limit,
-                    )
+                    if self.detail_charts[i].isVisible():
+                        self.detail_charts[i].add_data(
+                            points,
+                            is_enabled=is_enabled,
+                            max_limit=limit,
+                            value_unit=value_unit,
+                            stats_max_limit=stats_limit,
+                        )
+                    else:
+                        self.detail_charts[i].cache_data(points)
 
     def clear(self):
         self.summary_chart.clear()
@@ -1533,6 +1608,7 @@ class Revo3TouchSubPanel(QWidget):
         self.read_output_mode_btn.setToolTip(tooltip)
 
     def _on_tab_changed(self, index):
+        self._render_latest_data(force=True)
         if not self.device or (self.has_hp_touch and not self.is_hybrid):
             return
         if self.has_mx_touch:
@@ -2417,6 +2493,8 @@ class Revo3TouchSubPanel(QWidget):
 
     def set_device(self, device, slave_id, device_info=None, shared_data=None):
         self.device = device
+        if shared_data is not None:
+            self._render_timer.start()
         self.slave_id = slave_id
         resolved_device_info = device_info or getattr(shared_data, "device_info", None)
         self._hand_side = getattr(resolved_device_info, "hand_side", None)
@@ -2453,6 +2531,10 @@ class Revo3TouchSubPanel(QWidget):
 
     def clear_device(self):
         self.device = None
+        self._render_timer.stop()
+        self._latest_touch_payload = None
+        self._latest_touch_sequence = 0
+        self._rendered_touch_sequence = 0
         self._hand_side = None
         self.has_hp_touch = False
         self.is_hybrid = False

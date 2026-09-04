@@ -9,7 +9,7 @@ The integrated transport supports three tactile code families:
 
 - `mt_*`: piezoresistive tactile array modules using 4000-series control registers and input-register data.
 - `mx_*`: high-density matrix tactile modules using 5000-series holding registers.
-- `hp_*`: 6D force/torque tactile modules using 6500-series control registers and input-register data.
+- `hp_*`: fingertip modules providing 3D force, 2D torque, and resultant force through 6500-series control registers and input-register data; selected layouts also provide a point array.
 
 Revo3 Ultra VisionTouch is different. The two VisionTouch supplier
 implementations currently under evaluation are fingertip sensors accessed
@@ -71,10 +71,28 @@ The SDK maps tactile code families to standardized `layout_id` strings and signa
 | 2 | Thumb Pad | `mx_fingerpad_<actual_count>`; observed: `mx_fingerpad_22` | Runtime | `[TouchPoint]` |
 | 4, 6, 8, 10 | Fingerpads | `mx_fingerpad_<actual_count>`; observed: `mx_fingerpad_27` | Runtime | `[TouchPoint]` |
 | 0~4 | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce]` |
-| 1, 3, 5, 7, 9 (`hp+mt`) | Fingertips (Thumb~Pinky) | `hp_fingertip_48` | 48 | `[TouchPoint, Force3D, Torque2D, ResultantForce]` |
+| 0~4 | Fingertips (Thumb~Pinky) | `hp_fingertip_ft` | 0 | `[Force3D, Torque2D, ResultantForce]` |
+| 1, 3, 5, 7, 9 (hybrid) | Fingertips (Thumb~Pinky) | `hp_fingertip_48` or `hp_fingertip_ft` | 48 or 0 | Layout-dependent `hp_*` signals shown above |
 | 2 (`hp+mt`) | Thumb Pad | `mt_thumbpad_57` | 57 | `[TouchPoint]` |
 | 4, 6, 8, 10 (`hp+mt`) | Fingerpads (Index~Pinky) | `mt_fingerpad_52` | 52 | `[TouchPoint]` |
 | 0 (`hp+mt`) | Palm | `mt_palm_36` | 36 | `[TouchPoint]` |
+
+Known four-character hand SN product codes select these layouts before register probing:
+
+| Product Code | Touch Profile |
+|---|---|
+| `UTL1` / `UTR1` | Uniform `mt_*` array |
+| `UTL2` / `UTR2` | Uniform `mx_*` array |
+| `UFL1` / `UFR1` | `hp_fingertip_ft` only |
+| `UFL2` / `UFR2` | `hp_fingertip_ft` + `mt_*` fingerpads/palm |
+| `UFL3` / `UFR3` | `hp_fingertip_48` + `mt_*` fingerpads/palm |
+| `UVL1` / `UVR1`, `UVL2` / `UVR2` | Main-link `mt_*` fingerpads/palm |
+| `UVL3` / `UVR3`, `UVL4` / `UVR4` | Main-link `mx_*` fingerpads/palm |
+
+The exact product code is authoritative because older firmware may expose stale or default values in
+registers 135 and 136. Legacy and unknown variants continue to use register and read-only metadata
+probing. Vision-tactile fingertips remain on their independent channel and are not part of the
+main-link profile.
 
 High-density matrix (`mx_*`) point counts are read through input-register function code `0x04`
 at addresses `5191~5201`. Capacity is only the maximum register span and must not be used as the
@@ -85,9 +103,9 @@ connected device. If two hardware layouts have the same count but different poin
 layout mapping may assign a suffix such as `_v2`; the suffix must come from hardware revision or module
 identity evidence and must never be inferred from point count alone. Mixed topologies use sparse
 public module IDs aligned with the protocol physical IDs: module 0 for the palm, odd IDs 1/3/5/7/9
-for `hp_*` fingertips (Thumb~Pinky), and even IDs 2/4/6/8/10 for fingerpads (Thumb~Pinky). Register 135 values `0x8113`,
+for `hp_*` fingertips (Thumb~Pinky), and even IDs 2/4/6/8/10 for fingerpads (Thumb~Pinky). For SNs without a known four-character product code, register 135 values `0x8113`,
 `0x8223`, and `0x8123` select `mt_*`/`mx_*` independently for the fingerpad and palm regions; legacy
-value 11 aliases `0x8113`. VisionTouch is detected by the `UVL/UVR` serial-number prefix. The `xs_*`
+value 11 aliases `0x8113`. Legacy VisionTouch variants are detected by the `UVL/UVR` serial-number prefix and read-only array metadata. The `xs_*`
 and `vts_*` technical identities are detection hints for fingertip visual-tactile channels, not stable
 public numeric protocol IDs. Neither visual-tactile fingertip channel is
 exposed through the main-link `TouchFrame` API. A detected VisionTouch main-link
@@ -148,17 +166,19 @@ conflicting valid responses fail closed instead of silently selecting one.
 
 ## `hp_*` Registers
 
-The five modules are ordered Thumb Tip, Index Tip, Middle Tip, Ring Tip, and Pinky Tip. Each data block occupies 38 input registers.
+The five modules are ordered Thumb Tip, Index Tip, Middle Tip, Ring Tip, and Pinky Tip. Every module retains a 38-register address slot. `hp_fingertip_48` reads all 38 registers; `hp_fingertip_ft` reads the first 14 registers in each slot.
 
 | Address | Length | Access | Description |
 |---------|--------|--------|-------------|
 | `6500~6504` | 5 | RW | Module enable/disable control. `0` = Disable, `1` = Enable. |
 | `6510~6514` | 5 | WO | Force/torque zeroing. Write `1` for one module. |
-| `6520~6709` | 190 | RO | Five 38-register module blocks. |
+| `6520~6709` | 190 | RO | Five fixed 38-register address slots; each read uses 38 or 14 registers according to the detected layout. |
 
 Within each module block, offsets 0 and 1 contain module status and sensor status. Offsets 2 through 11 contain five big-endian-word-order `float32` values in `Fx`, `Fy`, `Fz`, `Mx`, `My` order. The protocol carries `Fx`, `Fy`, and `Fz` in N; the SDK converts them to mN before exposing them in the `hp_*` module-local coordinate system. `Mx` and `My` are expressed in Nm around the local x and y axes. Their positive directions follow the module coordinate-system arrows and right-hand-rule torque directions shown in the hardware drawing.
 
-Offsets 12 and 13 contain `Fn`, exposed as `resultant_force_mn`. It is the calibrated scalar resultant force over the entire tactile area of the module, in mN; it is not the local z-axis component and must not be interpreted as `Fz`. Offsets 14 through 37 contain 48 raw `uint8` points, with the odd-numbered point in the high byte and the even-numbered point in the low byte.
+Offsets 12 and 13 contain `Fn`, exposed as `resultant_force_mn`. It is the calibrated scalar resultant force over the entire tactile area of the module, in mN; it is not the local z-axis component and must not be interpreted as `Fz`. In `hp_fingertip_48`, offsets 14 through 37 contain 48 raw `uint8` points, with the odd-numbered point in the high byte and the even-numbered point in the low byte. `hp_fingertip_ft` does not expose these offsets; its public `point_count` is 0 and `points` is `None`.
+
+For SNs without a known four-character product code, the SDK first uses touch type register 136 to distinguish the two layouts. If older firmware does not provide an unambiguous value, the SDK probes the first module with a 38-register input read. It retries with 14 registers only after an explicit Modbus `Illegal Data Address` response. A timeout or other transport error does not change the layout. This fallback applies equally to Modbus RTU and the CANFD register transport.
 
 `hp_*` module status maps to `TouchSampleState`: `0` is `WarmingUp`, `1` with a normal sensor is `Valid`, and `2` or an unknown module status is `Unavailable`. A nonzero sensor status on a ready module is `SensorFault`. Force, torque, resultant-force, and point data are only published when the state is `Valid`. Applications use `TouchModuleData.sample_state` as the normalized state. Optional `TouchModuleData.diagnostics` preserves the raw values as `module_status_raw` and `sensor_fault_code_raw` for troubleshooting.
 

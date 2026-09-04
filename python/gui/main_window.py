@@ -26,7 +26,7 @@ from .i18n import get_i18n, tr
 from .motor_config_panel_revo3 import Revo3MotorConfigPanel
 from .motor_control_panel_revo3 import Revo3MotorControlPanel
 from .shared_data import SharedDataManager
-from .shared_data import DEFAULT_MOTOR_FREQ
+from .shared_data import DEFAULT_MOTOR_FREQ, TOUCH_VIEW_FREQ
 from .system_config_panel import SystemConfigPanel
 from .teaching_panel import TeachingPanel
 from .touch_panel_revo3 import Revo3TouchSubPanel
@@ -102,6 +102,9 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_menu()
         self._setup_statusbar()
+        self.shared_data.touch_latency_timer_hint.connect(
+            self._on_touch_latency_timer_hint
+        )
         self._update_texts()
         sdk_version = "Unknown"
         if sdk is not None:
@@ -221,7 +224,7 @@ class MainWindow(QMainWindow):
         current_widget = self.tabs.widget(index)
         if self.shared_data and self.shared_data.data_collector:
             if current_widget == self.touch_panel:
-                self.shared_data.update_frequencies(0, 20)
+                self.shared_data.update_frequencies(0, TOUCH_VIEW_FREQ)
             else:
                 self.shared_data.update_frequencies(DEFAULT_MOTOR_FREQ, 0)
         if hasattr(self, "fps_label"):
@@ -293,6 +296,7 @@ class MainWindow(QMainWindow):
         self.shared_data.fps_updated.connect(self._on_fps_updated)
 
         port_name = self.connection_panel.last_reconnect_port or "unknown"
+        self.shared_data.configure_serial_latency_hint(protocol_key, port_name)
         baud_str = ""
         if protocol_key == "modbus":
             last_baud = self.connection_panel.last_modbus_baudrate
@@ -328,6 +332,16 @@ class MainWindow(QMainWindow):
     def _on_fps_updated(self, motor_fps: float, touch_fps: float, ui_fps: float):
         self._last_fps_tuple = (motor_fps, touch_fps, ui_fps)
         self._update_fps_display()
+
+    def _on_touch_latency_timer_hint(
+        self, actual_frequency: float, target_frequency: float, port_name: str
+    ):
+        message = tr("touch_latency_timer_hint").format(
+            actual=actual_frequency,
+            target=target_frequency,
+            port=port_name,
+        )
+        self.statusbar.showMessage(message, 20000)
 
     def _update_fps_display(self):
         if self.device is None:
@@ -555,7 +569,7 @@ class Revo3TouchPanel(Revo3TouchSubPanel):
         self.device_info = device_info
         self.shared_data = shared_data
         if shared_data:
-            shared_data.touch_updated.connect(self.update_data)
+            shared_data.touch_updated.connect(self.enqueue_data)
             shared_data.fps_updated.connect(self._on_fps_updated)
 
     def clear_device(self):
@@ -564,7 +578,7 @@ class Revo3TouchPanel(Revo3TouchSubPanel):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 try:
-                    self.shared_data.touch_updated.disconnect(self.update_data)
+                    self.shared_data.touch_updated.disconnect(self.enqueue_data)
                 except Exception:
                     pass
                 try:

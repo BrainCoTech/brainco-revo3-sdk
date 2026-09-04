@@ -9,6 +9,7 @@ Common chart widgets, constants, and utilities used across all touch sensor pane
 import asyncio
 import logging
 import math
+import time
 import numpy as np
 from typing import Optional
 from PySide6.QtWidgets import (
@@ -27,6 +28,7 @@ logger = logging.getLogger("revo3.vision_touch")
 # 0.05 Nm Mx/My measurement range. Fx/Fy and Fn remain dynamically scaled.
 HP_FORCE_DISPLAY_BASELINE_MN = 30000.0
 HP_TORQUE_DISPLAY_BASELINE_NM = 0.05
+TEXT_UPDATE_INTERVAL_S = 0.1
 
 
 def run_async(coro_or_factory):
@@ -69,6 +71,7 @@ class SummaryChart(QWidget):
         self.curves = []
         self.data = [[] for _ in range(self.sensor_count)]
         self.max_points = 200
+        self._last_y_range_update = 0.0
         self._setup_ui()
 
     def _setup_ui(self):
@@ -108,10 +111,16 @@ class SummaryChart(QWidget):
             return
         all_vals = []
         for i, curve in enumerate(self.curves):
-            if self.data[i]:
-                curve.setData(list(range(len(self.data[i]))), self.data[i])
+            if self.data[i] and curve.isVisible():
+                curve.setData(self.data[i])
                 all_vals.extend(self.data[i][-50:])
-        if all_vals and hasattr(self, "plot"):
+        now = time.monotonic()
+        if (
+            all_vals
+            and hasattr(self, "plot")
+            and now - self._last_y_range_update >= 0.5
+        ):
+            self._last_y_range_update = now
             cur_min = min(all_vals)
             cur_max = max(all_vals)
             target_min = min(self.y_range[0], cur_min)
@@ -155,6 +164,9 @@ class HeatmapChart(QWidget):
         self.value_unit = "force"
         self.current_max_limit = 500.0
         self.current_stats_max_limit = None
+        self._last_text_values = [None] * point_count
+        self._last_levels = None
+        self._last_text_update = 0.0
         self._setup_ui()
 
     def _get_coords(self, i: int):
@@ -347,6 +359,7 @@ class HeatmapChart(QWidget):
                 for txt in self.text_items:
                     txt.setText("OFF")
                     txt.setColor('#666666')
+                self._last_text_values = [None] * self.point_count
             self.stats_label.setText("Disabled")
             return
 
@@ -365,27 +378,46 @@ class HeatmapChart(QWidget):
         if HAS_PYQTGRAPH:
             self.img_item.setLookupTable(self.lut)
             self.img_item.setImage(self._data_2d.T, levels=(0, max_limit))
-            if hasattr(self, "bar_item") and self.bar_item is not None:
+            levels = (0, max_limit)
+            if (
+                levels != self._last_levels
+                and hasattr(self, "bar_item")
+                and self.bar_item is not None
+            ):
                 try:
-                    self.bar_item.setLevels((0, max_limit))
+                    self.bar_item.setLevels(levels)
+                    self._last_levels = levels
                 except Exception:
                     pass
 
-            for i, txt in enumerate(self.text_items):
-                val = self.current_values[i]
-                if isinstance(val, (int, float)) and abs(val - round(val)) < 0.05:
-                    txt.setText(str(int(round(val))))
-                else:
-                    txt.setText(f"{val:.1f}")
-                if val > max_limit * 0.5:
-                    txt.setColor('k')
-                else:
-                    txt.setColor('w')
+        now = time.monotonic()
+        if now - self._last_text_update >= TEXT_UPDATE_INTERVAL_S:
+            self._last_text_update = now
+            if HAS_PYQTGRAPH:
+                for i, txt in enumerate(self.text_items):
+                    val = self.current_values[i]
+                    display_value = round(float(val), 1)
+                    if display_value == self._last_text_values[i]:
+                        continue
+                    self._last_text_values[i] = display_value
+                    if isinstance(val, (int, float)) and abs(val - round(val)) < 0.05:
+                        txt.setText(str(int(round(val))))
+                    else:
+                        txt.setText(f"{val:.1f}")
+                    if val > max_limit * 0.5:
+                        txt.setColor('k')
+                    else:
+                        txt.setColor('w')
+            self._update_stats_label()
 
-        self._update_stats_label()
+    def cache_data(self, values: list):
+        """Keep hidden-chart state current without touching graphics items."""
+        n = min(len(values), self.point_count)
+        self.current_values = list(values[:n]) + [0] * max(0, self.point_count - n)
 
     def clear(self):
         self.current_values = [0] * self.point_count
+        self._last_text_values = [None] * self.point_count
         for i in range(self.point_count):
             r_idx, c_idx = self._get_coords(i)
             if r_idx < self.rows and c_idx < self.cols:
@@ -720,7 +752,7 @@ class HpForceTorqueModuleCard(QGroupBox):
     - Top: Status + Sensor + prominent Zero button
     - Middle: 2D Force Compass Dial + 6D Time-Series Chart (side-by-side)
     - Metrics: Fx/Fy/Fz/Mx/My/Fn instrument-style value labels
-    - Bottom: 48-point film heatmap (compact)
+    - Bottom: Optional point-array heatmap when the layout exposes touch points
     """
 
     FT_CHANNELS = [
@@ -733,15 +765,26 @@ class HpForceTorqueModuleCard(QGroupBox):
     ]
     MAX_CHART_POINTS = 200
 
-    def __init__(self, name: str, module_idx: int, universal_id: int, color: tuple, on_zero_cb=None):
+    def __init__(
+        self,
+        name: str,
+        module_idx: int,
+        universal_id: int,
+        color: tuple,
+        point_count: int = 48,
+        on_zero_cb=None,
+    ):
         super().__init__()
         self.module_name = name
         self.module_idx = module_idx
         self.universal_id = universal_id
         self.color = color
+        self.point_count = max(0, int(point_count))
         self.on_zero_cb = on_zero_cb
         self._chart_data = {ch[0]: [] for ch in self.FT_CHANNELS}
         self._chart_curves = []
+        self._last_chart_range_update = 0.0
+        self._last_text_update = 0.0
 
         self.setTitle(f"🖐️ {name} (hp_* Mod {module_idx} / TouchID {universal_id})")
         self._setup_ui()
@@ -890,40 +933,39 @@ class HpForceTorqueModuleCard(QGroupBox):
         grid.addWidget(self.fn_lbl, 0, 5)
         layout.addLayout(grid)
 
-        # ── 48-Point Film Heatmap ──
-        self.heatmap = HeatmapChart(
-            module_name=f"{self.module_name} (48-Point Tactile Array)",
-            point_count=48,
-            color=self.color,
-            rows=6,
-            cols=8
-        )
-        self.heatmap.setMinimumHeight(240)
-        layout.addWidget(self.heatmap, 2)
+        # ── Optional Point-Array Heatmap ──
+        self.heatmap = None
+        if self.point_count > 0:
+            rows = 6 if self.point_count == 48 else math.ceil(self.point_count / 8)
+            cols = 8
+            self.heatmap = HeatmapChart(
+                module_name=(
+                    f"{self.module_name} ({self.point_count}-Point Tactile Array)"
+                ),
+                point_count=self.point_count,
+                color=self.color,
+                rows=rows,
+                cols=cols,
+            )
+            self.heatmap.setMinimumHeight(240)
+            layout.addWidget(self.heatmap, 2)
+        else:
+            no_points_label = QLabel(
+                "Force/torque only; this touch profile does not expose a point array. "
+                "(仅力/力矩；当前触觉配置无点阵数据)"
+            )
+            no_points_label.setAlignment(Qt.AlignCenter)
+            no_points_label.setStyleSheet(
+                "color: #94a3b8; border: 1px dashed #475569; "
+                "border-radius: 6px; padding: 12px;"
+            )
+            layout.addWidget(no_points_label)
 
-    def update_payload(self, mod_payload):
+    def update_payload(self, mod_payload, render_visuals=True, force_text=False):
         """Update status, metrics, compass, chart, and heatmap from an hp_* payload."""
         if not mod_payload:
             return
 
-        # -- Status --
-        status = getattr(mod_payload, "status", 0)
-        sensor_st = getattr(mod_payload, "sensor_status", 0)
-
-        status_map = {
-            1: ("Status: Ready(1)", "#4caf50"),
-            0: ("Status: WarmingUp(0)", "#ff9800"),
-        }
-        text, color = status_map.get(status, (f"Status: Offline({status})", "#f44336"))
-        self.status_lbl.setText(text)
-        self.status_lbl.setStyleSheet(f"font-weight: bold; color: {color}; font-size: 12px;")
-
-        sensor_text = "Sensor: Normal(0)" if sensor_st == 0 else f"Sensor: Fault({sensor_st})"
-        sensor_color = "#4caf50" if sensor_st == 0 else "#f44336"
-        self.sensor_lbl.setText(sensor_text)
-        self.sensor_lbl.setStyleSheet(f"font-weight: bold; color: {sensor_color}; font-size: 12px;")
-
-        # -- Metrics --
         fx = getattr(mod_payload, "fx", 0.0)
         fy = getattr(mod_payload, "fy", 0.0)
         fz = getattr(mod_payload, "fz", 0.0)
@@ -931,12 +973,41 @@ class HpForceTorqueModuleCard(QGroupBox):
         my_nm = getattr(mod_payload, "my", 0.0)
         fn = getattr(mod_payload, "resultant_force_mn", 0.0)
 
-        self.fx_lbl.setText(f"Fx: {fx:+.1f} mN")
-        self.fy_lbl.setText(f"Fy: {fy:+.1f} mN")
-        self.fz_lbl.setText(f"Fz: {fz:+.1f} mN")
-        self.mx_lbl.setText(f"Mx: {mx_nm:+.4f} Nm")
-        self.my_lbl.setText(f"My: {my_nm:+.4f} Nm")
-        self.fn_lbl.setText(f"Fn: {fn:+.1f} mN")
+        now = time.monotonic()
+        if force_text or now - self._last_text_update >= TEXT_UPDATE_INTERVAL_S:
+            self._last_text_update = now
+            status = getattr(mod_payload, "status", 0)
+            sensor_st = getattr(mod_payload, "sensor_status", 0)
+            status_map = {
+                1: ("Status: Ready(1)", "#4caf50"),
+                0: ("Status: WarmingUp(0)", "#ff9800"),
+            }
+            text, color = status_map.get(
+                status, (f"Status: Offline({status})", "#f44336")
+            )
+            self.status_lbl.setText(text)
+            self.status_lbl.setStyleSheet(
+                f"font-weight: bold; color: {color}; font-size: 12px;"
+            )
+            sensor_text = (
+                "Sensor: Normal(0)"
+                if sensor_st == 0
+                else f"Sensor: Fault({sensor_st})"
+            )
+            sensor_color = "#4caf50" if sensor_st == 0 else "#f44336"
+            self.sensor_lbl.setText(sensor_text)
+            self.sensor_lbl.setStyleSheet(
+                f"font-weight: bold; color: {sensor_color}; font-size: 12px;"
+            )
+            self.fx_lbl.setText(f"Fx: {fx:+.1f} mN")
+            self.fy_lbl.setText(f"Fy: {fy:+.1f} mN")
+            self.fz_lbl.setText(f"Fz: {fz:+.1f} mN")
+            self.mx_lbl.setText(f"Mx: {mx_nm:+.4f} Nm")
+            self.my_lbl.setText(f"My: {my_nm:+.4f} Nm")
+            self.fn_lbl.setText(f"Fn: {fn:+.1f} mN")
+
+        if not render_visuals:
+            return
 
         # -- 2D Force Compass Update --
         self.compass.set_values(fx, fy, fz, mx_nm, my_nm, fn)
@@ -959,35 +1030,38 @@ class HpForceTorqueModuleCard(QGroupBox):
             for key, curve in self._chart_curves:
                 d = self._chart_data[key]
                 if d:
-                    curve.setData(list(range(len(d))), d)
+                    curve.setData(d)
 
-            force_vals = [
-                value
-                for key in ("fx", "fy", "fz", "resultant_force_mn")
-                for value in self._chart_data[key][-50:]
-            ]
-            if force_vals:
-                force_abs = max(
-                    HP_FORCE_DISPLAY_BASELINE_MN,
-                    max(abs(value) for value in force_vals) * 1.1,
-                )
-                self.ft_plot.setYRange(-force_abs, force_abs)
+            now = time.monotonic()
+            if now - self._last_chart_range_update >= 0.5:
+                self._last_chart_range_update = now
+                force_vals = [
+                    value
+                    for key in ("fx", "fy", "fz", "resultant_force_mn")
+                    for value in self._chart_data[key][-50:]
+                ]
+                if force_vals:
+                    force_abs = max(
+                        HP_FORCE_DISPLAY_BASELINE_MN,
+                        max(abs(value) for value in force_vals) * 1.1,
+                    )
+                    self.ft_plot.setYRange(-force_abs, force_abs)
 
-            torque_vals = [
-                value
-                for key in ("mx", "my")
-                for value in self._chart_data[key][-50:]
-            ]
-            if torque_vals and self.torque_plot is not None:
-                torque_abs = max(
-                    HP_TORQUE_DISPLAY_BASELINE_NM,
-                    max(abs(value) for value in torque_vals) * 1.1,
-                )
-                self.torque_plot.setYRange(-torque_abs, torque_abs)
+                torque_vals = [
+                    value
+                    for key in ("mx", "my")
+                    for value in self._chart_data[key][-50:]
+                ]
+                if torque_vals and self.torque_plot is not None:
+                    torque_abs = max(
+                        HP_TORQUE_DISPLAY_BASELINE_NM,
+                        max(abs(value) for value in torque_vals) * 1.1,
+                    )
+                    self.torque_plot.setYRange(-torque_abs, torque_abs)
 
         # -- Heatmap --
         points = getattr(mod_payload, "points", [])
-        if points:
+        if points and self.heatmap is not None:
             self.heatmap.update_heatmap(
                 list(points), value_unit="raw", max_limit=255.0
             )

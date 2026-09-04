@@ -569,6 +569,11 @@ TRANSLATIONS_EN = {
     "fps_motor_prefix": "Motor",
     "fps_touch_prefix": "Touch",
     "fps_ui_prefix": "GUI Update Rate",
+    "touch_latency_timer_hint": (
+        "Touch sampling is {actual:.1f} Hz (target {target:.0f} Hz) on FTDI port "
+        "{port}. Check Windows Device Manager > Ports > Port Settings > Advanced > "
+        "Latency Timer (1 ms). Other transport or device limits may also reduce the rate."
+    ),
 }
 
 
@@ -1093,6 +1098,11 @@ TRANSLATIONS_ZH = {
     "fps_motor_prefix": "电机",
     "fps_touch_prefix": "触觉",
     "fps_ui_prefix": "GUI 更新频率",
+    "touch_latency_timer_hint": (
+        "FTDI 端口 {port} 的触觉采样为 {actual:.1f} Hz（目标 {target:.0f} Hz）。"
+        "请检查 Windows 设备管理器 > 端口 > 端口设置 > 高级 > Latency Timer "
+        "是否为 1 ms；传输或设备限制也可能导致频率下降。"
+    ),
 }
 
 

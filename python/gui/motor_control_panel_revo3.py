@@ -2939,7 +2939,7 @@ class Revo3MotorControlPanel(QWidget):
 
     def _update_status_from_shared(self):
         """Update motor status from shared data manager (non-blocking read)"""
-        if not self.shared_data:
+        if not self.shared_data or not self.isVisible():
             return
 
         try:

@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_imports import sdk, logger
@@ -15,7 +15,19 @@ from .constants import MOTOR_BUFFER_SIZE, TOUCH_BUFFER_SIZE
 
 DEFAULT_MOTOR_FREQ = 60
 DEFAULT_TOUCH_FREQ = 20
+STANDARD_TOUCH_VIEW_FREQ = 60
 FORCE_TORQUE_TOUCH_FREQ = 5
+LOW_LATENCY_TOUCH_AUTO_MIN_FREQ = 20
+LOW_LATENCY_TOUCH_AUTO_STEPS = (20, 30, 60, 90, 120)
+LOW_LATENCY_TOUCH_AUTO_START_FREQ = 30
+TOUCH_VIEW_FREQ = 120
+TOUCH_AUTO_EVALUATION_INTERVAL_S = 5.0
+TOUCH_AUTO_CHANGE_COOLDOWN_S = 10.0
+TOUCH_AUTO_RAISE_RATIO = 0.9
+TOUCH_AUTO_LOWER_RATIO = 0.7
+TOUCH_LATENCY_HINT_MIN_TARGET_HZ = 60
+UI_DISPATCH_INTERVAL_MS = 16
+FTDI_USB_VENDOR_ID = 0x0403
 DRAG_MOTOR_FREQ = 0
 SUBSCRIPTION_ERROR_LOG_INTERVAL_S = 2.0
 CONNECTION_FAILED_THRESHOLD = 3
@@ -43,6 +55,46 @@ def _is_connection_failed(error) -> bool:
     if code_name == "ConnectionFailed":
         return True
     return str(code).rsplit(".", 1)[-1] == "ConnectionFailed"
+
+
+def _serial_port_metadata_is_ftdi(port_info, port_name):
+    detected_port = str(getattr(port_info, "port_name", "") or getattr(port_info, "device", ""))
+    if detected_port.casefold() != str(port_name or "").casefold():
+        return False
+    try:
+        if int(getattr(port_info, "vid", -1)) == FTDI_USB_VENDOR_ID:
+            return True
+    except (TypeError, ValueError):
+        pass
+    identity = " ".join(
+        str(getattr(port_info, name, "") or "")
+        for name in ("manufacturer", "product_name", "product", "description")
+    )
+    return "ftdi" in identity.casefold()
+
+
+def _is_ftdi_serial_port(port_name):
+    if not port_name:
+        return False
+    if sdk is not None and hasattr(sdk, "list_available_ports"):
+        try:
+            if any(
+                _serial_port_metadata_is_ftdi(port_info, port_name)
+                for port_info in sdk.list_available_ports()
+            ):
+                return True
+        except Exception as error:
+            logger.debug("[SharedData] SDK serial metadata lookup failed: %s", error)
+    try:
+        import serial.tools.list_ports
+
+        return any(
+            _serial_port_metadata_is_ftdi(port_info, port_name)
+            for port_info in serial.tools.list_ports.comports()
+        )
+    except Exception as error:
+        logger.debug("[SharedData] System serial metadata lookup failed: %s", error)
+        return False
 
 
 class FpsCounter:
@@ -241,6 +293,9 @@ class _SubscriptionCollector:
         self._stop = threading.Event()
         self._connection_failed_counts = {"motor": 0, "touch": 0}
         self._connection_lost_reported = threading.Event()
+        self._touch_health_lock = threading.Lock()
+        self._touch_success_count = 0
+        self._touch_error_count = 0
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -280,11 +335,27 @@ class _SubscriptionCollector:
                 )
         return True
 
+    def _record_touch_health(self, success):
+        with self._touch_health_lock:
+            if success:
+                self._touch_success_count += 1
+            else:
+                self._touch_error_count += 1
+
+    def touch_health_snapshot(self):
+        with self._touch_health_lock:
+            return self._touch_success_count, self._touch_error_count
+
     def stop(self):
         self._stop.set()
         thread = self._thread
         if thread and thread is not threading.current_thread():
             thread.join(timeout=2.0)
+            if thread.is_alive():
+                logger.warning(
+                    "[SharedData] Collector thread did not stop within 2 seconds"
+                )
+                return False
         self._thread = None
         return True
 
@@ -296,10 +367,18 @@ class _SubscriptionCollector:
         self.touch_frequency = frequency
         self._restart()
 
+    def update_frequencies(self, motor_frequency, touch_frequency):
+        self.motor_frequency = motor_frequency
+        self.touch_frequency = touch_frequency
+        self._restart()
+
     def _restart(self):
-        if self._thread and self._thread.is_alive():
-            self.stop()
-            self.start()
+        if self._thread is None:
+            return True
+        if self._thread.is_alive():
+            if not self.stop():
+                return False
+        return self.start()
 
     def _thread_main(self):
         loop = asyncio.new_event_loop()
@@ -350,6 +429,7 @@ class _SubscriptionCollector:
                     try:
                         frame = await touch_subscription.next()
                         self.touch_buffer.push(self.device.touch_frame_payload(frame))
+                        self._record_touch_health(True)
                         self._record_read_result("touch")
                         error_logger.record_success()
                     except asyncio.CancelledError:
@@ -357,6 +437,7 @@ class _SubscriptionCollector:
                     except Exception as e:
                         if self._stop.is_set():
                             break
+                        self._record_touch_health(False)
                         error_logger.record_error(_sdk_error_text(e))
                         if self._record_read_result("touch", e):
                             break
@@ -393,6 +474,7 @@ class SharedDataManager(QObject):
     connection_lost = Signal()
     slave_id_updated = Signal(int)
     fps_updated = Signal(float, float, float)
+    touch_latency_timer_hint = Signal(float, float, str)
     _update_timer_start_requested = Signal()
     _update_timer_stop_requested = Signal()
 
@@ -416,6 +498,14 @@ class SharedDataManager(QObject):
         self._latest_revo3_touch_sequence = 0
         self._ui_fps_counter = FpsCounter(window_seconds=1.0)
         self._last_fps_emit_time = 0.0
+        self._touch_auto_requested_max = 0
+        self._touch_auto_target = LOW_LATENCY_TOUCH_AUTO_START_FREQ
+        self._touch_auto_last_evaluation_at = 0.0
+        self._touch_auto_last_change_at = 0.0
+        self._touch_auto_health_snapshot = (0, 0)
+        self._latency_hint_enabled = False
+        self._latency_hint_emitted = False
+        self._latency_hint_port = ""
         self._collector_config_lock = threading.Lock()
         self._collector_config_pending = None
         self._collector_config_worker_running = False
@@ -426,7 +516,9 @@ class SharedDataManager(QObject):
         self._collector_lifecycle_blocked_keys = set()
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._emit_updates)
-        self._update_timer.setInterval(50)
+        self._update_timer.setInterval(UI_DISPATCH_INTERVAL_MS)
+        if hasattr(self._update_timer, "setTimerType"):
+            self._update_timer.setTimerType(Qt.PreciseTimer)
         self._update_timer_start_requested.connect(self._start_update_timer)
         self._update_timer_stop_requested.connect(self._stop_update_timer)
 
@@ -449,12 +541,27 @@ class SharedDataManager(QObject):
     def set_device(self, device, slave_id: int, device_info):
         if self.is_running:
             self.stop()
+        self.configure_serial_latency_hint(None, None)
         self._device = device
         self._slave_id = slave_id
         self._device_info = device_info
+        self._reset_touch_auto_frequency()
         if device:
             self.revo3_motor_buffer = MockBuffer(MOTOR_BUFFER_SIZE)
             self.revo3_touch_buffer = MockBuffer(TOUCH_BUFFER_SIZE)
+
+    def configure_serial_latency_hint(self, protocol_key, port_name):
+        self._latency_hint_enabled = False
+        self._latency_hint_emitted = False
+        self._latency_hint_port = str(port_name or "")
+        if sys.platform != "win32" or protocol_key != "modbus":
+            return
+        self._latency_hint_enabled = _is_ftdi_serial_port(self._latency_hint_port)
+        if self._latency_hint_enabled:
+            logger.info(
+                "[SharedDataManager] Detected FTDI serial adapter on %s",
+                self._latency_hint_port,
+            )
 
     def clear_device(self):
         self.stop()
@@ -469,6 +576,7 @@ class SharedDataManager(QObject):
         self._latest_revo3_touch_sequence = 0
         self._ui_fps_counter.reset()
         self._last_fps_emit_time = 0.0
+        self._reset_touch_auto_frequency()
         self.fps_updated.emit(0.0, 0.0, 0.0)
 
     def update_slave_id(self, new_id: int):
@@ -498,6 +606,35 @@ class SharedDataManager(QObject):
 
     def _effective_touch_frequency(self, requested_frequency):
         frequency = max(0, int(requested_frequency or 0))
+        is_force_torque_layout = self._is_force_torque_layout()
+        if not is_force_torque_layout:
+            self._touch_auto_requested_max = 0
+            return min(frequency, STANDARD_TOUCH_VIEW_FREQ)
+        if not self._supports_low_latency_touch():
+            self._touch_auto_requested_max = 0
+            return min(frequency, FORCE_TORQUE_TOUCH_FREQ)
+        if frequency < LOW_LATENCY_TOUCH_AUTO_START_FREQ:
+            self._touch_auto_requested_max = 0
+            return frequency
+
+        requested_max = min(frequency, LOW_LATENCY_TOUCH_AUTO_STEPS[-1])
+        first_activation = self._touch_auto_requested_max == 0
+        self._touch_auto_requested_max = requested_max
+        self._touch_auto_target = min(
+            max(self._touch_auto_target, LOW_LATENCY_TOUCH_AUTO_START_FREQ),
+            requested_max,
+        )
+        if first_activation:
+            now = time.monotonic()
+            self._touch_auto_last_evaluation_at = now
+            self._touch_auto_last_change_at = now
+            collector = self.data_collector
+            self._touch_auto_health_snapshot = (
+                collector.touch_health_snapshot() if collector else (0, 0)
+            )
+        return self._touch_auto_target
+
+    def _is_force_torque_layout(self):
         layout = getattr(
             getattr(getattr(self._device, "hand", None), "touch", None),
             "layout",
@@ -513,9 +650,103 @@ class SharedDataManager(QObject):
         is_force_torque_layout = any(
             layout_id.startswith("hp_") for layout_id in layout_ids
         ) or bool({"Force3D", "Torque2D", "ResultantForce"} & signal_names)
-        if is_force_torque_layout:
-            return min(frequency, FORCE_TORQUE_TOUCH_FREQ)
-        return frequency
+        return is_force_torque_layout
+
+    @staticmethod
+    def _supports_low_latency_touch():
+        return sys.platform == "win32" or sys.platform.startswith("linux")
+
+    def _reset_touch_auto_frequency(self):
+        self._touch_auto_requested_max = 0
+        self._touch_auto_target = LOW_LATENCY_TOUCH_AUTO_START_FREQ
+        self._touch_auto_last_evaluation_at = 0.0
+        self._touch_auto_last_change_at = 0.0
+        self._touch_auto_health_snapshot = (0, 0)
+
+    def _emit_latency_timer_hint(self, actual_frequency, target_frequency):
+        if (
+            not self._latency_hint_enabled
+            or self._latency_hint_emitted
+            or target_frequency < TOUCH_LATENCY_HINT_MIN_TARGET_HZ
+        ):
+            return
+        self._latency_hint_emitted = True
+        logger.warning(
+            "[SharedDataManager] Touch sampling under target on FTDI port %s: "
+            "actual=%.1fHz, target=%sHz; check the Windows driver Latency Timer",
+            self._latency_hint_port,
+            actual_frequency,
+            target_frequency,
+        )
+        self.touch_latency_timer_hint.emit(
+            float(actual_frequency),
+            float(target_frequency),
+            self._latency_hint_port,
+        )
+
+    def _next_touch_auto_target(self, direction):
+        allowed = [
+            step
+            for step in LOW_LATENCY_TOUCH_AUTO_STEPS
+            if LOW_LATENCY_TOUCH_AUTO_MIN_FREQ <= step <= self._touch_auto_requested_max
+        ]
+        if not allowed:
+            return self._touch_auto_target
+        current_index = min(
+            range(len(allowed)),
+            key=lambda index: abs(allowed[index] - self._touch_auto_target),
+        )
+        next_index = max(0, min(len(allowed) - 1, current_index + direction))
+        return allowed[next_index]
+
+    def _apply_touch_auto_target(self, target, now):
+        target = max(0, int(target))
+        if target == self._touch_auto_target:
+            return
+        previous_target = self._touch_auto_target
+        self._touch_auto_target = target
+        self.touch_frequency = target
+        self._touch_auto_last_change_at = now
+        collector = self.data_collector
+        if collector:
+            logger.info(
+                "[SharedDataManager] Adaptive touch frequency changed from %sHz to %sHz",
+                previous_target,
+                target,
+            )
+            self._run_collector_config_update(collector, touch_freq=target)
+
+    def _maybe_adapt_touch_frequency(self, now=None):
+        now = time.monotonic() if now is None else float(now)
+        collector = self.data_collector
+        if (
+            not collector
+            or self._touch_auto_requested_max < LOW_LATENCY_TOUCH_AUTO_START_FREQ
+            or self.touch_frequency <= 0
+            or now - self._touch_auto_last_evaluation_at
+            < TOUCH_AUTO_EVALUATION_INTERVAL_S
+        ):
+            return
+
+        current_health = collector.touch_health_snapshot()
+        _, previous_errors = self._touch_auto_health_snapshot
+        _, current_errors = current_health
+        error_delta = max(0, current_errors - previous_errors)
+        self._touch_auto_health_snapshot = current_health
+        self._touch_auto_last_evaluation_at = now
+
+        actual_frequency = self.get_touch_fps()
+        target_frequency = max(1, self._touch_auto_target)
+        if error_delta > 0:
+            self._apply_touch_auto_target(self._next_touch_auto_target(-1), now)
+            return
+        if now - self._touch_auto_last_change_at < TOUCH_AUTO_CHANGE_COOLDOWN_S:
+            return
+        if actual_frequency < target_frequency * TOUCH_AUTO_LOWER_RATIO:
+            self._emit_latency_timer_hint(actual_frequency, target_frequency)
+            self._apply_touch_auto_target(self._next_touch_auto_target(-1), now)
+        elif actual_frequency >= target_frequency * TOUCH_AUTO_RAISE_RATIO:
+            self._apply_touch_auto_target(self._next_touch_auto_target(1), now)
 
     def start(self, motor_freq=DEFAULT_MOTOR_FREQ, touch_freq=DEFAULT_TOUCH_FREQ):
         if not self._device:
@@ -657,10 +888,7 @@ class SharedDataManager(QObject):
 
         def _call():
             try:
-                if motor_freq is not None:
-                    collector.update_motor_frequency(motor_freq)
-                if touch_freq is not None:
-                    collector.update_touch_frequency(touch_freq)
+                collector.update_frequencies(motor_freq, touch_freq)
             except Exception as e:
                 result["error"] = e
             finally:
@@ -865,8 +1093,7 @@ class SharedDataManager(QObject):
             self.touch_frequency = touch_freq
             collector = self.data_collector
             if collector:
-                collector.update_motor_frequency(motor_freq)
-                collector.update_touch_frequency(touch_freq)
+                collector.update_frequencies(motor_freq, touch_freq)
                 self.resume_collector()
 
     def stop(self):
@@ -969,6 +1196,7 @@ class SharedDataManager(QObject):
             self._latest_revo3_touch_sequence = touch_sequence
             self.touch_updated.emit(touch)
         now = time.monotonic()
+        self._maybe_adapt_touch_frequency(now)
         if now - self._last_fps_emit_time >= 0.2:
             self._last_fps_emit_time = now
             self.fps_updated.emit(self.get_motor_fps(), self.get_touch_fps(), self.get_ui_fps())

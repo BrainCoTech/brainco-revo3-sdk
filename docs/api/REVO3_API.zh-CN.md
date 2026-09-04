@@ -310,12 +310,27 @@ Thumb 公共逻辑顺序为 Rotation、MCP、IP、Abd、Flex。协议适配层�
 | 枚举名称 (Revo3Model) | C/C++ 标识 | 自由度 (DoF) | 触觉类型 (Touch) | 序列号前缀 | 产品状态 | SDK runtime 状态 |
 | :--- | :--- | :---: | :--- | :--- | :--- | :--- |
 | `Ultra` | `REVO3_MODEL_ULTRA` | 21 | 无触觉 | `UBL` / `UBR` | 已发布 | 已开放；Modbus/CANFD |
-| `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | 点阵触觉 (Array Touch) | `UTL` / `UTR` | 已发布 | 已开放；Modbus/CANFD 集成触觉 |
+| `UltraTouch` | `REVO3_MODEL_ULTRA_TOUCH` | 21 | 集成触觉 | `UTL` / `UTR` / `UFL` / `UFR` | 已发布 | 已开放；精确产品代码优先确定触觉拓扑，旧版 SN 回退到只读寄存器探测 |
 | `UltraVisionTouch` | `REVO3_MODEL_ULTRA_VISION_TOUCH` | 21 | 视触觉 + 可选主链路阵列 | `UVL` / `UVR` | Hardware Pilot | 整手功能已开放；指尖视触觉使用独立 SDK；探测到的 `mt_*`/`mx_*` 指腹和手掌通过 Touch API 读取 |
 | `Pro` | `REVO3_MODEL_PRO` | 16 | 无触觉 | `PBL` / `PBR` | 已发布 | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
 | `ProTouch` | `REVO3_MODEL_PRO_TOUCH` | 16 | 点阵触觉 (Array Touch) | `PTL` / `PTR` | 已发布 | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
 | `Basic` | `REVO3_MODEL_BASIC` | 13 | 无触觉 | `DBL` / `DBR` | Hardware Pilot | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
 | `BasicTouch` | `REVO3_MODEL_BASIC_TOUCH` | 13 | 点阵触觉 (Array Touch) | `DTL` / `DTR` | Hardware Pilot | 仅设备识别与 `JointLayout`；运行时功能域未开放 |
+
+去除可选的 `BC` 前缀后，Ultra 系列 SN 的前 4 个字符可进一步确定触觉配置：
+
+| 产品代码 | 主链路触觉配置 |
+| --- | --- |
+| `UTL1` / `UTR1` | `mt_*` 全手阵列 |
+| `UTL2` / `UTR2` | `mx_*` 全手阵列 |
+| `UFL1` / `UFR1` | 仅 5 个 `hp_fingertip_ft` 指尖模组 |
+| `UFL2` / `UFR2` | `hp_fingertip_ft` 指尖 + `mt_*` 指腹/手掌 |
+| `UFL3` / `UFR3` | `hp_fingertip_48` 指尖 + `mt_*` 指腹/手掌 |
+| `UVL1` / `UVR1`、`UVL2` / `UVR2` | 独立视触觉指尖 + 主链路 `mt_*` 指腹/手掌 |
+| `UVL3` / `UVR3`、`UVL4` / `UVR4` | 独立视触觉指尖 + 主链路 `mx_*` 指腹/手掌 |
+
+SDK 将已知的 4 字符产品代码作为触觉配置依据，不再用可能未同步的寄存器 135/136
+覆盖它。没有末位型号或末位型号未知时，仍使用原有寄存器和只读元数据探测。
 
 ### 3.6 连接、日志与升级目标枚举
 
@@ -561,7 +576,7 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 - `mt_*`：包含 11 个手掌/手指模块，支持 `PointArray` 点阵模式与少量已发货设备使用的 42 值二次标定兼容模式 `LegacyForceSummary`；后者后续将删除。
 - `mx_*`：包含 11 个手掌/手指模块，点数从设备只读寄存器动态读取。
-- `hp_*`：包含 5 个指尖模块，提供 48 点点阵、三轴力、二轴力矩和模块区域合力。
+- `hp_*`：包含 5 个指尖模块。`hp_fingertip_48` 提供 48 点点阵、三轴力、二轴力矩和模块区域合力；`hp_fingertip_ft` 不带点阵，仅提供后三类信号。
 - `hp_* + mt_*`：组合触觉，11 个公开 module 采用与协议物理 ID 对齐的稀疏编号：module 0 为 `mt_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mt_*` 指腹。指尖与指腹各自的序号按拇指、食指、中指、无名指、小指递增（1/3/5/7/9 与 2/4/6/8/10 分别对应拇指至小指）；不公开组合硬件中未纳入布局的 `mt_*` 指尖通道。
 - `hp_* + mx_*`：组合触觉，稀疏编号同上：module 0 为 `mx_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mx_*` 指腹。
 - `hp_* + mx_* + mt_*`：分区组合触觉，module 0 为 `mt_*` 手掌，module 1/3/5/7/9 为 `hp_*` 指尖，module 2/4/6/8/10 为 `mx_*` 指腹。
@@ -605,13 +620,13 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 `PointArray` 与 `LegacyForceSummary` 是互斥读取模式。兼容模式帧中的 `points = None` 只表示该帧模式不返回点阵，不表示模组未采样或不可用。两种模式可能使用不同的采样流程、滤波或标定算法；切换模式前后的二次标定区域合力与 points 不保证来自同一次物理采样，SDK 不将相邻的两类帧拼接为原子样本。
 
-`hp_*` 模组的 `force3d.x/y/z` 分别表示模组局部坐标系下的 `Fx/Fy/Fz`，单位 mN；`torque2d.x/y` 分别表示绕局部 X/Y 轴的 `Mx/My`，单位 Nm。正方向遵循模组坐标图中的箭头，力矩方向遵循图示的右手定则。
+`hp_*` 模组的 `force3d.x/y/z` 分别表示模组局部坐标系下的 `Fx/Fy/Fz`，单位 mN；`torque2d.x/y` 分别表示绕局部 X/Y 轴的 `Mx/My`，单位 Nm。正方向遵循模组坐标图中的箭头，力矩方向遵循图示的右手定则。SDK 根据设备触觉类型选择布局：`hp_fingertip_48` 的 `point_count` 为 48，`signals` 包含 `TouchPoint`，有效帧返回 48 个 `points`；`hp_fingertip_ft` 的 `point_count` 为 0，`signals` 不包含 `TouchPoint`，所有帧的 `points` 均为 `None`。两种布局均提供 `Force3D`、`Torque2D` 和 `ResultantForce`。当 SN 不包含已知的 4 字符产品代码且旧固件未提供明确触觉类型时，SDK 在连接阶段探测第一个 `hp_*` 模组：先读取 38 个输入寄存器，仅当设备明确返回 `Illegal Data Address` 时才尝试 14 个寄存器并识别为 `hp_fingertip_ft`；超时或其他通信错误不会触发布局降级。五个模组始终使用 38 个寄存器的固定地址步长。
 
 Python 的 `hand.touch.layout` 返回 `TouchLayout | None`。C++ 的 `hand.touch().layout()` 返回 `TouchLayout`，触觉布局不可用时抛出 `SdkError`，不会返回空布局。
 
-当 Revo3 Ultra Touch 或 Ultra VisionTouch 的设备描述未烧录、寄存器 135 无效或当前固件尚未提供可识别 topology 时，SDK 不按产品型号猜测布局。若 SN 也无法识别产品型号，连接时必须先通过 Python `Manager.connect(..., model=Revo3Model.UltraVisionTouch)` / `connect_auto(..., model=...)` 或 C/C++ `DetectedDevice.model` 显式覆盖型号。应用在依据实物 BOM、受控生产记录或真机对照确认布局后，可调用 `await hand.touch.set_layout(layout)` 主动配置当前连接会话。该方法只更新 SDK 的解析路由和 layout 缓存，不写设备寄存器；设备重连后必须重新确认并设置。输入必须完整匹配 SDK 支持的 `mt_*`、`mx_*`、`hp_*` 或已批准组合布局，包括 module ID、region、region index、signals、point count 和 `layout_id`，否则在发送任何设备请求前返回参数错误。Ultra VisionTouch 只接受由 module 0/2/4/6/8/10 组成的主链路 `mt_*` 或 `mx_*` 指腹/手掌布局；独立视触觉指尖不得写入该布局，也不进入公共 Touch API。其他型号不支持此 override。
+当 Revo3 Ultra Touch 或 Ultra VisionTouch 的 SN 不包含已知的 4 字符产品代码，且寄存器 135 无效或当前固件尚未提供可识别 topology 时，SDK 不按产品大类猜测布局。若 SN 也无法识别产品型号，连接时必须先通过 Python `Manager.connect(..., model=Revo3Model.UltraVisionTouch)` / `connect_auto(..., model=...)` 或 C/C++ `DetectedDevice.model` 显式覆盖型号。应用在依据实物 BOM、受控生产记录或真机对照确认布局后，可调用 `await hand.touch.set_layout(layout)` 主动配置当前连接会话。该方法只更新 SDK 的解析路由和 layout 缓存，不写设备寄存器；设备重连后必须重新确认并设置。输入必须完整匹配 SDK 支持的 `mt_*`、`mx_*`、`hp_*` 或已批准组合布局，包括 module ID、region、region index、signals、point count 和 `layout_id`，否则在发送任何设备请求前返回参数错误。Ultra VisionTouch 只接受由 module 0/2/4/6/8/10 组成的主链路 `mt_*` 或 `mx_*` 指腹/手掌布局；独立视触觉指尖不得写入该布局，也不进入公共 Touch API。其他型号不支持此 override。
 
-部分早期组合硬件的寄存器 135 仍返回纯 `hp_*` 兼容值。对该值，SDK 会在发现阶段执行无重试、只读的模组元数据探测：有效的 `mt_*` enable 元数据可将会话布局细化为 `hp_* + mt_*`，有效的 `mx_*` SN 元数据可细化为 `hp_* + mx_*`。读取成功但内容全零不构成硬件存在证据；两类元数据同时有效时保持纯 `hp_*` 并记录歧义，不猜测分区组合。`mt_*` 模组全部关闭时，enable 元数据无法提供肯定证据，应用仍需依据已确认的实物布局调用 `set_layout()`。探测只影响当前连接会话，不写回寄存器 135。
+部分早期组合硬件的寄存器 135 仍返回纯 `hp_*` 兼容值。对于没有已知 4 字符产品代码的 SN，SDK 会在发现阶段执行无重试、只读的模组元数据探测：有效的 `mt_*` enable 元数据可将会话布局细化为 `hp_* + mt_*`，有效的 `mx_*` SN 元数据可细化为 `hp_* + mx_*`。读取成功但内容全零不构成硬件存在证据；两类元数据同时有效时保持纯 `hp_*` 并记录歧义，不猜测分区组合。`mt_*` 模组全部关闭时，enable 元数据无法提供肯定证据，应用仍需依据已确认的实物布局调用 `set_layout()`。探测只影响当前连接会话，不写回寄存器 135。
 
 对于包含 `mx_*` 的布局，自动识别路径在成功读取设备点数寄存器前不发布推测的 `TouchLayout`。主动设置路径将调用方提供的 point count 作为本次会话的受信布局输入；应用必须使用目标手实际点数，不得填入容量上限代替实测值。
 
@@ -1257,7 +1272,7 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandSta
 | `module_id` | `int` | 稳定模组 ID (0~10) |
 | `region` | [`TouchRegion`](#touchregion-枚举) | 触觉区域枚举 |
 | `region_index` | `int` | 区域内部序号 |
-| `layout_id` | `str` | 触觉阵列拓扑布局 ID（如 `mt_palm_36`, `hp_fingertip_48`） |
+| `layout_id` | `str` | 触觉阵列拓扑布局 ID（如 `mt_palm_36`, `hp_fingertip_48`, `hp_fingertip_ft`） |
 | `point_count` | `int` | 触觉点阵总点数 |
 | `signals` | list[[`TouchSignal`](#touchsignal-枚举)] | 该模组支持的触觉信号形态列表 |
 
@@ -1326,7 +1341,7 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandSta
 
 - `mt_*`：如 `mt_palm_36`, `mt_thumbtip_31`, `mt_fingertip_21`, `mt_thumbpad_57`, `mt_fingerpad_52`
 - `mx_*`：根据设备运行时上报的实际点数生成；近期真机记录示例为 `mx_palm_53`、`mx_fingertip_56`、`mx_fingerpad_22`、`mx_fingertip_21` 和 `mx_fingerpad_27`。协议容量 `200/80/120` 不是实际点数，不得用于构造 layout ID
-- `hp_*`：如 `hp_fingertip_48`
+- `hp_*`：`hp_fingertip_48` 表示带 48 点点阵的指尖模组；`hp_fingertip_ft` 表示不带点阵、仅提供力/力矩及合力信号的指尖模组
 
 基础 ID 只区分区域和实际点数。同点数模组的点序或空间几何不同时，必须由受控硬件 revision 或模组身份映射提供 `_v2`、`_v3` 等版本后缀；SDK 不根据点数猜测布局版本。当前自动识别只生成基础 ID，版本后缀必须先纳入 SDK 的受控 layout mapping 后才能作为公共 ID 发布。应用遇到未知 ID 时应停止套用已有坐标映射，但仍可按 `point_count` 读取一维数据。
 
