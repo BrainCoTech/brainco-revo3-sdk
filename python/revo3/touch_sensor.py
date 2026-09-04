@@ -252,6 +252,13 @@ async def run(args: argparse.Namespace) -> None:
             )
         print(f"Enabled mask: 0x{await hand.touch.enabled_mask():04x}")
 
+        if args.modules and len(args.modules) == 1:
+            module = await hand.touch.module_snapshot(args.modules[0])
+            print(
+                f"Single-module check: module={module.module_id}, "
+                f"state={module.sample_state}"
+            )
+
         array_modules = [
             module
             for module in layout.modules
@@ -277,7 +284,7 @@ async def run(args: argparse.Namespace) -> None:
         names = ["ThumbTip", "IndexTip", "MiddleTip", "RingTip", "PinkyTip"]
 
         for cycle in range(args.count):
-            frame = await hand.touch.snapshot()
+            frame = await hand.touch.snapshot(module_indices=args.modules)
             modules = list(frame.modules)
             hp_modules = [
                 module for module in modules
@@ -355,6 +362,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=30, help="Number of snapshots to read")
     parser.add_argument("--interval", type=float, default=0.1, help="Delay between snapshots in seconds")
     parser.add_argument(
+        "--modules",
+        type=lambda value: [int(item, 0) for item in value.split(",")],
+        help="Comma-separated public touch module IDs to read; omit for all modules",
+    )
+    parser.add_argument(
         "--model",
         choices=("auto", "ultra-vision-touch"),
         default="auto",
@@ -381,6 +393,13 @@ def parse_args() -> argparse.Namespace:
         parser.error("interval must be non-negative")
     if args.mx_point_counts is not None and len(args.mx_point_counts) != 11:
         parser.error("--mx-point-counts requires exactly 11 comma-separated values")
+    if args.modules is not None:
+        if not args.modules:
+            parser.error("--modules must contain at least one module ID")
+        if len(args.modules) != len(set(args.modules)):
+            parser.error("--modules must not contain duplicate module IDs")
+        if any(module < 0 or module > 10 for module in args.modules):
+            parser.error("--modules entries must be in range 0..10")
     return args
 
 

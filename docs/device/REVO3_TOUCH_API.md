@@ -216,6 +216,8 @@ The following snippets illustrate operations on an already connected `hand`. Con
 
 ```python
 frame = await hand.touch.snapshot()
+selected = await hand.touch.snapshot(module_indices=[0, 2, 4])
+palm = await hand.touch.module_snapshot(0)
 for module in frame.modules:
     print(module.region, module.module_id, len(module.points or []))
     if module.force3d is not None:
@@ -289,3 +291,13 @@ if layout and any(module.layout_id.startswith("mx_") for module in layout.module
     palm_data = frame.modules[0].points  # Length equals layout.modules[0].point_count.
     all_touch = frame.modules
 ```
+
+`snapshot(module_indices=[...])` reads only the selected enabled modules and
+returns them in request order. `module_snapshot(module_index)` is the
+single-module form. The selection uses public module IDs from `TouchLayout` and
+does not change `enabled_mask`. Empty selections, duplicate IDs, and IDs absent
+from the current layout fail before tactile data reads. In `PointArray` mode,
+each selected enabled `mt_*` module requires one data RTT. A hybrid layout with
+five `mt_*` fingerpads and one `mt_*` palm therefore uses 1–6 point-array data
+RTTs instead of always using six; enable-state and uncached mode queries are
+additional control RTTs. `LegacyForceSummary` uses one shared summary data RTT.

@@ -180,6 +180,22 @@ int main(int argc, char **argv) {
                   static_cast<unsigned>(touch.value_mode()));
     }
 
+    if (!layout.modules.empty()) {
+      const auto first_id = static_cast<std::uint8_t>(layout.modules.front().module_id);
+      const auto single = touch.module_snapshot(first_id);
+      std::printf("Single-module snapshot: module=%u state=%u\n",
+                  single.module_id,
+                  static_cast<unsigned>(single.sample_state));
+
+      std::vector<std::uint8_t> selected_ids{first_id};
+      if (layout.modules.size() > 1) {
+        selected_ids.push_back(
+            static_cast<std::uint8_t>(layout.modules.back().module_id));
+      }
+      const auto selected = touch.snapshot(selected_ids);
+      std::printf("Selected snapshot: modules=%zu\n", selected.modules.size());
+    }
+
     auto subscription = touch.subscribe(20ms);
     for (int index = 0; index < 3; ++index) {
       const auto frame = subscription.next();

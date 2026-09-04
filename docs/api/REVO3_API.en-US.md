@@ -625,7 +625,7 @@ Declared hybrid tactile layouts are `hp_*` fingertips + `mt_*` fingerpads/palm, 
 
 When the SN has no known four-character product code and older firmware does not identify the `hp_*` layout explicitly, the SDK probes the first module during connection. It first requests 38 input registers and falls back to 14 only when the device explicitly returns `Illegal Data Address`; timeouts and other communication failures do not change the detected layout. All five modules retain the fixed 38-register address stride.
 
-Hybrid tactile `snapshot()` reads `hp_*` fingertips, the declared fingerpad modules, and the declared palm module in sequence during a single SDK operation. If any branch read fails, the entire snapshot fails without publishing partially stitched frames. An `mt_*` region returns point arrays in `PointArray` mode. In `LegacyForceSummary`, its modules are `Valid`, their `points` are `None`, and secondary-calibrated regional force values are written to `regional_forces_mn`. An `mx_*` region returns module data using its runtime `point_count` and `output_mode`; one frame mode is not used to summarize these data shapes when they coexist.
+Hybrid tactile `snapshot()` reads `hp_*` fingertips, the declared fingerpad modules, and the declared palm module in sequence during a single SDK operation. `snapshot(module_indices=[...])` reads only the selected enabled modules and returns them in request order; `module_snapshot(module_index)` returns one module. Selective reads do not change the device `enabled_mask`. An empty selection, duplicate module ID, or module ID absent from the current layout fails with an invalid-argument error before tactile data is requested. If a selected branch fails, the operation fails without publishing a partially stitched frame. In `PointArray` mode, each selected enabled `mt_*` array module requires one data read, so a six-module fingerpad/palm read can be reduced to 1–6 data RTTs. The enable-state read and an uncached initial mode read are additional control RTTs. `LegacyForceSummary` uses one shared 42-register summary data read regardless of how many `mt_*` modules are selected. An `mx_*` region continues to use its runtime `point_count` and `output_mode`.
 
 `PointArray` and `LegacyForceSummary` are mutually exclusive. `points = None` in a compatibility-mode frame means only that the current mode does not return point arrays; it does not mean the module was not sampled or is unavailable. The two modes may use different sampling paths, filtering, or calibration algorithms. Secondary-calibrated summary and point frames observed across a mode switch are not guaranteed to represent the same physical sample, and the SDK does not combine adjacent frames into an atomic sample.
 
@@ -639,7 +639,8 @@ Public operation arguments use `module_index`, which takes the public `module_id
 Hand
 └── Touch
     ├── layout -> TouchLayout | None
-    ├── snapshot() -> TouchFrame
+    ├── snapshot(module_indices=None) -> TouchFrame
+    ├── module_snapshot(module_index) -> TouchModuleData
     ├── subscribe(period=None) -> TouchSubscription
     ├── enabled_mask()
     ├── set_enabled_mask(mask)
@@ -663,6 +664,8 @@ if layout:
     for module in layout.modules:
         print(module.module_id, module.layout_id, module.point_count, module.signals)
     frame = await hand.touch.snapshot()
+    selected = await hand.touch.snapshot(module_indices=[0, 2, 4])
+    palm = await hand.touch.module_snapshot(0)
     print(f"Touch modules: {len(frame.modules)}")
     for module in frame.modules:
         if module.regional_forces_mn is not None:
@@ -932,6 +935,8 @@ Python `SerialPortInfo` exposes these read-only fields:
 | `await sub.next()` | `sub.next()` | [`HandState`](#handstate) | Read next state frame |
 | `hand.touch.layout` | `hand.touch().layout()` | [`TouchLayout`](#touchlayout) `| None` / [`TouchLayout`](#touchlayout) | Read touch region groups and module layout; C++ throws when unavailable |
 | `await hand.touch.snapshot()` | `hand.touch().snapshot()` | [`TouchFrame`](#touchframe) | Read touch snapshot |
+| `await hand.touch.snapshot(module_indices=[...])` | `hand.touch().snapshot({...})` | [`TouchFrame`](#touchframe) | Read selected modules in request order; C ABI: `revo3_device_touch_get_snapshot_modules(...)` |
+| `await hand.touch.module_snapshot(i)` | `hand.touch().module_snapshot(i)` | [`TouchModuleData`](#touchmoduledata) | Read one module |
 | `hand.touch.subscribe(period)` | `hand.touch().subscribe(period)` | [`TouchSubscription`](#statesubscription-touchsubscription-healthsubscription) | Create touch subscription |
 | `await hand.touch.enabled_mask()` | `hand.touch().enabled_mask()` | `int` | Read touch enable bitmask |
 | `await hand.touch.set_enabled_mask(mask)` | `hand.touch().set_enabled_mask(mask)` | `None` | Set touch enable bitmask |
@@ -977,6 +982,8 @@ Python configuration fields and constructor defaults are:
 
 - `hand.touch.layout`: read the current `TouchLayout`.
 - `await hand.touch.snapshot()`: read a single `TouchFrame`.
+- `await hand.touch.snapshot(module_indices=[...])`: read only the selected modules and return them in module-ID request order.
+- `await hand.touch.module_snapshot(module_index)`: read and return one `TouchModuleData` directly.
 - `hand.touch.subscribe(period)`: create a `TouchSubscription`; pull the next frame via `next()` and release it via `close()`.
 
 #### Layout Configuration
@@ -1232,7 +1239,7 @@ Multi-channel sensor data for a single touch module:
 | `WarmingUp` | `6` | `hp_*` module warm-up is not complete |
 | `SensorFault` | `7` | `hp_*` module is ready but reports a sensor fault |
 
-The SDK uses a whole-frame consistency policy for snapshot reads: if any enabled module fails to read, `snapshot()` returns an error for the whole operation instead of returning a partial frame zero-filled for failed modules. `NotSampled` and `ReadFailed` are reserved for potential future selective-polling or partial-frame policies and are not produced during normal snapshot reads.
+Snapshot consistency applies to the requested scope. A full `snapshot()` fails if any enabled module read fails; a selective `snapshot(module_indices=[...])` fails if any selected enabled module read fails. Failed modules are not replaced with zero-filled data, and unselected modules are omitted from the returned frame. `NotSampled` and `ReadFailed` therefore remain reserved and are not produced during normal snapshot reads.
 
 ##### Touch Module layout_id Examples
 

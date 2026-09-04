@@ -616,7 +616,7 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 
 `LegacyForceSummary` 与 `ResultantForce` 不是同一层级的概念：前者是 `mt_*` 的二次标定兼容读取模式，其 42 个值按布局切片写入对应的 `TouchModuleData.regional_forces_mn`；后者是单个 `hp_*` 模块提供的合力信号，对应 `TouchModuleData.resultant_force_mn`。`resultant_force_mn` 是整个模块触觉区域的标量合力，单位 mN，不是局部 Z 轴上的 `Fz` 分量；`force3d` 的三个分量也统一使用 mN。
 
-组合触觉的 `snapshot()` 在同一次 SDK 操作中依次读取 `hp_*` 指尖、当前布局声明的指腹模组和手掌模组。任一分支读取失败时，整个快照失败，不发布部分拼接帧。`mt_*` 区域处于 `PointArray` 时对应 module 返回点阵，处于 `LegacyForceSummary` 时对应 module 标记为 `Valid`、`points` 为 `None`，二次标定区域合力值写入 `regional_forces_mn`。`mx_*` 区域仍按其运行时 `point_count` 和 `output_mode` 返回模块数据；组合帧不使用单一 mode 概括这些可同时存在的数据形态。
+组合触觉的 `snapshot()` 在同一次 SDK 操作中依次读取 `hp_*` 指尖、当前布局声明的指腹模组和手掌模组。`snapshot(module_indices=[...])` 只读取指定的已启用模块，并按请求中的 module ID 顺序返回；`module_snapshot(module_index)` 返回单个模块。选择式读取不改变设备的 `enabled_mask`。空列表、重复 module ID 或当前布局不存在的 module ID 会在触觉数据请求前返回参数错误。任一已选择分支读取失败时，整个操作失败，不发布部分拼接帧。`mt_*` 区域处于 `PointArray` 时，每个已选择且已启用的点阵模块产生一次数据读取，因此原本 6 个 `mt_*` 指腹/手掌模块的数据读取可按需降为 1~6 次；启用状态读取以及首次未缓存的模式读取属于额外控制 RTT。`LegacyForceSummary` 读取共享的 42 寄存器摘要，选择一个或多个 `mt_*` 模块均为一次摘要数据读取。`mx_*` 区域仍按其运行时 `point_count` 和 `output_mode` 返回模块数据。
 
 `PointArray` 与 `LegacyForceSummary` 是互斥读取模式。兼容模式帧中的 `points = None` 只表示该帧模式不返回点阵，不表示模组未采样或不可用。两种模式可能使用不同的采样流程、滤波或标定算法；切换模式前后的二次标定区域合力与 points 不保证来自同一次物理采样，SDK 不将相邻的两类帧拼接为原子样本。
 
@@ -635,7 +635,8 @@ Hand
 └── Touch
     ├── layout -> TouchLayout | None
     ├── set_layout(layout)
-    ├── snapshot() -> TouchFrame
+    ├── snapshot(module_indices=None) -> TouchFrame
+    ├── module_snapshot(module_index) -> TouchModuleData
     ├── subscribe(period=None) -> TouchSubscription
     ├── enabled_mask()
     ├── set_enabled_mask(mask)
@@ -674,6 +675,8 @@ if layout:
     for module in layout.modules:
         print(module.module_id, module.layout_id, module.point_count, module.signals)
     frame = await hand.touch.snapshot()
+    selected = await hand.touch.snapshot(module_indices=[0, 2, 4])
+    palm = await hand.touch.module_snapshot(0)
     print(f"Touch modules: {len(frame.modules)}")
     for module in frame.modules:
         if module.regional_forces_mn is not None:
@@ -981,6 +984,8 @@ Hand 本体还提供 `device_info`、`firmware_info`、`joint_layout`、`slave_i
 | `hand.touch.layout` | `hand.touch().layout()` | [`TouchLayout`](#touchlayout) `| None` / [`TouchLayout`](#touchlayout) | 读取触觉区域分组和 module 布局；C++ 在不可用时抛出异常 |
 | `await hand.touch.set_layout(layout)` | `hand.touch().set_layout(layout)`；C ABI：`revo3_device_touch_set_layout(...)` | `None` | 为当前连接会话设置经确认的完整触觉布局；不写设备寄存器，未知或不完整布局失败 |
 | `await hand.touch.snapshot()` | `hand.touch().snapshot()` | [`TouchFrame`](#touchframe) | 读取触觉快照 |
+| `await hand.touch.snapshot(module_indices=[...])` | `hand.touch().snapshot({...})` | [`TouchFrame`](#touchframe) | 按请求顺序读取指定模块；C ABI：`revo3_device_touch_get_snapshot_modules(...)` |
+| `await hand.touch.module_snapshot(i)` | `hand.touch().module_snapshot(i)` | [`TouchModuleData`](#touchmoduledata) | 读取单个模块 |
 | `hand.touch.subscribe(period)` | `hand.touch().subscribe(period)` | [`TouchSubscription`](#statesubscription-touchsubscription-healthsubscription) | 创建触觉订阅 |
 | `await hand.touch.enabled_mask()` | `hand.touch().enabled_mask()` | `int` | 读取触觉使能 bitmask |
 | `await hand.touch.set_enabled_mask(mask)` | `hand.touch().set_enabled_mask(mask)` | `None` | 设置触觉使能 bitmask |
@@ -1032,6 +1037,8 @@ Touch API 按职责分为：读取与订阅、布局配置、模组启停、读�
 
 - `hand.touch.layout`：读取当前 `TouchLayout`。
 - `await hand.touch.snapshot()`：读取单帧 `TouchFrame`。
+- `await hand.touch.snapshot(module_indices=[...])`：只读取指定模块，并按传入的 module ID 顺序返回。
+- `await hand.touch.module_snapshot(module_index)`：读取并直接返回单个 `TouchModuleData`。
 - `hand.touch.subscribe(period)`：创建 `TouchSubscription`，通过 `next()` 拉取下一帧，通过 `close()` 取消。
 
 #### 布局配置
@@ -1096,6 +1103,7 @@ C ABI 对应的 Touch 符号为：
 revo3_device_touch_get_layout
 revo3_device_touch_set_layout
 revo3_device_touch_get_snapshot
+revo3_device_touch_get_snapshot_modules
 revo3_device_touch_set_module_enabled
 revo3_device_touch_get_module_enabled
 revo3_device_touch_set_enabled_mask
@@ -1333,7 +1341,7 @@ SDK 当前不公开 `MotorOperatingState` 或 `MotorFaultCode` 枚举。`HandSta
 | `WarmingUp` | `6` | `hp_*` 模块预热尚未完成 |
 | `SensorFault` | `7` | `hp_*` 模块已就绪，但传感器状态异常 |
 
-当前快照读取采用整帧一致性策略：任何已启用模块读取失败时，`snapshot()` 整体返回错误，不返回用零值补齐的部分帧。因此 `NotSampled` 和 `ReadFailed` 作为未来选择性轮询或部分帧策略的保留状态，正常快照中不会产生。
+快照读取采用请求范围内的一致性策略：完整 `snapshot()` 的任何已启用模块读取失败时整帧失败；选择式 `snapshot(module_indices=[...])` 的任何已选择且已启用模块读取失败时，本次选择读取整体失败。返回值不会用零值补齐失败模块；未选择模块直接不出现在返回帧中。因此 `NotSampled` 和 `ReadFailed` 仍为保留状态，正常快照中不会产生。
 
 ##### 触觉模组 layout_id 示例说明
 

@@ -16,7 +16,7 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `multi_hand.py` | Multiple Hand lifecycle and shared transport behavior |
 | `subscriptions.py` | Finite State, optional Touch, and Health subscriptions |
 | `concurrent_control.py` | Concurrent servo control and State reads |
-| `touch_sensor.py` | Typed Touch layouts and snapshots, including detected VisionTouch main-link finger-pad/palm arrays |
+| `touch_sensor.py` | Typed Touch layouts plus full, subset, and single-module snapshots, including detected VisionTouch main-link finger-pad/palm arrays |
 | `device_operations.py` | Config, runtime statistics, calibration, and reboot |
 | `teaching_mode.py` | Teach and Replay operations |
 | `shared_ports.py` | Trusted serial port listing and VID/PID allowlist |
