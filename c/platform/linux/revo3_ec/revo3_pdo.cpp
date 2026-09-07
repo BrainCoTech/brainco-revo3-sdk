@@ -54,18 +54,6 @@ std::uint16_t parse_u16(const char *text) {
   return static_cast<std::uint16_t>(value);
 }
 
-std::uint16_t encode_signed_raw(double value) {
-  const long rounded = std::lround(value);
-  const long clamped = std::clamp(
-      rounded, static_cast<long>(std::numeric_limits<std::int16_t>::min()),
-      static_cast<long>(std::numeric_limits<std::int16_t>::max()));
-  return static_cast<std::uint16_t>(static_cast<std::int16_t>(clamped));
-}
-
-std::int16_t decode_signed_raw(std::uint16_t value) {
-  return static_cast<std::int16_t>(value);
-}
-
 void usage(const char *program) {
   std::cerr << "Usage: " << program
             << " [slave-position] [--command joint position kp kd]\n"
@@ -258,7 +246,7 @@ int main(int argc, char **argv) {
   auto plan_finished_at = std::chrono::steady_clock::time_point{};
   revo3::examples::MitPlanSample plan_sample{};
   if (plan_requested) {
-    const std::uint16_t initial_position = master.command().position[joint];
+    const std::uint16_t initial_position = master.command().position_raw[joint];
     active_joints = {joint};
     plans.emplace_back(initial_position, target_position, plan_duration_seconds,
                        plan_repeat_count);
@@ -270,7 +258,7 @@ int main(int argc, char **argv) {
   } else if (plan_all_requested) {
     active_joints = plan_groups.front().joints;
     for (const auto active_joint : active_joints) {
-      plans.emplace_back(master.command().position[active_joint], target_position,
+      plans.emplace_back(master.command().position_raw[active_joint], target_position,
                          plan_duration_seconds, plan_repeat_count);
     }
     std::cout << "MIT plan all: target=" << target_position
@@ -292,9 +280,9 @@ int main(int argc, char **argv) {
       // - Target Position: value * 100 in degrees (e.g., 15000 represents 150.0 deg)
       // - Stiffness Kp: value * 100 (e.g., 200 represents Kp=2.0)
       // - Damping Kd: value * 100 (e.g., 25 represents Kd=0.25)
-      master.command().position[joint] = target_position;
-      master.command().kp[joint] = kp;
-      master.command().kd[joint] = kd;
+      master.command().position_raw[joint] = target_position;
+      master.command().kp_raw[joint] = kp;
+      master.command().kd_raw[joint] = kd;
       command_applied = true;
     }
     if (!plans.empty()) {
@@ -305,30 +293,31 @@ int main(int argc, char **argv) {
       for (std::size_t i = 0; i < active_joints.size(); ++i) {
         plan_sample = plans[i].sample(elapsed);
         const auto active_joint = active_joints[i];
-        master.command().position[active_joint] =
+        master.command().position_raw[active_joint] =
             static_cast<std::uint16_t>(std::clamp(
                 std::lround(plan_sample.position), 0L,
                 static_cast<long>(std::numeric_limits<std::uint16_t>::max())));
         // Position is centidegrees and velocity is centi-RPM, so divide the
         // trajectory derivative by 6 to convert centidegrees/s to centi-RPM.
-        master.command().velocity[active_joint] =
-            encode_signed_raw(plan_sample.velocity_per_second / 6.0);
-        master.command().kp[active_joint] = kp;
-        master.command().kd[active_joint] = kd;
+        master.command().velocity_raw[active_joint] =
+            revo3::ethercat::velocity_rpm_to_raw(
+                static_cast<float>(plan_sample.velocity_per_second / 600.0));
+        master.command().kp_raw[active_joint] = kp;
+        master.command().kd_raw[active_joint] = kd;
         group_finished = group_finished && plan_sample.finished;
       }
       if (group_finished) {
         for (const auto active_joint : active_joints) {
-          master.command().velocity[active_joint] = 0;
-          master.command().kp[active_joint] = 0;
-          master.command().kd[active_joint] = 0;
+          master.command().velocity_raw[active_joint] = 0;
+          master.command().kp_raw[active_joint] = 0;
+          master.command().kd_raw[active_joint] = 0;
         }
         if (plan_all_requested) {
           active_group_index = (active_group_index + 1) % plan_groups.size();
           active_joints = plan_groups[active_group_index].joints;
           plans.clear();
           for (const auto active_joint : active_joints) {
-            plans.emplace_back(master.feedback().position[active_joint],
+            plans.emplace_back(master.feedback().position_raw[active_joint],
                                target_position, plan_duration_seconds,
                                plan_repeat_count);
           }
@@ -354,13 +343,19 @@ int main(int argc, char **argv) {
       // - vel: actual velocity in RPM * 100 (e.g., 5000 for 50.0 RPM)
       // - cur: current in mA (no scaling, direct mA)
       // - err: 32-bit motor fault code bitmask (0 = normal)
-      std::cout << "J" << joint << " target="
-                << master.command().position[joint]
-                << " pos=" << feedback.position[joint]
-                << " vel=" << decode_signed_raw(feedback.velocity[joint])
-                << " cur=" << decode_signed_raw(feedback.current[joint])
-                << " state=0x"
-                << std::hex << feedback.error[joint] << std::dec
+      std::cout << "J" << joint << " target_raw="
+                << master.command().position_raw[joint]
+                << " pos_deg="
+                << revo3::ethercat::position_raw_to_deg(
+                       feedback.position_raw[joint])
+                << " vel_rpm="
+                << revo3::ethercat::velocity_raw_to_rpm(
+                       feedback.velocity_raw[joint])
+                << " cur_ma="
+                << revo3::ethercat::current_raw_to_ma(
+                       feedback.current_raw[joint])
+                << " error_raw=0x"
+                << std::hex << feedback.error_raw[joint] << std::dec
                 << " phase="
                 << (!plans.empty()
                         ? (plan_sample.returning ? "return" : "outbound")
@@ -369,15 +364,21 @@ int main(int argc, char **argv) {
                 << " group="
                 << (!plan_groups.empty() ? plan_groups[active_group_index].name
                                          : "-")
-                << " observed=";
+                << " observed_deg_rpm_ma_error=";
       for (std::size_t i = 0; i < kObservedJoints.size(); ++i) {
         const auto observed = kObservedJoints[i];
         std::cout << (i == 0 ? "" : " ") << "J" << observed.index << "("
-                  << observed.name << ")=" << feedback.position[observed.index]
-                  << "/" << decode_signed_raw(feedback.velocity[observed.index])
-                  << "/" << decode_signed_raw(feedback.current[observed.index])
+                  << observed.name << ")="
+                  << revo3::ethercat::position_raw_to_deg(
+                         feedback.position_raw[observed.index])
+                  << "/"
+                  << revo3::ethercat::velocity_raw_to_rpm(
+                         feedback.velocity_raw[observed.index])
+                  << "/"
+                  << revo3::ethercat::current_raw_to_ma(
+                         feedback.current_raw[observed.index])
                   << "/0x" << std::hex
-                  << feedback.error[observed.index] << std::dec;
+                  << feedback.error_raw[observed.index] << std::dec;
       }
       std::cout
                 << " touch_packet="
@@ -395,9 +396,9 @@ int main(int argc, char **argv) {
       active_joints = {joint};
     }
     for (const auto active_joint : active_joints) {
-      master.command().velocity[active_joint] = 0;
-      master.command().kp[active_joint] = 0;
-      master.command().kd[active_joint] = 0;
+      master.command().velocity_raw[active_joint] = 0;
+      master.command().kp_raw[active_joint] = 0;
+      master.command().kd_raw[active_joint] = 0;
     }
     master.cycle(revo3::ethercat::monotonic_time_ns());
   }

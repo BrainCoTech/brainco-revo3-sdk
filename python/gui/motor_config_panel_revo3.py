@@ -1,4 +1,3 @@
-import asyncio
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QGroupBox, QComboBox, QCheckBox, QDoubleSpinBox, QSlider, QSpinBox
@@ -345,7 +344,7 @@ class Revo3MotorConfigPanel(QWidget):
         self.slave_id = slave_id
         self.shared_data = shared_data
         self.consecutive_failures = 0
-        if self.auto_refresh_cb.isChecked():
+        if self.auto_refresh_cb.isChecked() and self.isVisible():
             self.auto_refresh_timer.start()
         self._on_refresh_data()
 
@@ -526,6 +525,18 @@ class Revo3MotorConfigPanel(QWidget):
         self.calib_current_btn = QPushButton(tr("btn_set"))
         add_global_row(tr("v3_calibration_current"), self.calib_current_spin, self.calib_current_btn, self._on_set_calibration_current)
 
+        self.max_continuous_current_spin = QDoubleSpinBox()
+        self.max_continuous_current_spin.setRange(0.0, 5000.0)
+        self.max_continuous_current_spin.setSingleStep(100.0)
+        self.max_continuous_current_spin.setSuffix(" mA")
+        self.max_continuous_current_spin.setDecimals(1)
+        self.max_continuous_current_btn = QPushButton(tr("btn_set"))
+        add_global_row(
+            tr("v3_max_continuous_current"),
+            self.max_continuous_current_spin,
+            self.max_continuous_current_btn,
+            self._on_set_max_continuous_current,
+        )
 
         g_layout.addStretch()
         slot6_layout.addWidget(self.global_group)
@@ -541,10 +552,20 @@ class Revo3MotorConfigPanel(QWidget):
         layout.addWidget(scroll)
 
     def _on_auto_refresh_changed(self, state):
-        if state == Qt.Checked and self.device:
+        if state == Qt.Checked and self.device and self.isVisible():
             self.auto_refresh_timer.start()
         else:
             self.auto_refresh_timer.stop()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.device and self.auto_refresh_cb.isChecked():
+            self._on_refresh_data()
+            self.auto_refresh_timer.start()
+
+    def hideEvent(self, event):
+        self.auto_refresh_timer.stop()
+        super().hideEvent(event)
 
     def _on_mode_changed(self, idx):
         self.current_mode = self.mode_combo.itemData(idx)
@@ -567,27 +588,36 @@ class Revo3MotorConfigPanel(QWidget):
         if not self.device:
             return
         val = self.global_protect_current_spin.value()
-        run_async(lambda: self.device.revo3_set_global_protect_current(self.slave_id, val))
+        run_async(lambda: self.device.set_global_protect_current(self.slave_id, val))
         print(f"[Config] Global protect current set to {val} mA")
 
     def _on_set_calibration_current(self):
         if not self.device:
             return
         val = self.calib_current_spin.value()
-        run_async(lambda: self.device.revo3_set_calibration_current(self.slave_id, val))
+        run_async(lambda: self.device.set_calibration_current(self.slave_id, val))
         print(f"[Config] Calibration current set to {val} mA")
+
+    def _on_set_max_continuous_current(self):
+        if not self.device:
+            return
+        val = self.max_continuous_current_spin.value()
+        run_async(
+            lambda: self.device.set_max_continuous_current(self.slave_id, val)
+        )
+        print(f"[Config] Max continuous current set to {val} mA")
 
     def _on_set_single_parameter(self, motor_id, mode, val, sister_val):
         if not self.device:
             return
 
         if mode == MODE_JOINT_PROTECT:
-            run_async(lambda: self.device.revo3_set_joint_protect_current(self.slave_id, motor_id, val))
+            run_async(lambda: self.device.set_joint_protect_current(self.slave_id, motor_id, val))
         elif mode == MODE_POS_LIMITS:
-            run_async(lambda: self.device.revo3_set_joint_position_limits(
-                self.slave_id, motor_id, int(sister_val * 100), int(val * 100)))
+            run_async(lambda: self.device.set_joint_position_limits(
+                self.slave_id, motor_id, sister_val, val))
         elif mode == MODE_SPEED_LIMITS:
-            run_async(lambda: self.device.revo3_set_joint_speed_limits(
+            run_async(lambda: self.device.set_joint_speed_limits(
                 self.slave_id, motor_id, int(sister_val), int(val)))
 
     def _on_refresh_data(self):
@@ -597,50 +627,44 @@ class Revo3MotorConfigPanel(QWidget):
         if self.shared_data and not self.shared_data.is_running:
             return
 
-        # Refresh global values unconditionally
-        globals_data = run_async(lambda: asyncio.gather(
-            device.revo3_get_global_protect_current(self.slave_id),
-            # Add read values for calibration and max current once available in rust bindings.
-            # Currently API does not provide getter for those. We'll refresh protect current:
-            return_exceptions=True
-        ))
-
-        success = False
-        if globals_data is not None and len(globals_data) > 0:
-            if not isinstance(globals_data[0], Exception) and globals_data[0] is not None:
-                success = True
-                self.global_protect_current_spin.setValue(globals_data[0])
-
-        if not success:
+        try:
+            config = run_async(lambda: device.get_config_snapshot(self.slave_id))
+        except Exception as error:
             self.consecutive_failures += 1
-            if self.consecutive_failures >= 3:
-                logger.warning("[MotorConfig] Refresh failed 3 times. Connection might be lost.")
-                self.auto_refresh_timer.stop()
-                if self.shared_data:
-                    self.shared_data.connection_lost.emit()
+            logger.warning(
+                "[MotorConfig] Refresh failed (%s consecutive): %s",
+                self.consecutive_failures,
+                error,
+            )
             return
-        
+
+        if config is None:
+            return
         self.consecutive_failures = 0
+        self.global_protect_current_spin.setValue(config.global_protect_current_ma)
+        self.max_continuous_current_spin.setValue(
+            config.max_continuous_current_ma
+        )
 
         if self.current_mode == MODE_JOINT_PROTECT:
-            vals = run_async(lambda: device.revo3_get_all_joint_protect_currents(self.slave_id))
+            vals = list(config.joint_protect_current_ma)
             if vals and len(vals) >= 21:
                 for i in range(21):
                     if i in self.all_sliders:
                         self.all_sliders[i].set_value_silently(vals[i])
 
         elif self.current_mode == MODE_POS_LIMITS:
-            res = run_async(lambda: device.revo3_get_all_joint_position_limits(self.slave_id))
-            if res and len(res) == 2 and len(res[0]) >= 21:
-                min_pos, max_pos = res
+            min_pos = list(config.joint_min_position_deg)
+            max_pos = list(config.joint_max_position_deg)
+            if len(min_pos) >= 21 and len(max_pos) >= 21:
                 for i in range(21):
                     if i in self.all_sliders:
                         self.all_sliders[i].set_value_silently(max_pos[i], min_pos[i])
 
         elif self.current_mode == MODE_SPEED_LIMITS:
-            res = run_async(lambda: device.revo3_get_all_joint_speed_limits(self.slave_id))
-            if res and len(res) == 2 and len(res[0]) >= 21:
-                min_spd, max_spd = res
+            min_spd = list(config.joint_min_speed_rpm)
+            max_spd = list(config.joint_max_speed_rpm)
+            if len(min_spd) >= 21 and len(max_spd) >= 21:
                 for i in range(21):
                     if i in self.all_sliders:
                         self.all_sliders[i].set_value_silently(max_spd[i], min_spd[i])

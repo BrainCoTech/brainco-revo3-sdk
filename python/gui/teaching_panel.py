@@ -1,6 +1,6 @@
 """Teaching Panel - Record and Playback Hand Movements (GUI)
 
-Adapted from revo3/revo3_teaching.py for PySide6 GUI integration.
+Adapted from revo3/teaching_mode.py for PySide6 GUI integration.
 
 Workflow:
   1. RECORD: Enter teaching mode (zero torque), record motor positions via QTimer.
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from .shared_data import SharedDataManager
 
 
-# Motor group labels (same as revo3_teaching.py)
+# Motor group labels (same as teaching_mode.py)
 MOTOR_LABELS = {
     "Pinky":  [0, 1, 2, 3],
     "Ring":   [4, 5, 6, 7],
@@ -49,7 +49,7 @@ MOTOR_LABELS = {
 }
 
 # Import constants from constants.py
-from .constants import REVO3_MOTOR_COUNT
+from .constants import REVO3_ULTRA_JOINT_COUNT
 
 DEFAULT_RECORD_FREQ = 100    # Hz
 DEFAULT_PLAYBACK_SPEED = 1.0
@@ -63,20 +63,33 @@ PLAYBACK_PREPOSITION_DT = 0.01
 DEG_S_TO_RPM = 1.0 / 6.0
 
 
-async def _send_all_mit_params(device, slave_id, kp, kd, positions, velocities, torques, without_retry=False):
-    """Send one full-hand MIT frame, preferring no-retry writes in frame-rate loops."""
-    if without_retry and hasattr(device, "revo3_set_all_mit_params_without_retry"):
-        await device.revo3_set_all_mit_params_without_retry(slave_id, kp, kd, positions, velocities, torques)
+async def _send_all_mit_params(
+    device,
+    slave_id,
+    kp,
+    kd,
+    positions,
+    velocities,
+    feedforward_currents,
+    without_retry=False,
+):
+    """Send one full-hand MIT frame using ServoSession or clean API."""
+    if hasattr(device, "send_mit_params"):
+        await device.send_mit_params(
+            slave_id, kp, kd, positions, velocities, feedforward_currents
+        )
     else:
-        await device.revo3_set_all_mit_params(slave_id, kp, kd, positions, velocities, torques)
+        await device.set_all_mit_params(
+            slave_id, kp, kd, positions, velocities, feedforward_currents
+        )
 
 
 def _get_motor_count():
-    return REVO3_MOTOR_COUNT
+    return REVO3_ULTRA_JOINT_COUNT
 
 
 # =============================================================================
-# Trajectory Data (same as revo3_teaching.py)
+# Trajectory Data (same as teaching_mode.py)
 # =============================================================================
 
 class Trajectory:
@@ -155,14 +168,14 @@ class Trajectory:
 
 
 # =============================================================================
-# Teaching Mode Functions (adapted from revo3_teaching.py)
+# Teaching Mode Functions (adapted from teaching_mode.py)
 # =============================================================================
 
 def enter_teaching_mode(device, slave_id):
     """Enter teaching mode - hand becomes compliant (zero torque)."""
     # Set Impedance mode and zero stiffness
     try:
-        run_async(lambda: device.revo3_set_teaching_mode(slave_id, True))
+        run_async(lambda: device.set_teaching_mode(slave_id, True))
     except Exception as e:
         print(f"[Teaching] Enter mode failed: {e}")
 
@@ -171,7 +184,7 @@ def exit_teaching_mode(device, slave_id, hold_positions=None):
     """Exit teaching mode and hold the requested posture."""
     async def _exit_and_hold():
         try:
-            await device.revo3_set_teaching_mode(slave_id, False)
+            await device.set_teaching_mode(slave_id, False)
         except Exception as e:
             print(f"[Teaching] Restore position mode skipped: {e}")
 
@@ -663,7 +676,7 @@ class TeachingPanel(QWidget):
         """Set up motor control mode for playback."""
         try:
             self._pause_collector_for_playback()
-            run_async(lambda: self.device.revo3_set_teaching_mode(self.slave_id, False))
+            run_async(lambda: self.device.set_teaching_mode(self.slave_id, False))
             time.sleep(0.1)
         except Exception:
             pass
@@ -752,7 +765,7 @@ class TeachingPanel(QWidget):
                 self.sig_playback_log.emit(
                     f"  Moving to playback start posture ({duration:.1f}s)..."
                 )
-                await device.revo3_move_hand_wait(
+                await device.move_hand_wait(
                     slave_id, first_pos, duration, PLAYBACK_PREPOSITION_DT
                 )
             except Exception as e:
@@ -790,9 +803,16 @@ class TeachingPanel(QWidget):
                             ]
                         kp = [PLAYBACK_KP] * len(pos)
                         kd = [PLAYBACK_KD] * len(pos)
-                        torques = [0.0] * len(pos)
+                        feedforward_currents = [0.0] * len(pos)
                         await _send_all_mit_params(
-                            device, slave_id, kp, kd, pos, velocities, torques, without_retry=True
+                            device,
+                            slave_id,
+                            kp,
+                            kd,
+                            pos,
+                            velocities,
+                            feedforward_currents,
+                            without_retry=True,
                         )
                     except Exception as e:
                         self.sig_playback_log.emit(f"⚠ Playback error at frame {send_idx}: {e}")

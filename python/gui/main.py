@@ -34,14 +34,8 @@ def main():
                         help="Only detect Revo3 Modbus devices (hides other protocols)")
     parser.add_argument("--mock", nargs="?", const="revo3-touch", default=None,
                         help="Run in Revo3 mock mode for UI testing")
-    parser.add_argument("--touch-vendor", choices=["matrix", "pressure"], default=None,
-                        help="Manually specify touch vendor (matrix or pressure) to override auto-detection")
     parser.add_argument("--canfd", nargs="?", const="", default=None,
                         help="Start in CANFD mode, optionally specifying the adapter port name")
-    parser.add_argument("--vts-force-model-dir", default=None,
-                        help="Parent directory for VTS force models: {dir}/{SN}/{SN}.onnx.enc")
-    parser.add_argument("--vts-force-model-mode", choices=["none", "auto", "required"], default="none",
-                        help="VTS force model loading mode: none=fast init, auto=load when present, required=skip sensors without models")
     args = parser.parse_args()
 
 
@@ -68,9 +62,6 @@ def main():
     window = MainWindow(
         revo3_modbus=args.revo3_modbus,
         mock_type=args.mock,
-        touch_vendor=args.touch_vendor,
-        vts_force_model_dir=args.vts_force_model_dir,
-        vts_force_model_mode=args.vts_force_model_mode,
         canfd=args.canfd,
     )
     window.show()

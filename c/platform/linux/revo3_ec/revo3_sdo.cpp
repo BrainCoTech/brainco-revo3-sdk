@@ -110,13 +110,11 @@ int main(int argc, char **argv) {
       // - 0x8003: Product serial number string
       // - 0x801A: Motor system status/current/voltage/power/temperature
       // - 0x801B: Stark Hardware Type enum (e.g. 20=Ultra, 23=Pro, 26=Basic)
-      // - 0x801C: Touch panel vendor enum (e.g. 0=Unknown, 1=Pressure, 2=Matrix)
       std::string firmware;
       std::string hardware;
       std::string serial;
       std::array<std::uint16_t, kMotorSystemParams.size()> system_params{};
       std::uint16_t hand_type = 0;
-      std::uint16_t touch_vendor = 0;
       bool ok = read_string(master, revo3::ethercat::kFirmwareVersionObjectIndex,
                             &firmware) &&
                 read_string(master,
@@ -129,9 +127,7 @@ int main(int argc, char **argv) {
                           kMotorSystemParams[i].subindex, &system_params[i]);
       }
       ok = ok && read_integer(master, revo3::ethercat::kHandTypeObjectIndex, 0,
-                              &hand_type) &&
-           read_integer(master, revo3::ethercat::kTouchVendorObjectIndex, 0,
-                        &touch_vendor);
+                              &hand_type);
       if (!ok) {
         return 1;
       }
@@ -141,8 +137,7 @@ int main(int argc, char **argv) {
         std::cout << '\n' << kMotorSystemParams[i].name << ": "
                   << system_params[i];
       }
-      std::cout << "\nHand type: " << hand_type
-                << "\nTouch manufacturer: " << touch_vendor << '\n';
+      std::cout << "\nHand type: " << hand_type << '\n';
       return 0;
     }
 

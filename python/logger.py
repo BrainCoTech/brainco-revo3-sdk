@@ -67,8 +67,8 @@ console_handler.setFormatter(console_formatter)
 # Ensure logs directory exists
 os.makedirs('logs', exist_ok=True)
 
-# Generate log filename with timestamp
-log_filename = f"logs/python_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]}.log"
+# Generate the shared Python and SDK log filename with a timestamp.
+log_filename = f"logs/revo3_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]}.log"
 file_handler = logging.FileHandler(log_filename, encoding='utf-8')
 file_handler.setFormatter(file_formatter)
 

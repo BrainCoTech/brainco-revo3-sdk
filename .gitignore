@@ -4,6 +4,8 @@ logs/
 ota_bin/
 dist/shared/
 dist/include/
+.bc-revo3-sdk.*
+c/build/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -11,7 +13,6 @@ __pycache__/
 *.dylib
 *.dll
 *.zip
-*.exe
 # Ignore all compiled binaries in c/demo/
 c/demo/*
 !c/demo/Makefile
@@ -26,10 +27,8 @@ c/demo/*
 venv/
 ENV/
 
+# Locally supplied vision-tactile deployment artifacts
+python/vts/
+
 # Python lock files
 uv.lock
-
-# vts
-python/vts/
-python/vts/checkpoints/
-python/vts/benchmark/

@@ -1,11 +1,12 @@
 """Shared Revo3 data manager for GUI panels."""
 
+import asyncio
 import sys
 import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_imports import sdk, logger
@@ -13,8 +14,24 @@ from common_imports import sdk, logger
 from .constants import MOTOR_BUFFER_SIZE, TOUCH_BUFFER_SIZE
 
 DEFAULT_MOTOR_FREQ = 60
-DEFAULT_TOUCH_FREQ = 0
-DRAG_MOTOR_FREQ = 10
+DEFAULT_TOUCH_FREQ = 20
+STANDARD_TOUCH_VIEW_FREQ = 60
+FORCE_TORQUE_TOUCH_FREQ = 5
+LOW_LATENCY_TOUCH_AUTO_MIN_FREQ = 20
+LOW_LATENCY_TOUCH_AUTO_STEPS = (20, 30, 60, 90, 120)
+LOW_LATENCY_TOUCH_AUTO_START_FREQ = 30
+TOUCH_VIEW_FREQ = 120
+TOUCH_AUTO_EVALUATION_INTERVAL_S = 5.0
+TOUCH_AUTO_CHANGE_COOLDOWN_S = 10.0
+TOUCH_AUTO_RAISE_RATIO = 0.9
+TOUCH_AUTO_LOWER_RATIO = 0.7
+TOUCH_LATENCY_HINT_MIN_TARGET_HZ = 60
+UI_DISPATCH_INTERVAL_MS = 16
+FTDI_USB_VENDOR_ID = 0x0403
+DRAG_MOTOR_FREQ = 0
+SUBSCRIPTION_ERROR_LOG_INTERVAL_S = 2.0
+CONNECTION_FAILED_THRESHOLD = 3
+COLLECTOR_SHUTDOWN_GRACE_S = 1.0
 COLLECTOR_CONFIG_WARN_AFTER_S = 0.5
 COLLECTOR_CONFIG_REPEAT_WARN_AFTER_S = 2.0
 COLLECTOR_LIFECYCLE_WARN_AFTER_S = 0.5
@@ -22,17 +39,188 @@ COLLECTOR_LIFECYCLE_REPEAT_WARN_AFTER_S = 2.0
 from .mock_device import MockRevo3MotorStatusData, MockRevo3TouchData
 
 
-def _touch_vendor_int(vendor) -> int:
+def _sdk_error_text(error) -> str:
+    details = [str(error)]
+    for name in ("category", "code", "retryable", "low_level_cause"):
+        value = getattr(error, name, None)
+        if value is not None and value != "":
+            details.append(f"{name}={value}")
+    return "; ".join(details)
+
+
+def _is_connection_failed(error) -> bool:
+    """Return whether an SDK error explicitly reports a lost connection."""
+    code = getattr(error, "code", None)
+    code_name = getattr(code, "name", None)
+    if code_name == "ConnectionFailed":
+        return True
+    return str(code).rsplit(".", 1)[-1] == "ConnectionFailed"
+
+
+def _serial_port_metadata_is_ftdi(port_info, port_name):
+    detected_port = str(getattr(port_info, "port_name", "") or getattr(port_info, "device", ""))
+    if detected_port.casefold() != str(port_name or "").casefold():
+        return False
     try:
-        return int(vendor)
-    except Exception:
-        value = getattr(vendor, "value", None)
-        if value is not None:
-            try:
-                return int(value)
-            except Exception:
-                pass
-    return 0
+        if int(getattr(port_info, "vid", -1)) == FTDI_USB_VENDOR_ID:
+            return True
+    except (TypeError, ValueError):
+        pass
+    identity = " ".join(
+        str(getattr(port_info, name, "") or "")
+        for name in ("manufacturer", "product_name", "product", "description")
+    )
+    return "ftdi" in identity.casefold()
+
+
+def _is_ftdi_serial_port(port_name):
+    if not port_name:
+        return False
+    if sdk is not None and hasattr(sdk, "list_available_ports"):
+        try:
+            if any(
+                _serial_port_metadata_is_ftdi(port_info, port_name)
+                for port_info in sdk.list_available_ports()
+            ):
+                return True
+        except Exception as error:
+            logger.debug("[SharedData] SDK serial metadata lookup failed: %s", error)
+    try:
+        import serial.tools.list_ports
+
+        return any(
+            _serial_port_metadata_is_ftdi(port_info, port_name)
+            for port_info in serial.tools.list_ports.comports()
+        )
+    except Exception as error:
+        logger.debug("[SharedData] System serial metadata lookup failed: %s", error)
+        return False
+
+
+class FpsCounter:
+    """Thread-safe sliding-window FPS / frequency counter."""
+
+    def __init__(self, window_seconds: float = 1.0, min_samples: int = 2):
+        self._window_seconds = max(0.1, float(window_seconds))
+        self._min_samples = max(2, int(min_samples))
+        self._timestamps = []
+        self._lock = threading.Lock()
+        self._last_fps = 0.0
+
+    def tick(self):
+        """Record one incoming frame/event timestamp."""
+        now = time.monotonic()
+        with self._lock:
+            self._timestamps.append(now)
+            cutoff = now - self._window_seconds
+            # Retain only timestamps within the window
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.pop(0)
+
+    def fps(self) -> float:
+        """Calculate and return current instantaneous FPS."""
+        now = time.monotonic()
+        with self._lock:
+            cutoff = now - self._window_seconds
+            while self._timestamps and self._timestamps[0] < cutoff:
+                self._timestamps.pop(0)
+            n = len(self._timestamps)
+            if n < self._min_samples:
+                self._last_fps = 0.0
+                return 0.0
+            duration = self._timestamps[-1] - self._timestamps[0]
+            if duration <= 1e-6:
+                self._last_fps = float(n) / max(self._window_seconds, 1e-3)
+            else:
+                self._last_fps = (n - 1) / duration
+            return self._last_fps
+
+    def reset(self):
+        """Reset all recorded timestamps."""
+        with self._lock:
+            self._timestamps.clear()
+            self._last_fps = 0.0
+
+
+class RepeatedErrorLogger:
+    """Rate-limit repeated errors while retaining periodic and recovery summaries."""
+
+    def __init__(self, label: str, interval_seconds: float = SUBSCRIPTION_ERROR_LOG_INTERVAL_S):
+        self.label = label
+        self.interval_seconds = max(0.1, float(interval_seconds))
+        self._last_error = None
+        self._last_warning_at = None
+        self._first_error_at = 0.0
+        self._consecutive_count = 0
+        self._suppressed_since_warning = 0
+        self._total_suppressed = 0
+
+    def record_error(self, error_text: str, now: float | None = None):
+        now = time.monotonic() if now is None else float(now)
+        error_changed = error_text != self._last_error
+        if self._consecutive_count == 0:
+            self._first_error_at = now
+        self._consecutive_count += 1
+
+        should_warn = (
+            error_changed
+            or self._last_warning_at is None
+            or now - self._last_warning_at >= self.interval_seconds
+        )
+        if should_warn:
+            summary = ""
+            if self._suppressed_since_warning:
+                summary = (
+                    f"; suppressed_repeats={self._suppressed_since_warning}"
+                    f"; consecutive_failures={self._consecutive_count}"
+                )
+            logger.warning("[SharedData] %s error: %s%s", self.label, error_text, summary)
+            self._last_warning_at = now
+            self._suppressed_since_warning = 0
+        else:
+            self._suppressed_since_warning += 1
+            self._total_suppressed += 1
+        self._last_error = error_text
+
+    def record_success(self, now: float | None = None):
+        if self._consecutive_count == 0:
+            return
+        now = time.monotonic() if now is None else float(now)
+        duration_seconds = max(0.0, now - self._first_error_at)
+        logger.info(
+            "[SharedData] %s recovered: consecutive_failures=%s, duration_s=%.3f, "
+            "suppressed_repeats=%s",
+            self.label,
+            self._consecutive_count,
+            duration_seconds,
+            self._total_suppressed,
+        )
+        self._reset()
+
+    def record_stop(self, now: float | None = None):
+        """Log a final summary when collection stops before a successful sample."""
+        if self._consecutive_count == 0:
+            return
+        now = time.monotonic() if now is None else float(now)
+        duration_seconds = max(0.0, now - self._first_error_at)
+        logger.info(
+            "[SharedData] %s stopped with unresolved errors: consecutive_failures=%s, "
+            "duration_s=%.3f, suppressed_repeats=%s, last_error=%s",
+            self.label,
+            self._consecutive_count,
+            duration_seconds,
+            self._total_suppressed,
+            self._last_error,
+        )
+        self._reset()
+
+    def _reset(self):
+        self._last_error = None
+        self._last_warning_at = None
+        self._first_error_at = 0.0
+        self._consecutive_count = 0
+        self._suppressed_since_warning = 0
+        self._total_suppressed = 0
 
 
 class MockBuffer:
@@ -40,27 +228,244 @@ class MockBuffer:
         self.size = size
         self._items = []
         self._sequence = 0
+        self._lock = threading.Lock()
+        self._fps_counter = FpsCounter(window_seconds=1.0)
 
     def push(self, item):
-        self._items.append(item)
-        if len(self._items) > self.size:
-            del self._items[:len(self._items) - self.size]
-        self._sequence += 1
+        with self._lock:
+            self._items.append(item)
+            if len(self._items) > self.size:
+                del self._items[:len(self._items) - self.size]
+            self._sequence += 1
+            self._fps_counter.tick()
+
+    def fps(self) -> float:
+        return self._fps_counter.fps()
 
     def peek_latest(self):
-        return self._items[-1] if self._items else None
+        with self._lock:
+            return self._items[-1] if self._items else None
+
+    def peek_latest_with_sequence(self):
+        with self._lock:
+            latest = self._items[-1] if self._items else None
+            return latest, self._sequence
 
     def pop_all(self):
-        items = list(self._items)
-        self._items.clear()
-        self._sequence += 1
-        return items
+        with self._lock:
+            items = list(self._items)
+            self._items.clear()
+            return items
 
     def len(self):
-        return len(self._items)
+        with self._lock:
+            return len(self._items)
 
     def sequence(self):
-        return self._sequence
+        with self._lock:
+            return self._sequence
+
+    def clear(self):
+        with self._lock:
+            self._items.clear()
+            self._fps_counter.reset()
+
+
+class _SubscriptionCollector:
+    """Run the public 2.x pull subscriptions on a dedicated event loop."""
+
+    def __init__(
+        self,
+        device,
+        motor_buffer,
+        touch_buffer,
+        motor_frequency,
+        touch_frequency,
+        connection_lost_callback=None,
+    ):
+        self.device = device
+        self.motor_buffer = motor_buffer
+        self.touch_buffer = touch_buffer
+        self.motor_frequency = motor_frequency
+        self.touch_frequency = touch_frequency
+        self.connection_lost_callback = connection_lost_callback
+        self._thread = None
+        self._stop = threading.Event()
+        self._connection_failed_counts = {"motor": 0, "touch": 0}
+        self._connection_lost_reported = threading.Event()
+        self._touch_health_lock = threading.Lock()
+        self._touch_success_count = 0
+        self._touch_error_count = 0
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return True
+        self._stop.clear()
+        self._connection_failed_counts = {"motor": 0, "touch": 0}
+        self._connection_lost_reported.clear()
+        self._thread = threading.Thread(target=self._thread_main, daemon=True)
+        self._thread.start()
+        return True
+
+    def _record_read_result(self, source, error=None):
+        if self._connection_lost_reported.is_set():
+            return True
+        if error is None or not _is_connection_failed(error):
+            self._connection_failed_counts[source] = 0
+            return False
+
+        self._connection_failed_counts[source] += 1
+        failure_count = self._connection_failed_counts[source]
+        if failure_count < CONNECTION_FAILED_THRESHOLD:
+            return False
+        self._connection_lost_reported.set()
+        self._stop.set()
+        logger.warning(
+            "[SharedData] Connection lost after %s consecutive %s read failures",
+            failure_count,
+            source,
+        )
+        if self.connection_lost_callback is not None:
+            try:
+                self.connection_lost_callback()
+            except Exception as callback_error:
+                logger.warning(
+                    "[SharedData] Failed to notify connection loss: %s",
+                    callback_error,
+                )
+        return True
+
+    def _record_touch_health(self, success):
+        with self._touch_health_lock:
+            if success:
+                self._touch_success_count += 1
+            else:
+                self._touch_error_count += 1
+
+    def touch_health_snapshot(self):
+        with self._touch_health_lock:
+            return self._touch_success_count, self._touch_error_count
+
+    def stop(self):
+        self._stop.set()
+        thread = self._thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+            if thread.is_alive():
+                logger.warning(
+                    "[SharedData] Collector thread did not stop within 2 seconds"
+                )
+                return False
+        self._thread = None
+        return True
+
+    def update_motor_frequency(self, frequency):
+        self.motor_frequency = frequency
+        self._restart()
+
+    def update_touch_frequency(self, frequency):
+        self.touch_frequency = frequency
+        self._restart()
+
+    def update_frequencies(self, motor_frequency, touch_frequency):
+        self.motor_frequency = motor_frequency
+        self.touch_frequency = touch_frequency
+        self._restart()
+
+    def _restart(self):
+        if self._thread is None:
+            return True
+        if self._thread.is_alive():
+            if not self.stop():
+                return False
+        return self.start()
+
+    def _thread_main(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._run())
+        except Exception as error:
+            if not self._stop.is_set():
+                logger.warning("[SharedDataManager] Subscription collector failed: %s", error)
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    async def _run(self):
+        motor_subscription = None
+        if self.motor_frequency > 0 and self.motor_buffer is not None:
+            motor_period = 1.0 / max(float(self.motor_frequency), 1.0)
+            motor_subscription = self.device.hand.state.subscribe(period=motor_period)
+        touch_subscription = None
+        if self.touch_frequency > 0 and self.touch_buffer is not None:
+            touch_period = 1.0 / max(float(self.touch_frequency), 1.0)
+            touch_subscription = self.device.subscribe_touch(period=touch_period)
+
+        async def collect_motor():
+            error_logger = RepeatedErrorLogger("collect_motor")
+            try:
+                while not self._stop.is_set() and motor_subscription is not None:
+                    try:
+                        self.motor_buffer.push(await motor_subscription.next())
+                        self._record_read_result("motor")
+                        error_logger.record_success()
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        if self._stop.is_set():
+                            break
+                        error_logger.record_error(_sdk_error_text(e))
+                        if self._record_read_result("motor", e):
+                            break
+                        await asyncio.sleep(0.01)
+            finally:
+                error_logger.record_stop()
+
+        async def collect_touch():
+            error_logger = RepeatedErrorLogger("collect_touch")
+            try:
+                while not self._stop.is_set() and touch_subscription is not None:
+                    try:
+                        frame = await touch_subscription.next()
+                        self.touch_buffer.push(self.device.touch_frame_payload(frame))
+                        self._record_touch_health(True)
+                        self._record_read_result("touch")
+                        error_logger.record_success()
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        if self._stop.is_set():
+                            break
+                        self._record_touch_health(False)
+                        error_logger.record_error(_sdk_error_text(e))
+                        if self._record_read_result("touch", e):
+                            break
+                        await asyncio.sleep(max(touch_period, 0.1))
+            finally:
+                error_logger.record_stop()
+
+        tasks = []
+        if motor_subscription is not None:
+            tasks.append(asyncio.create_task(collect_motor()))
+        if touch_subscription is not None:
+            tasks.append(asyncio.create_task(collect_touch()))
+        try:
+            while not self._stop.is_set():
+                await asyncio.sleep(0.02)
+        finally:
+            if motor_subscription is not None:
+                motor_subscription.close()
+            if touch_subscription is not None:
+                touch_subscription.close()
+            if tasks:
+                _, pending = await asyncio.wait(
+                    tasks,
+                    timeout=COLLECTOR_SHUTDOWN_GRACE_S,
+                )
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
 
 class SharedDataManager(QObject):
@@ -68,6 +473,8 @@ class SharedDataManager(QObject):
     touch_updated = Signal(object)
     connection_lost = Signal()
     slave_id_updated = Signal(int)
+    fps_updated = Signal(float, float, float)
+    touch_latency_timer_hint = Signal(float, float, str)
     _update_timer_start_requested = Signal()
     _update_timer_stop_requested = Signal()
 
@@ -89,6 +496,16 @@ class SharedDataManager(QObject):
         self._latest_revo3_motor_sequence = 0
         self._latest_revo3_touch = None
         self._latest_revo3_touch_sequence = 0
+        self._ui_fps_counter = FpsCounter(window_seconds=1.0)
+        self._last_fps_emit_time = 0.0
+        self._touch_auto_requested_max = 0
+        self._touch_auto_target = LOW_LATENCY_TOUCH_AUTO_START_FREQ
+        self._touch_auto_last_evaluation_at = 0.0
+        self._touch_auto_last_change_at = 0.0
+        self._touch_auto_health_snapshot = (0, 0)
+        self._latency_hint_enabled = False
+        self._latency_hint_emitted = False
+        self._latency_hint_port = ""
         self._collector_config_lock = threading.Lock()
         self._collector_config_pending = None
         self._collector_config_worker_running = False
@@ -99,7 +516,9 @@ class SharedDataManager(QObject):
         self._collector_lifecycle_blocked_keys = set()
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._emit_updates)
-        self._update_timer.setInterval(50)
+        self._update_timer.setInterval(UI_DISPATCH_INTERVAL_MS)
+        if hasattr(self._update_timer, "setTimerType"):
+            self._update_timer.setTimerType(Qt.PreciseTimer)
         self._update_timer_start_requested.connect(self._start_update_timer)
         self._update_timer_stop_requested.connect(self._stop_update_timer)
 
@@ -116,21 +535,33 @@ class SharedDataManager(QObject):
         return self._device_info
 
     @property
-    def hw_type(self):
-        return getattr(self._device_info, "hardware_type", None) if self._device_info else None
+    def model(self):
+        return getattr(self._device_info, "model", None) if self._device_info else None
 
     def set_device(self, device, slave_id: int, device_info):
         if self.is_running:
             self.stop()
+        self.configure_serial_latency_hint(None, None)
         self._device = device
         self._slave_id = slave_id
         self._device_info = device_info
-        if getattr(device, "is_mock", False):
+        self._reset_touch_auto_frequency()
+        if device:
             self.revo3_motor_buffer = MockBuffer(MOTOR_BUFFER_SIZE)
             self.revo3_touch_buffer = MockBuffer(TOUCH_BUFFER_SIZE)
-        elif sdk and device:
-            self.revo3_motor_buffer = sdk.Revo3MotorStatusBuffer(MOTOR_BUFFER_SIZE)
-            self.revo3_touch_buffer = sdk.Revo3TouchDataBuffer(TOUCH_BUFFER_SIZE)
+
+    def configure_serial_latency_hint(self, protocol_key, port_name):
+        self._latency_hint_enabled = False
+        self._latency_hint_emitted = False
+        self._latency_hint_port = str(port_name or "")
+        if sys.platform != "win32" or protocol_key != "modbus":
+            return
+        self._latency_hint_enabled = _is_ftdi_serial_port(self._latency_hint_port)
+        if self._latency_hint_enabled:
+            logger.info(
+                "[SharedDataManager] Detected FTDI serial adapter on %s",
+                self._latency_hint_port,
+            )
 
     def clear_device(self):
         self.stop()
@@ -143,6 +574,10 @@ class SharedDataManager(QObject):
         self._latest_revo3_motor_sequence = 0
         self._latest_revo3_touch = None
         self._latest_revo3_touch_sequence = 0
+        self._ui_fps_counter.reset()
+        self._last_fps_emit_time = 0.0
+        self._reset_touch_auto_frequency()
+        self.fps_updated.emit(0.0, 0.0, 0.0)
 
     def update_slave_id(self, new_id: int):
         if new_id == self._slave_id:
@@ -169,9 +604,154 @@ class SharedDataManager(QObject):
     def _request_update_timer_stop(self):
         self._update_timer_stop_requested.emit()
 
+    def _effective_touch_frequency(self, requested_frequency):
+        frequency = max(0, int(requested_frequency or 0))
+        is_force_torque_layout = self._is_force_torque_layout()
+        if not is_force_torque_layout:
+            self._touch_auto_requested_max = 0
+            return min(frequency, STANDARD_TOUCH_VIEW_FREQ)
+        if not self._supports_low_latency_touch():
+            self._touch_auto_requested_max = 0
+            return min(frequency, FORCE_TORQUE_TOUCH_FREQ)
+        if frequency < LOW_LATENCY_TOUCH_AUTO_START_FREQ:
+            self._touch_auto_requested_max = 0
+            return frequency
+
+        requested_max = min(frequency, LOW_LATENCY_TOUCH_AUTO_STEPS[-1])
+        first_activation = self._touch_auto_requested_max == 0
+        self._touch_auto_requested_max = requested_max
+        self._touch_auto_target = min(
+            max(self._touch_auto_target, LOW_LATENCY_TOUCH_AUTO_START_FREQ),
+            requested_max,
+        )
+        if first_activation:
+            now = time.monotonic()
+            self._touch_auto_last_evaluation_at = now
+            self._touch_auto_last_change_at = now
+            collector = self.data_collector
+            self._touch_auto_health_snapshot = (
+                collector.touch_health_snapshot() if collector else (0, 0)
+            )
+        return self._touch_auto_target
+
+    def _is_force_torque_layout(self):
+        layout = getattr(
+            getattr(getattr(self._device, "hand", None), "touch", None),
+            "layout",
+            None,
+        )
+        modules = list(getattr(layout, "modules", []) or [])
+        layout_ids = [str(getattr(module, "layout_id", "")) for module in modules]
+        signal_names = {
+            getattr(signal, "name", str(signal)).split(".")[-1]
+            for module in modules
+            for signal in list(getattr(module, "signals", []) or [])
+        }
+        is_force_torque_layout = any(
+            layout_id.startswith("hp_") for layout_id in layout_ids
+        ) or bool({"Force3D", "Torque2D", "ResultantForce"} & signal_names)
+        return is_force_torque_layout
+
+    @staticmethod
+    def _supports_low_latency_touch():
+        return sys.platform == "win32" or sys.platform.startswith("linux")
+
+    def _reset_touch_auto_frequency(self):
+        self._touch_auto_requested_max = 0
+        self._touch_auto_target = LOW_LATENCY_TOUCH_AUTO_START_FREQ
+        self._touch_auto_last_evaluation_at = 0.0
+        self._touch_auto_last_change_at = 0.0
+        self._touch_auto_health_snapshot = (0, 0)
+
+    def _emit_latency_timer_hint(self, actual_frequency, target_frequency):
+        if (
+            not self._latency_hint_enabled
+            or self._latency_hint_emitted
+            or target_frequency < TOUCH_LATENCY_HINT_MIN_TARGET_HZ
+        ):
+            return
+        self._latency_hint_emitted = True
+        logger.warning(
+            "[SharedDataManager] Touch sampling under target on FTDI port %s: "
+            "actual=%.1fHz, target=%sHz; check the Windows driver Latency Timer",
+            self._latency_hint_port,
+            actual_frequency,
+            target_frequency,
+        )
+        self.touch_latency_timer_hint.emit(
+            float(actual_frequency),
+            float(target_frequency),
+            self._latency_hint_port,
+        )
+
+    def _next_touch_auto_target(self, direction):
+        allowed = [
+            step
+            for step in LOW_LATENCY_TOUCH_AUTO_STEPS
+            if LOW_LATENCY_TOUCH_AUTO_MIN_FREQ <= step <= self._touch_auto_requested_max
+        ]
+        if not allowed:
+            return self._touch_auto_target
+        current_index = min(
+            range(len(allowed)),
+            key=lambda index: abs(allowed[index] - self._touch_auto_target),
+        )
+        next_index = max(0, min(len(allowed) - 1, current_index + direction))
+        return allowed[next_index]
+
+    def _apply_touch_auto_target(self, target, now):
+        target = max(0, int(target))
+        if target == self._touch_auto_target:
+            return
+        previous_target = self._touch_auto_target
+        self._touch_auto_target = target
+        self.touch_frequency = target
+        self._touch_auto_last_change_at = now
+        collector = self.data_collector
+        if collector:
+            logger.info(
+                "[SharedDataManager] Adaptive touch frequency changed from %sHz to %sHz",
+                previous_target,
+                target,
+            )
+            self._run_collector_config_update(collector, touch_freq=target)
+
+    def _maybe_adapt_touch_frequency(self, now=None):
+        now = time.monotonic() if now is None else float(now)
+        collector = self.data_collector
+        if (
+            not collector
+            or self._touch_auto_requested_max < LOW_LATENCY_TOUCH_AUTO_START_FREQ
+            or self.touch_frequency <= 0
+            or now - self._touch_auto_last_evaluation_at
+            < TOUCH_AUTO_EVALUATION_INTERVAL_S
+        ):
+            return
+
+        current_health = collector.touch_health_snapshot()
+        _, previous_errors = self._touch_auto_health_snapshot
+        _, current_errors = current_health
+        error_delta = max(0, current_errors - previous_errors)
+        self._touch_auto_health_snapshot = current_health
+        self._touch_auto_last_evaluation_at = now
+
+        actual_frequency = self.get_touch_fps()
+        target_frequency = max(1, self._touch_auto_target)
+        if error_delta > 0:
+            self._apply_touch_auto_target(self._next_touch_auto_target(-1), now)
+            return
+        if now - self._touch_auto_last_change_at < TOUCH_AUTO_CHANGE_COOLDOWN_S:
+            return
+        if actual_frequency < target_frequency * TOUCH_AUTO_LOWER_RATIO:
+            self._emit_latency_timer_hint(actual_frequency, target_frequency)
+            self._apply_touch_auto_target(self._next_touch_auto_target(-1), now)
+        elif actual_frequency >= target_frequency * TOUCH_AUTO_RAISE_RATIO:
+            self._apply_touch_auto_target(self._next_touch_auto_target(1), now)
+
     def start(self, motor_freq=DEFAULT_MOTOR_FREQ, touch_freq=DEFAULT_TOUCH_FREQ):
         if not self._device:
             return False
+        touch_freq = self._effective_touch_frequency(touch_freq)
         self.motor_frequency = motor_freq
         self.touch_frequency = touch_freq
         if self.is_running:
@@ -184,30 +764,32 @@ class SharedDataManager(QObject):
         if not sdk:
             return False
         try:
-            from common_imports import has_touch
-            touch_vendor = _touch_vendor_int(getattr(self._device, "touch_vendor", None))
-            is_touch_device = has_touch(self.hw_type) and touch_vendor in (1, 2)
+            touch_layout = getattr(
+                getattr(getattr(self._device, "hand", None), "touch", None),
+                "layout",
+                None,
+            )
+            is_touch_device = (
+                bool(getattr(self._device, "supports_touch", False))
+                and touch_layout is not None
+            )
             if not is_touch_device:
                 touch_freq = 0
 
-            if is_touch_device or touch_freq > 0:
-                self.data_collector = sdk.DataCollector.new_revo3_full(
-                    self._device,
-                    self.revo3_motor_buffer,
-                    self.revo3_touch_buffer,
-                    self._slave_id,
-                    motor_freq,
-                    touch_freq,
-                    True,
-                )
-            else:
-                self.data_collector = sdk.DataCollector.new_revo3_basic(
-                    self._device,
-                    self.revo3_motor_buffer,
-                    self._slave_id,
-                    motor_freq,
-                    True,
-                )
+            collector = None
+
+            def _notify_connection_lost():
+                if self.data_collector is collector:
+                    self.connection_lost.emit()
+
+            self.data_collector = _SubscriptionCollector(
+                self._device,
+                self.revo3_motor_buffer,
+                self.revo3_touch_buffer,
+                motor_freq,
+                touch_freq,
+                connection_lost_callback=_notify_connection_lost,
+            )
             collector = self.data_collector
             self.is_running = True
             self._request_update_timer_start()
@@ -245,6 +827,7 @@ class SharedDataManager(QObject):
         if motor_freq is not None:
             self.motor_frequency = motor_freq
         if touch_freq is not None:
+            touch_freq = self._effective_touch_frequency(touch_freq)
             self.touch_frequency = touch_freq
         collector = self.data_collector
         if collector:
@@ -305,10 +888,7 @@ class SharedDataManager(QObject):
 
         def _call():
             try:
-                if motor_freq is not None:
-                    collector.update_motor_frequency(motor_freq)
-                if touch_freq is not None:
-                    collector.update_touch_frequency(touch_freq)
+                collector.update_frequencies(motor_freq, touch_freq)
             except Exception as e:
                 result["error"] = e
             finally:
@@ -484,7 +1064,22 @@ class SharedDataManager(QObject):
     def begin_control_priority(self, motor_freq=DRAG_MOTOR_FREQ):
         if self._control_priority_depth == 0:
             self._saved_frequencies = (self.motor_frequency, self.touch_frequency)
-            self.update_frequencies(motor_freq, self.touch_frequency)
+            self.motor_frequency = motor_freq
+            self.touch_frequency = 0
+            collector = self.data_collector
+            if collector:
+                started_at = time.monotonic()
+                self.is_running = False
+                self._request_update_timer_stop()
+                collector.motor_frequency = motor_freq
+                collector.touch_frequency = 0
+                collector.stop()
+                elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                if elapsed_ms >= int(COLLECTOR_LIFECYCLE_WARN_AFTER_S * 1000):
+                    logger.warning(
+                        "[SharedDataManager] collector.stop for control priority completed slowly in %sms",
+                        elapsed_ms,
+                    )
         self._control_priority_depth += 1
 
     def end_control_priority(self):
@@ -494,7 +1089,12 @@ class SharedDataManager(QObject):
         if self._control_priority_depth == 0:
             motor_freq, touch_freq = self._saved_frequencies or (DEFAULT_MOTOR_FREQ, DEFAULT_TOUCH_FREQ)
             self._saved_frequencies = None
-            self.update_frequencies(motor_freq, touch_freq)
+            self.motor_frequency = motor_freq
+            self.touch_frequency = touch_freq
+            collector = self.data_collector
+            if collector:
+                collector.update_frequencies(motor_freq, touch_freq)
+                self.resume_collector()
 
     def stop(self):
         self._request_update_timer_stop()
@@ -519,6 +1119,9 @@ class SharedDataManager(QObject):
         self._latest_revo3_motor_sequence = 0
         self._latest_revo3_touch = None
         self._latest_revo3_touch_sequence = 0
+        self._ui_fps_counter.reset()
+        self._last_fps_emit_time = 0.0
+        self.fps_updated.emit(0.0, 0.0, 0.0)
 
     def get_latest_revo3_motor(self):
         return self._latest_revo3_motor
@@ -532,30 +1135,68 @@ class SharedDataManager(QObject):
     def get_latest_revo3_touch_sequence(self):
         return self._latest_revo3_touch_sequence
 
+    def get_motor_fps(self) -> float:
+        """Get live motor status sampling rate (FPS / Hz)."""
+        return self.revo3_motor_buffer.fps() if self.revo3_motor_buffer else 0.0
+
+    def get_touch_fps(self) -> float:
+        """Get live touch sensor sampling rate (FPS / Hz)."""
+        return self.revo3_touch_buffer.fps() if self.revo3_touch_buffer else 0.0
+
+    def get_ui_fps(self) -> float:
+        """Get live UI dispatch frame rate (FPS)."""
+        return self._ui_fps_counter.fps()
+
+    def get_fps_summary(self) -> dict:
+        """Get summary dictionary of all live FPS rates."""
+        return {
+            "motor": self.get_motor_fps(),
+            "touch": self.get_touch_fps(),
+            "ui": self.get_ui_fps(),
+        }
+
     def _emit_updates(self):
+        self._ui_fps_counter.tick()
         if getattr(self._device, "is_mock", False):
             self._mock_tick += 1
             motor = self._device._status()
             self.revo3_motor_buffer.push(motor)
+            motor, motor_sequence = self.revo3_motor_buffer.peek_latest_with_sequence()
             self._latest_revo3_motor = motor
-            self._latest_revo3_motor_sequence = self.revo3_motor_buffer.sequence()
+            self._latest_revo3_motor_sequence = motor_sequence
             self.revo3_motor_updated.emit(motor)
             if self.revo3_touch_buffer:
                 touch = MockRevo3TouchData(self._mock_tick * 0.05)
                 self.revo3_touch_buffer.push(touch)
+                touch, touch_sequence = self.revo3_touch_buffer.peek_latest_with_sequence()
                 self._latest_revo3_touch = touch
-                self._latest_revo3_touch_sequence = self.revo3_touch_buffer.sequence()
+                self._latest_revo3_touch_sequence = touch_sequence
                 self.touch_updated.emit(touch)
+            now = time.monotonic()
+            if now - self._last_fps_emit_time >= 0.2:
+                self._last_fps_emit_time = now
+                self.fps_updated.emit(self.get_motor_fps(), self.get_touch_fps(), self.get_ui_fps())
             return
-        motor = self.revo3_motor_buffer.peek_latest() if self.revo3_motor_buffer else None
-        motor_sequence = self.revo3_motor_buffer.sequence() if self.revo3_motor_buffer else 0
+        motor, motor_sequence = (
+            self.revo3_motor_buffer.peek_latest_with_sequence()
+            if self.revo3_motor_buffer
+            else (None, 0)
+        )
         if motor and motor_sequence != self._latest_revo3_motor_sequence:
             self._latest_revo3_motor = motor
             self._latest_revo3_motor_sequence = motor_sequence
             self.revo3_motor_updated.emit(motor)
-        touch = self.revo3_touch_buffer.peek_latest() if self.revo3_touch_buffer else None
-        touch_sequence = self.revo3_touch_buffer.sequence() if self.revo3_touch_buffer else 0
+        touch, touch_sequence = (
+            self.revo3_touch_buffer.peek_latest_with_sequence()
+            if self.revo3_touch_buffer
+            else (None, 0)
+        )
         if touch and touch_sequence != self._latest_revo3_touch_sequence:
             self._latest_revo3_touch = touch
             self._latest_revo3_touch_sequence = touch_sequence
             self.touch_updated.emit(touch)
+        now = time.monotonic()
+        self._maybe_adapt_touch_frequency(now)
+        if now - self._last_fps_emit_time >= 0.2:
+            self._last_fps_emit_time = now
+            self.fps_updated.emit(self.get_motor_fps(), self.get_touch_fps(), self.get_ui_fps())
