@@ -1,6 +1,6 @@
 # Revo3 SDK API 参考手册
 
-> API 版本：2.0.0
+> API 版本：2.0.1
 >
 > 语言说明：简体中文（`zh-CN`）| [English (en-US)](REVO3_API.en-US.md)
 
@@ -1166,8 +1166,8 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `system_state` | `int` | 系统全局状态 (`0=Normal`, `1=Fault`) |
 | `error_code` | `int` | 系统全局错误码 (`0=Normal`, `1=CommError`, `2=NoCalibration`, `3=TempAbnormal`) |
 | `current_ma` | `int` | 系统总电流 (mA) |
-| `voltage_v` | `int` | 系统母线电压 (V) |
-| `power_w` | `int` | 系统总功率 (W) |
+| `voltage_v` | `float` | 系统母线电压 (V)，由寄存器原始值除以 100 得到，分辨率为 0.01 V |
+| `power_w` | `float` | 系统总功率 (W)，由寄存器原始值除以 100 得到，分辨率为 0.01 W |
 | `temperature_c` | `int` | 主控芯片/板级温度 (°C) |
 | `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | 21 个电机的原始故障码，来自输入寄存器 2120..2140 |
 | `faulted_motor_count` | `int` | 当前存在故障码的电机总数 |

@@ -76,8 +76,8 @@ class MockRevo3SystemStatus:
         self.system_state = 0
         self.error_code = 0
         self.current_ma = int(1200 + 120 * math.sin(tick))
-        self.voltage_v = int(24000 + 400 * math.sin(tick * 0.4))
-        self.power_w = int(29 + 2 * math.sin(tick * 0.7))
+        self.voltage_v = 24.0 + 0.4 * math.sin(tick * 0.4)
+        self.power_w = 29.0 + 2.0 * math.sin(tick * 0.7)
         self.temperature_c = int(34 + 2 * math.sin(tick * 0.2))
 
 

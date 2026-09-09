@@ -1,6 +1,6 @@
 # Revo3 SDK API Reference Manual
 
-> API Version: 2.0.0
+> API Version: 2.0.1
 >
 > Language: [简体中文 (`zh-CN`)](REVO3_API.zh-CN.md) | English (`en-US`)
 
@@ -1077,8 +1077,8 @@ Read-only system health and safety status snapshot:
 | `system_state` | `int` | Global system status (`0=Normal`, `1=Fault`) |
 | `error_code` | `int` | Global error code (`0=Normal`, `1=CommError`, `2=NoCalibration`, `3=TempAbnormal`) |
 | `current_ma` | `int` | Total system current (mA) |
-| `voltage_v` | `int` | Bus voltage (V) |
-| `power_w` | `int` | Total system power (W) |
+| `voltage_v` | `float` | Bus voltage (V), converted from the raw register value with 0.01 V resolution |
+| `power_w` | `float` | Total system power (W), converted from the raw register value with 0.01 W resolution |
 | `temperature_c` | `int` | Controller chip/board temperature (°C) |
 | `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | Per-joint raw fault codes from input registers 2120..2140 |
 | `faulted_motor_count` | `int` | Number of motors with a non-zero defined fault code |

@@ -7,6 +7,7 @@ Common chart widgets, constants, and utilities used across all touch sensor pane
 """
 
 import asyncio
+import inspect
 import logging
 import math
 import time
@@ -32,12 +33,39 @@ TEXT_UPDATE_INTERVAL_S = 0.1
 
 
 def run_async(coro_or_factory):
-    """Run a low-frequency async GUI action in a dedicated event loop."""
+    """Run a low-frequency async GUI action without nesting event loops."""
+    async def invoke():
+        result = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop is not None and running_loop.is_running():
+        task = running_loop.create_task(invoke())
+
+        def log_failure(completed_task):
+            if completed_task.cancelled():
+                return
+            error = completed_task.exception()
+            if error is not None:
+                logger.error(
+                    "Async GUI action failed: %s",
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        task.add_done_callback(log_failure)
+        return task
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        coroutine = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
-        return loop.run_until_complete(coroutine)
+        return loop.run_until_complete(invoke())
     finally:
         loop.close()
         asyncio.set_event_loop(None)

@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
       const auto health = health_subscription.next();
       std::printf(
           "Health safety=%u system=%u error=%u faulted_motors=%u "
-          "voltage=%u V\n",
+          "voltage=%.2f V\n",
           health.safety_state, health.system_state, health.system_error_code,
           health.faulted_motor_count, health.voltage_v);
     }

@@ -655,8 +655,14 @@ class SystemConfigPanel(QWidget):
             self.sys_state_label.setText(str(getattr(status, "system_state", "--")))
             self.sys_error_label.setText(str(getattr(status, "error_code", "--")))
             self.sys_current_label.setText(str(getattr(status, "current_ma", "--")))
-            self.sys_voltage_label.setText(str(getattr(status, "voltage_v", "--")))
-            self.sys_power_label.setText(str(getattr(status, "power_w", "--")))
+            voltage_v = getattr(status, "voltage_v", None)
+            power_w = getattr(status, "power_w", None)
+            self.sys_voltage_label.setText(
+                f"{voltage_v:.2f}" if voltage_v is not None else "--"
+            )
+            self.sys_power_label.setText(
+                f"{power_w:.2f}" if power_w is not None else "--"
+            )
             self.sys_temp_label.setText(str(getattr(status, "temperature_c", "--")))
         except Exception as e:
             self._log(f"Failed to load system status: {e}")
