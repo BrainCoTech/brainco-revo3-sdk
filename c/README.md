@@ -235,7 +235,7 @@ Always ensure `hand.close()` and `manager.close()` are called on application exi
 
 Four C++17 entrypoints provide opposition, finger functions, gesture dance, and
 classic sine servo motion. They preview offline unless `--run` is supplied.
-The C++ executables do not invoke Python. Build them with `make -C examples/c`.
+The C++ executables do not invoke Python. Build them with `make -C c`.
 
 ```bash
 ./c/build/demo/opposition_demo

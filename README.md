@@ -62,7 +62,7 @@ On Windows PowerShell, use `py -3.10 -m venv .venv` and
 Install the release-matched wheel from Ali OSS:
 
 ```bash
-bash python/install_whl.sh 2.0.2
+bash python/install_whl.sh 2.0.3
 ```
 
 #### 2. Run examples

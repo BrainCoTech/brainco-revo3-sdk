@@ -1,6 +1,6 @@
 # Revo3 SDK API Reference Manual
 
-> API Version: 2.0.2
+> API Version: 2.0.3
 >
 > Language: [简体中文 (`zh-CN`)](REVO3_API.zh-CN.md) | English (`en-US`)
 

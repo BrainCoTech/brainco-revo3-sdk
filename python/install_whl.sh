@@ -11,7 +11,7 @@ OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 if [ -n "$1" ]; then
   VERSION="$1"
 else
-  VERSION="2.0.2"
+  VERSION="2.0.3"
 fi
 
 # Cargo prerelease versions use SemVer spelling while wheel filenames use
