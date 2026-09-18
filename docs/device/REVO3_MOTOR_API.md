@@ -111,7 +111,7 @@ so the public SDK exposes typed operations rather than raw arrays.
 | 2030..2050 | 21 | motor velocities in rpm, signed value multiplied by 100 |
 | 2060..2080 | 21 | motor positions in degree, signed value multiplied by 100 |
 | 2090..2110 | 21 | motor currents in mA |
-| 2120..2140 | 21 | motor fault codes |
+| 2120..2140 | 21 | motor status codes (fault and non-fault status bits) |
 | 2150..2170 | 21 | motor temperatures in degree C |
 | 3020..3021 | 2 | motor-online bitmask |
 | 3030..3039 | 10 | controller firmware version, ASCII |
@@ -131,11 +131,17 @@ and is excluded from SDK motor-error counts.
 | 2 | UnderVoltage | supply voltage below allowed range |
 | 3 | OverTemperature | motor temperature protection active |
 | 4 | CurrentSpike | peak-current protection active |
-| 5..7 | Reserved | do not interpret |
+| 5 | CalibrationFailed | calibration failed; motor firmware 0.4 and later |
+| 6..7 | Reserved | do not interpret |
 | 8 | Stalled | motor stall or obstruction reported |
-| 9..10 | Reserved | do not interpret |
+| 9 | Calibrating | calibration is in progress; motor firmware 0.4 and later; not an error |
+| 10 | Reserved | do not interpret |
 | 11 | Running | motor is active; not an error |
 | 12..15 | Reserved | do not interpret |
+
+For example, `0x0800` means Running with no defined fault, while `0x0900`
+means Running and Stalled. SDK fault counts include bits 0 through 5 and bit 8;
+they exclude the Calibrating and Running status bits.
 
 Exact protection thresholds and recovery behavior are firmware properties and
 must be validated against the firmware release used by the device. SDK-side

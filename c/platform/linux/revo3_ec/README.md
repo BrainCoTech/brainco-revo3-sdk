@@ -307,4 +307,3 @@ Extra DC diagnostics are available when investigating OP transition failures:
 `--sync1-shift-ns`, and `--op-warmup-ms` are diagnostic options. Keep DC
 disabled for formal benchmark entries unless the target frequency reaches OP
 and completes the run consistently.
-

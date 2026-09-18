@@ -3,12 +3,14 @@
 import sys
 import time
 import warnings
+import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction, QActionGroup, QColor, QPainter
 from PySide6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -31,6 +33,7 @@ from .system_config_panel import SystemConfigPanel
 from .teaching_panel import TeachingPanel
 from .touch_panel_revo3 import Revo3TouchSubPanel
 from .styles import is_dark_mode, get_tab_stylesheet
+from .runtime_support import export_support_bundle
 
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -52,6 +55,22 @@ def _touch_module_count(layout) -> int:
         return len(layout.modules)
     except Exception:
         return 0
+
+
+class SupportExportWorker(QThread):
+    def __init__(self, filename, snapshot, log_paths, parent):
+        super().__init__(parent)
+        self.filename = filename
+        self.snapshot = snapshot
+        self.log_paths = log_paths
+        self.failed = False
+
+    def run(self):
+        try:
+            export_support_bundle(self.filename, self.snapshot, self.log_paths)
+        except Exception:
+            self.failed = True
+            logger.exception("Diagnostic export failed")
 
 
 class DfuOverlay(QWidget):
@@ -97,6 +116,7 @@ class MainWindow(QMainWindow):
         self.mock_type = mock_type
         self.canfd_arg = canfd
         self._handling_connection_lost = False
+        self._support_worker = None
         self.shared_data = SharedDataManager()
         self._last_fps_tuple = (0.0, 0.0, 0.0)
         self._setup_ui()
@@ -198,6 +218,9 @@ class MainWindow(QMainWindow):
         self.tools_menu.addAction(self.data_collector_action)
 
         self.help_menu = menubar.addMenu("Help")
+        self.export_diagnostics_action = QAction(tr("export_diagnostics"), self)
+        self.export_diagnostics_action.triggered.connect(self._export_diagnostics)
+        self.help_menu.addAction(self.export_diagnostics_action)
         self.about_action = QAction("About", self)
         self.about_action.triggered.connect(self._show_about)
         self.help_menu.addAction(self.about_action)
@@ -239,6 +262,7 @@ class MainWindow(QMainWindow):
             self.lang_btn.setText("🌐 EN")
 
     def _update_texts(self):
+        self.export_diagnostics_action.setText(tr("export_diagnostics"))
         if self.device is None:
             self.statusbar.showMessage(tr("ready"))
         self._update_fps_display()
@@ -532,7 +556,55 @@ class MainWindow(QMainWindow):
         msg.setIcon(QMessageBox.Information)
         msg.exec()
 
+    def _export_diagnostics(self):
+        if self._support_worker is not None:
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, tr("export_diagnostics"),
+            f"revo3-support-{time.strftime('%Y%m%d-%H%M%S')}.zip", "ZIP (*.zip)",
+        )
+        if not filename:
+            return
+        if not filename.lower().endswith(".zip"):
+            filename += ".zip"
+            if Path(filename).exists() and QMessageBox.question(
+                self, tr("export_diagnostics"), tr("diagnostics_replace").format(path=filename),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            ) != QMessageBox.Yes:
+                return
+        snapshot = {
+            "connected": self.device is not None,
+            "mock_type": self.mock_type,
+            "connection": self.connection_panel.get_connection_info(),
+            "device_labels": {key: label.text() for key, label in self.connection_panel.info_labels.items()},
+            "fps": list(self._last_fps_tuple),
+        }
+        log_paths = []
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.FileHandler):
+                handler.flush()
+                log_paths.extend(Path(handler.baseFilename + suffix) for suffix in ("", ".1", ".2")
+                                 if Path(handler.baseFilename + suffix).is_file())
+        self.export_diagnostics_action.setEnabled(False)
+        self._support_worker = SupportExportWorker(filename, snapshot, log_paths, self)
+        self._support_worker.finished.connect(self._on_support_export_finished)
+        self._support_worker.start()
+
+    def _on_support_export_finished(self):
+        worker = self._support_worker
+        self._support_worker = None
+        self.export_diagnostics_action.setEnabled(True)
+        if worker.failed:
+            QMessageBox.warning(self, tr("export_diagnostics"), tr("diagnostics_failed"))
+        else:
+            self.statusbar.showMessage(tr("diagnostics_saved") + worker.filename, 10000)
+        worker.deleteLater()
+
     def closeEvent(self, event):
+        if self._support_worker is not None:
+            self.statusbar.showMessage(tr("diagnostics_wait"), 5000)
+            event.ignore()
+            return
         if not self.connection_panel.shutdown_worker():
             self.connection_panel.status_label.setText("Stopping connection task...")
             event.ignore()

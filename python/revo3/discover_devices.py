@@ -69,7 +69,7 @@ async def main():
     check_sdk()
     parser = argparse.ArgumentParser(description="Discover Revo3 devices")
     parser.add_argument("--scan-all", action="store_true", help="Return every detected Revo3 device")
-    parser.add_argument("--verbose", action="store_true", help="Enable SDK info logs while scanning")
+    parser.add_argument("--verbose", action="store_true", help="Enable SDK debug logs while scanning")
     parser.add_argument("--port", help="Limit detection to a serial port or CANFD adapter/interface")
     parser.add_argument("--slave-id", type=lambda value: int(value, 0), help="Probe only one slave ID, e.g. 0x7E")
     parser.add_argument(
@@ -83,7 +83,7 @@ async def main():
     parser.add_argument("--protocol", choices=("auto", "modbus", "canfd"), default="auto")
     args = parser.parse_args()
 
-    configure_example_logging(sdk.LogLevel.Info if args.verbose else sdk.LogLevel.Warn)
+    configure_example_logging(sdk.LogLevel.Debug if args.verbose else sdk.LogLevel.Warn)
 
     manager = sdk.Manager()
     devices = await manager.discover(
@@ -95,14 +95,12 @@ async def main():
         canfd_data_baudrate=parse_canfd_data_baudrate(args.canfd_data_baudrate),
     )
 
-    devices = [device for device in devices if revo3_uses_motor_api(device.model)]
-
     if not devices:
         print("No Revo3 device detected.")
         await manager.close()
         return 1
 
-    print(f"Found {len(devices)} Revo3 device(s):")
+    print(f"Found {len(devices)} responding endpoint(s):")
     for index, device in enumerate(devices, start=1):
         side_val = (
             getattr(device.hand_side, "name", str(device.hand_side))
@@ -118,7 +116,18 @@ async def main():
             f"fw={device.firmware_version or 'unknown'}"
         )
 
-    hand = await manager.connect(devices[0])
+    supported_devices = [device for device in devices if revo3_uses_motor_api(device.model)]
+    if len(supported_devices) != len(devices):
+        print(
+            "Some endpoints responded, but their model is unavailable or unsupported. "
+            "This does not mean the transport received no response. "
+            "Initialization is skipped for those endpoints."
+        )
+    if not supported_devices:
+        await manager.close()
+        return 2
+
+    hand = await manager.connect(supported_devices[0])
     info = hand.device_info
     firmware = hand.firmware_info
     print("\nInitialized first device and read device info:")

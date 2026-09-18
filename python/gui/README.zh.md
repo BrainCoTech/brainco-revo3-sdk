@@ -25,6 +25,9 @@ Windows PowerShell 使用 `py -3.10 -m venv .venv` 创建环境，并运行 `.ve
 
 ## 运行
 
+安装后可以从任意目录运行 `revo3-gui`。先执行 `revo3-gui --check` 检查依赖能否导入，
+再用 `revo3-gui --mock` 检查界面；两者均不连接硬件。下面的脚本命令仍可从仓库根目录运行。
+
 ```bash
 python python/gui/main.py
 python python/gui/main.py --revo3-modbus
@@ -38,6 +41,25 @@ python python/gui/main.py --mock revo3-hp-ft-touch
 普通 Revo3 触觉界面仅在 `hand.touch.layout` 可用时显示。SDK 无法识别底层寄存器映射时保持 fail-closed，GUI 不提供手动覆盖。
 
 对于 `hp_fingertip_ft`，GUI 显示力、力矩、合力、状态和清零控件，不显示热力图；该布局的 `point_count=0`，数据帧返回 `points=None`。仅声明了点阵数据的 `hp_*` 布局显示热力图。
+
+## 日志与诊断导出
+
+通过 **Help > 导出诊断包...** 保存 ZIP，内容包括操作系统、Python 和依赖版本、
+缓存的连接信息与设备标签、界面 FPS，以及当前会话最多三个日志文件（每个保留末尾 2 MiB）。
+导出在后台执行，不发送设备命令；导出完成后才能关闭窗口。
+ZIP 可能包含设备序列号、端口名和日志中的本地路径，分享前请检查内容。
+不收集环境变量、固件文件或已录制的传感器数据集。
+
+界面无法启动时，运行 `revo3-gui --diagnostics support.zip`，或
+`python python/gui/main.py --diagnostics support.zip`。
+该离线命令无需 GUI 依赖，只导出环境元数据。
+
+GUI 日志默认目录：macOS 为 `~/Library/Logs/BrainCo/Revo3`，Windows 为
+`%LOCALAPPDATA%/BrainCo/Revo3/logs`，Linux 为 `$XDG_STATE_HOME/brainco/revo3/logs`
+（未设置时使用 `~/.local/state/brainco/revo3/logs`）。可用 `REVO3_LOG_DIR` 指定其他目录。
+日志使用 UTC 时间，每个文件达到 2 MiB 时轮转，每个会话保留两份备份。
+历史会话日志不会自动删除，不再需要时可自行清理。启动失败、未捕获的 Python 异常和线程异常会写入日志；
+原生崩溃与操作系统强制终止不在此异常捕获范围内。
 
 ## 触觉采样与绘制
 

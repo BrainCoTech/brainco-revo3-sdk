@@ -230,3 +230,71 @@ kill -9 <PID>
 ```
 
 Always ensure `hand.close()` and `manager.close()` are called on application exit, and handle `SIGINT` (Ctrl+C) signals appropriately to release underlying OS file descriptors cleanly.
+
+## Motion demonstrations
+
+Four C++17 entrypoints provide opposition, finger functions, gesture dance, and
+classic sine servo motion. They preview offline unless `--run` is supplied.
+The C++ executables do not invoke Python. Build them with `make -C examples/c`.
+
+```bash
+./c/build/demo/opposition_demo
+./c/build/demo/finger_function_demo
+./c/build/demo/gesture_dance_demo
+./c/build/demo/servo_classic_demo
+
+# Replace the endpoint and address with the intended device.
+./c/build/demo/gesture_dance_demo --port brainco:0 --slave-id 127 --side right --run
+```
+
+The candidate poses match the Python defaults, including 60/60/45 degree wave
+amplitudes, overlapping continuous finger pulses, and delayed finger flexion
+in opposition. Poses are not calibrated fingertip contact coordinates. A 21-joint
+layout and the requested hand side are required. Left-hand mechanical clearance
+still requires separate validation.
+
+Common options: `--tempo`, `--repeat`, `--feedback-tolerance-deg` (0..2 degrees),
+and `--skip-joints` (comma-separated logical indices, for example `2,12,20`).
+Skipped joints receive zero Kp, Kd, velocity and feedforward current; they do not
+actively hold position. Only explicitly excluded stall faults are tolerated.
+New faults stop the sequence rather than expanding the exclusions automatically.
+Software stop and zero-force mode must be resolved separately before running.
+No fault clearing or automatic recovery is performed.
+
+All four C++ demos use host MIT streaming. Every target is checked against device
+limits; transitions are lengthened to respect speed limits. Health is checked
+between steps and approximately every 250 ms. The requested send interval is
+10 ms, with a 500 ms command timeout; this is not a realtime guarantee.
+Normal completion returns to the bounded initial pose and checks a 5 degree
+return-error threshold on non-excluded joints. Intermediate tracking is not
+an arrival guarantee. Exceptions or interruption close the session and attempt
+software stop; they do not execute an automatic return motion.
+
+Classic servo defaults to 0..60 degrees, 0.75 Hz, three cycles and a critically
+damped filter at 25 rad/s. It supports `--minimum`, `--maximum`, `--frequency`,
+`--cycles`, and `--omega` (zero disables filtering). It controls the twelve
+four-finger flexion joints, excluding explicitly skipped joints. Unlike the
+Python classic entrypoint, this C++ example has no custom joint selection,
+send-rate option, JSON profile loading, or relax-on-finish option. Gains are
+fixed at Kp=1, Kd=0.1. `--tempo` scales transitions, not sine frequency.
+
+
+On 2026-09-18, all four C++ entrypoints completed an empty-hand run on a right
+21-joint hand with controller firmware 0.1.1 over BrainCo CANFD. J2, J12 and J20
+were explicitly excluded. Maximum return errors were 0.85 degrees (dance),
+1.47 degrees (opposition), 0.73 degrees (finger functions at tempo 2.5), and
+0.96 degrees (classic at 0..60 degrees, 0.75 Hz, three cycles). These are return
+checks for that run, not whole-trajectory tracking, contact, or all-joint acceptance.
+
+The standalone opposition demo now retains the later approach trials: index
+thumb targets `[73,45,40,10,15]` degrees and finger flexion `[75,65,50]`;
+other fingers use thumb `[70,40,35,10,15]` and flexion `[70,60,45]`.
+After 0.6 seconds of thumb alignment, the first 90% of flexion takes 1.2 seconds and the final 10% takes 0.35 seconds, followed by a 0.5-second hold and 0.8-second release. Device speed limits may extend these durations.
+These trials excluded J2/J12/J20, so the configured J20 target was not actuated.
+Index clearance improved but remains uncalibrated; the other three fingertips
+still remain far apart. The dance opposition pose is unchanged. The earlier
+return-error results above refer to the previous profile, not these saved values.
+
+Fast defaults retain 0.8-second general transitions, 0.35-second individual and collective lateral swings with two repetitions, and the smooth 6.5-second overlapping wave. Middle/ring lateral targets are +/-12 degrees; pinky is -12/+7 and index is -7/+12 degrees. Saved opposition endpoint angles are unchanged. Both languages use the same generated pose table.
+
+Final fast-profile rerun on 2026-09-18 used native SDK 2.0.2, firmware 0.1.1 and explicit exclusions J2/J12/J16/J20. All four entries completed; maximum return errors were 0.75 degrees (finger), 0.31 (opposition), 0.49 (dance), and 1.85 (classic). Thumb rotation was not actuated, so opposition/contact and all-joint acceptance remain unverified.

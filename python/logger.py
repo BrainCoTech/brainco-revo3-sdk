@@ -2,18 +2,19 @@ import logging
 import colorlog
 import datetime
 import os
+from logging.handlers import RotatingFileHandler
 
 # Custom time formatter, outputs RFC3339 format
 class RFC3339Formatter(colorlog.ColoredFormatter):
     def formatTime(self, record, datefmt=None):
         # Create RFC3339 format timestamp, e.g.: 2025-07-24T02:04:23.466388Z
-        dt = datetime.datetime.fromtimestamp(record.created)
+        dt = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
         return dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 # Create file formatter (without color)
 class PlainRFC3339Formatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
-        dt = datetime.datetime.fromtimestamp(record.created)
+        dt = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
         return dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 # Console log format (with color, shows full path)
@@ -65,11 +66,15 @@ console_handler.setFormatter(console_formatter)
 
 # Create file handler
 # Ensure logs directory exists
-os.makedirs('logs', exist_ok=True)
+log_directory = os.environ.get("REVO3_LOG_DIR", "logs")
+os.makedirs(log_directory, exist_ok=True)
 
 # Generate the shared Python and SDK log filename with a timestamp.
-log_filename = f"logs/revo3_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]}.log"
-file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+log_filename = os.path.join(log_directory, f"revo3_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]}_{os.getpid()}.log")
+if os.environ.get("REVO3_LOG_DIR"):
+    file_handler = RotatingFileHandler(log_filename, maxBytes=2 * 1024 * 1024, backupCount=2, encoding='utf-8')
+else:
+    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
 file_handler.setFormatter(file_formatter)
 
 # Add handlers to logger

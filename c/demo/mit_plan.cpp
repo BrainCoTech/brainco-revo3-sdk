@@ -31,13 +31,17 @@ constexpr double kQuinticPeakRateFactor = 1.875;
 
 void print_usage(const char *program) {
   std::printf(
-      "Usage: %s [PORT] [--port PORT] [--slave-id ID] --run\n",
+      "Usage: %s [PORT] [--port PORT] [--slave-id ID] "
+      "[--initial-position-tolerance-deg DEG] --run\n"
+      "Initial position tolerance defaults to 0 degrees; the trajectory "
+      "returns to the measured initial position.\n",
       program);
 }
 
 struct ProgramOptions {
   bool run = false;
   bool help = false;
+  double initial_position_tolerance_deg = 0.0;
   revo3::DiscoveryOptions discovery;
 };
 
@@ -58,6 +62,15 @@ ProgramOptions parse_options(int argc, char **argv) {
         throw std::invalid_argument("slave ID must be in the range 0..247");
       }
       options.discovery.slave_id = static_cast<std::uint8_t>(value);
+    } else if (std::strcmp(argv[index], "--initial-position-tolerance-deg") == 0 &&
+               index + 1 < argc) {
+      const std::string text = argv[++index];
+      std::size_t consumed = 0;
+      const double value = std::stod(text, &consumed);
+      if (consumed != text.size() || !std::isfinite(value) || value < 0.0) {
+        throw std::invalid_argument("initial position tolerance must be finite and nonnegative");
+      }
+      options.initial_position_tolerance_deg = value;
     } else if (argv[index][0] == '-') {
       throw std::invalid_argument(std::string("unknown or incomplete option: ") +
                                   argv[index]);
@@ -158,12 +171,33 @@ int main(int argc, char **argv) {
       if (!std::isfinite(minimum) || !std::isfinite(maximum) ||
           minimum >= maximum) {
         throw std::runtime_error("Invalid configured position limits for J" +
-                                 std::to_string(joint));
+                                 std::to_string(joint) + ": limits=[" +
+                                 std::to_string(minimum) + ", " +
+                                 std::to_string(maximum) + "] deg");
+      }
+      const auto feedback_details =
+          "J" + std::to_string(joint) + ": initial=" +
+          std::to_string(initial[joint]) + " deg, limits=[" +
+          std::to_string(minimum) + ", " + std::to_string(maximum) + "] deg";
+      if (!std::isfinite(initial[joint])) {
+        throw std::runtime_error("Invalid initial feedback for " + feedback_details);
       }
       if (initial[joint] < minimum || initial[joint] > maximum) {
-        throw std::runtime_error(
-            "Initial feedback is outside the configured position range for J" +
-            std::to_string(joint));
+        const bool below_minimum = initial[joint] < minimum;
+        const float excess = below_minimum ? minimum - initial[joint]
+                                           : initial[joint] - maximum;
+        const auto message =
+            "Initial feedback is outside the configured position range for " +
+            feedback_details + (below_minimum ? ", below minimum by "
+                                             : ", above maximum by ") +
+            std::to_string(excess) + " deg";
+        if (excess > options.initial_position_tolerance_deg) {
+          throw std::runtime_error(message);
+        }
+        std::fprintf(stderr,
+                     "Warning: %s; accepted with initial position tolerance %.4f deg. "
+                     "The trajectory starts from and returns to this measured position.\n",
+                     message.c_str(), options.initial_position_tolerance_deg);
       }
       target[joint] = minimum + 0.5f * (maximum - minimum);
       const double distance = target[joint] - initial[joint];

@@ -1,6 +1,6 @@
 # Revo3 SDK API 参考手册
 
-> API 版本：2.0.1
+> API 版本：2.0.2
 >
 > 语言说明：简体中文（`zh-CN`）| [English (en-US)](REVO3_API.en-US.md)
 
@@ -553,7 +553,7 @@ await hand.motion.replay_hand(hand_trajectory, dt=0.01, kp=1.0, kd=0.1)
 
 ### 4.2 State 状态读取 API
 
-`HandState` 包含每个电机的 `operating_states`、position、velocity 和 current。高频状态读取覆盖输入寄存器 2000..2110，不读取低频诊断区。位置单位为 deg，速度单位为 rpm，电流单位为 mA。逐电机故障码、系统状态和全局错误码从 `HealthSnapshot` 读取。读取失败时调用返回 `SdkError`。
+`HandState` 包含每个电机的 `operating_states`、position、velocity 和 current。高频状态读取覆盖输入寄存器 2000..2110，不读取低频诊断区。位置单位为 deg，速度单位为 rpm，电流单位为 mA。逐电机原始状态码、系统状态和全局错误码从 `HealthSnapshot` 读取。读取失败时调用返回 `SdkError`。
 
 State 还包含一个接收 `timestamp`。Linux SocketCAN 使用最后一个状态响应的 `SO_TIMESTAMPNS` 内核软件时间，其他 CANFD 和 Modbus 路径记录 SDK 完成读取的时间。只有 `clock` 相同的 timestamp 才能比较。它不是固件采样时间，也不能用于跨设备同步。
 
@@ -592,7 +592,8 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 | `value_mode()` / `set_value_mode()` | ✓ | ✓ | — |
 | `tare()` | ✓ | ✓ | ✓ |
 | `cancel_tare()` / `tare_status()` | — | ✓ | — |
-| `point_counts()` / `restart()` | — | ✓ | — |
+| `point_counts()` | ✓ | ✓ | — |
+| `restart()` | — | ✓ | — |
 
 `value_mode()` / `set_value_mode()` 对外仅提供 `Adc` (0) 与 `Force` (2)。`mt_*` 寄存器 `4024` 的值 `1` 未使用，不属于公开枚举。表格用于快速判断基础能力，具体参数、返回值和组合布局行为以本节后续契约为准。
 
@@ -607,6 +608,8 @@ SDK 公开原始触觉数据，并使用 `TouchLayout` 和统一 `TouchFrame` �
 `TouchLayout.regions` 只保存区域与 `module_ids` 分组；`TouchLayout.modules` 保存完整 module 级布局，包括 `module_id`、`region`、`region_index`、`signals`、`point_count` 和 `layout_id`。其中 `layout_id` 是公开的 schema key，用来描述模块布局和能力。`TouchSignal` 包含 `TouchPoint`、`Force3D`、`Torque2D` 和 `ResultantForce`。模组状态由每帧必有的 `sample_state` 统一表达，不作为可选信号。`LegacyForceSummary` 是读取模式，不属于单模组信号，因此不加入 `TouchSignal`。`TouchFrame` 和 `TouchLayout` 不暴露 `TouchPayloadType`。`TouchReadMode`（`4023`）仅用于 `mt_*` 模组：`PointArray` (0) 返回点阵数据，点值类型由 `4024` 的 `Adc` (0) / `Force` (2) 决定；`LegacyForceSummary` (1) 返回二次标定区域合力值，仅兼容少量已发货设备，后续将删除。新应用不应形成依赖；`mx_*` 使用自己的 `output_mode`。该寄存器不是 layout 标识。其他触觉协议不保证存在该寄存器或该语义。无法识别触觉寄存器映射时，`snapshot()` 返回不支持错误。
 
 `mt_*` 固件可能在写 ACK 后延迟应用 `read_mode` 或 `value_mode`。对应 setter 在返回成功前会回读目标寄存器，最长等待 5 秒；因此成功返回后的下一帧可以按新模式解释。设备明确拒绝写入时返回 `NotApplied`，超时或回读失败时不假定模式已经切换。
+
+`mt_*` 模组实际点数通过保持寄存器 `4037~4047`（功能码 `0x03`）读取，顺序为手掌、拇指指尖、拇指指腹，再依次为食指至小指的指尖和指腹。手掌当前支持 DV2 的 36 点和 DV3 的 71 点。SDK 在当前连接首次需要点阵布局时读取并缓存 11 个点数，`TouchLayout.modules[*].point_count`、`layout_id` 和 `TouchFrame.modules[*].points` 长度均使用该结果；返回 0 的模块不继续读取点阵，并在帧中报告为不可用。若点数寄存器读取失败，但旧版控制寄存器 `4023` 仍可读取，SDK 判定为旧固件并在当前连接回退到原有固定点数。若两次读取均失败，SDK 按通信故障返回，不静默回退。
 
 公开操作参数统一使用 `module_index`，取值为目标模块的公开 `module_id`。Revo3 SDK 2.0 将 `module_id` 定义为本次布局内稳定的逻辑模组 ID。纯 `mt_*` / `mx_*` 布局下 `module_id` 为 0~10 密集编号，且与 `TouchLayout.modules`、`TouchFrame.modules` 的数组下标一致；组合拓扑下 `module_id` 采用与协议物理 ID 对齐的稀疏编号（手掌 0、`hp_*` 指尖奇数 1/3/5/7/9、指腹偶数 2/4/6/8/10），而 `TouchLayout.modules` 和 `TouchFrame.modules` 数组按指尖、指腹、手掌顺序紧凑排列，数组下标与 `module_id` 不再一致，应用必须按 `module_id` 匹配模块，不得用数组位置代替。该规则适用于 `TouchLayout`、`TouchFrame` 和区域分组。底层寄存器的其他私有编号只存在于 SDK 私有路由层，不接受应用直接传入，也不写入公开帧。新增硬件拓扑必须先在私有路由层完成映射，不得改变既有 2.0 公开 module ID。自定义布局必须与 SDK 支持的规范布局逐字段一致（包括 `modules` 顺序与 `module_id`），否则在设备请求前返回参数错误。
 
@@ -739,9 +742,9 @@ Touch
 - `read_mode` / `set_read_mode`：适用于包含 `mt_*` 的布局。
 - `value_mode` / `set_value_mode`：适用于包含 `mt_*` 或 `mx_*` 的布局，对外仅提供 `Adc` (0) 与 `Force` (2)。
 - `tare`：按当前布局路由到支持的模组；`cancel_tare` 和 `tare_status` 仅在底层协议提供对应状态机时可用。
-- `point_counts` / `restart`：当前仅包含 `mx_*` 的布局可用。传入 `module_index` 时使用公开 module ID。
+- `point_counts`：包含 `mt_*` 或 `mx_*` 的布局可用；`restart` 仅包含 `mx_*` 的布局可用。传入 `module_index` 时使用公开 module ID。
 
-`point_counts()` 当前依赖 `mx_*` 元数据寄存器；布局不包含 `mx_*` 时返回 `UnsupportedCapability`。C ABI 的 `revo3_device_touch_get_layout()` 在布局包含 `mx_*` 模组时主动刷新运行时点数，并通过 `CRevo3TouchLayout.modules[*].point_count` 返回；其他触觉模组直接返回已知布局点数。触觉模组序列号统一从 `hand.device_info.touch_serial_numbers` 或 C ABI 的 `CRevo3DeviceInfo.touch_serial_numbers` 读取；未提供序列号寄存器的协议返回空列表，不使用占位值。
+`point_counts()` 支持 `mt_*` 和 `mx_*` 元数据寄存器；布局不包含这两类点阵模组时返回 `UnsupportedCapability`。C ABI 的 `revo3_device_touch_get_layout()` 会主动刷新布局中的运行时点数，并通过 `CRevo3TouchLayout.modules[*].point_count` 返回。触觉模组序列号统一从 `hand.device_info.touch_serial_numbers` 或 C ABI 的 `CRevo3DeviceInfo.touch_serial_numbers` 读取；未提供序列号寄存器的协议返回空列表，不使用占位值。
 
 触觉模组 SN 从 `hand.device_info.touch_serial_numbers` 读取。
 
@@ -749,11 +752,11 @@ Touch
 
 Health 按职责分为：
 
-- **系统健康快照**：`hand.health.snapshot()`，读取逐电机故障码、系统状态、电流、电压、功率、温度和安全状态。
+- **系统健康快照**：`hand.health.snapshot()`，读取逐电机原始状态码、系统状态、电流、电压、功率、温度和安全状态。
 - **电机诊断**：`motor_module_temperatures_c()`、`motor_online_mask()`，读取逐模组温度和在线状态。
 - **故障处理**：`clear_motor_faults()`，清除设备当前可清除的电机故障。
 
-`HealthSnapshot` 是只读诊断信息，包含系统状态、全局错误码、电流、电压、功率、系统温度、21 个电机的原始故障码、故障电机数量和 `safety_state`。逐电机故障码来自输入寄存器 2120..2140，与高频 `HandState` 分开采集。逐电机模组温度和在线 bitmask 属于健康诊断查询，通过 `hand.health.motor_module_temperatures_c()` 和 `hand.health.motor_online_mask()` 读取。这些值当前不重复内嵌到 `HealthSnapshot`。完整保护状态及其 `SafetyState` 映射仍需固件语义和真机异常测试确认。
+`HealthSnapshot` 是只读诊断信息，包含系统状态、全局错误码、电流、电压、功率、系统温度、21 个电机的原始状态码、故障电机数量和 `safety_state`。逐电机状态码来自输入寄存器 2120..2140，同时包含故障位和非故障状态位，与高频 `HandState` 分开采集。Bit 11 表示运行中，`0x0800` 不计入故障电机数量；`0x0900` 表示运行中且存在堵转。Bit 5 表示校准失败，Bit 9 表示校准中，这两个位适用于 0.4 及以上版本的电机固件；校准中不计入故障。逐电机模组温度和在线 bitmask 属于健康诊断查询，通过 `hand.health.motor_module_temperatures_c()` 和 `hand.health.motor_online_mask()` 读取。这些值当前不重复内嵌到 `HealthSnapshot`。完整保护状态及其 `SafetyState` 映射仍需固件语义和真机异常测试确认。
 
 `HealthSnapshot` 和 `SafetyState` 均为通过普通 Modbus RTU / CANFD 链路采集、聚合的软件级诊断，不是功能安全状态，不得直接作为 ISO 13849 PL、IEC 61508 SIL、安全 PLC、Emergency Stop（紧急停止）回路或 STO 的判定证据。有明确错误时，`SafetyState` 返回 `Faulted`；信息不足时返回 `Unknown`。Software Stop（软件停止）和 Servo 超时仅提供软件层级的控制降级，不具备硬件级功能安全承诺。现场安全保护必须由系统风险评估确定的独立安全链路承担。
 
@@ -826,6 +829,8 @@ Config 按职责分为：
 
 - `hand.config.snapshot()` 返回 `DeviceConfig`，包含 `slave_id`、RS485 波特率、设备开关、保护电流、位置与速度限制以及 `persistence_scope`。`hand.config` 还提供逐项命名的 setter，不提供会同时覆盖无关字段的批量更新。固件是配置持久化的唯一事实来源。
 - `hand.config.runtime_options` 返回 `RuntimeOptions`，包含 `state_subscription_period_ms`（默认 20）、`touch_subscription_period_ms`（默认 20）、`health_subscription_period_ms`（默认 1000）和 `servo_command_timeout_ms`（默认 100）。这些参数只更新当前进程，不写入设备。调用者也可以在创建订阅或流式控制会话时按场景指定参数；拉取间隔不是设备采样周期或固定频率承诺。
+拇指规格中的 MCP、PIP、DIP 分别对应 SDK 的 J20（CMC Flex，0～75°）、J17（MCP，−10～90°）、J18（IP，−20～90°）。SDK 逻辑顺序与通道映射不变；默认限位只初始化本地缓存，连接后由设备读回值覆盖，不自动写入设备。
+
 - 通信参数使用 `Rs485Baudrate` / `CanFdBaudrate` 枚举设置。C ABI 对应符号为 `revo3_device_set_rs485_baudrate()` / `revo3_device_set_canfd_baudrate()`。
 - SDK 不提供 `SafetyConfig`。固件已有的限制不在 SDK 中重复定义。
 
@@ -1070,7 +1075,7 @@ Touch API 按职责分为：读取与订阅、布局配置、模组启停、读�
 
 #### 模组信息与维护
 
-- `point_counts()`：读取 `mx_*` 运行时点数。
+- `point_counts()`：读取 `mt_*` 或 `mx_*` 运行时点数。
 - `restart(module_index=None)`：重启 `mx_*` 模组。
 - `hand.device_info.touch_serial_numbers`：读取已发现的触觉模组序列号；C ABI 从 `CRevo3DeviceInfo.touch_serial_numbers` 读取。
 
@@ -1095,7 +1100,8 @@ Touch 操作按当前协议能力路由；不支持的组合在发送请求前�
 | `set_value_mode()` / `value_mode()` | 支持 | 支持 | 不支持 |
 | `tare()` | 支持 | 支持 | 支持 |
 | `cancel_tare()` / `tare_status()` | 不支持 | 支持 | 不支持（协议未提供对应寄存器） |
-| `point_counts()` / `restart()` | 不支持 | 支持 | 不支持 |
+| `point_counts()` | 支持 | 支持 | 不支持 |
+| `restart()` | 不支持 | 支持 | 不支持 |
 
 C ABI 对应的 Touch 符号为：
 
@@ -1169,8 +1175,8 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `voltage_v` | `float` | 系统母线电压 (V)，由寄存器原始值除以 100 得到，分辨率为 0.01 V |
 | `power_w` | `float` | 系统总功率 (W)，由寄存器原始值除以 100 得到，分辨率为 0.01 W |
 | `temperature_c` | `int` | 主控芯片/板级温度 (°C) |
-| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | 21 个电机的原始故障码，来自输入寄存器 2120..2140 |
-| `faulted_motor_count` | `int` | 当前存在故障码的电机总数 |
+| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | 21 个电机的原始状态码，来自输入寄存器 2120..2140；字段名为兼容保留，值中同时包含故障位和非故障状态位 |
+| `faulted_motor_count` | `int` | 当前至少有一个已定义故障位置位的电机总数 |
 | `safety_state` | [`SafetyState`](#safetystate-枚举) | 系统安全诊断状态 (`Normal` / `RecoveryRequired` / `Faulted` / `Unknown`) |
 | `observed_at` | [`Timestamp`](#timestamp) | 观察与采样时刻时间戳 |
 

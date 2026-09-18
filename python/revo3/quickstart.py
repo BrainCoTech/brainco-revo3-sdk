@@ -11,6 +11,7 @@ REVO3_MOTOR_FAULT_MASK = (
     | (1 << 2)
     | (1 << 3)
     | (1 << 4)
+    | (1 << 5)
     | (1 << 8)
 )
 
@@ -26,6 +27,7 @@ def parse_motor_fault_code(code: int) -> str:
     if code & (1 << 2): flags.append("UnderVoltage")
     if code & (1 << 3): flags.append("OverTemp")
     if code & (1 << 4): flags.append("CurrentSpike")
+    if code & (1 << 5): flags.append("CalibrationFailed")
     if code & (1 << 8): flags.append("Stalled")
     return "|".join(flags) if flags else f"0x{code:04X}"
 

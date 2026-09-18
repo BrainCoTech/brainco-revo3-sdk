@@ -87,6 +87,9 @@ class MockRevo3MotorStatusData:
         self.positions = list(positions or [0.0] * REVO3_ULTRA_JOINT_COUNT)[:REVO3_ULTRA_JOINT_COUNT]
         self.velocities = list(velocities or [0.0] * REVO3_ULTRA_JOINT_COUNT)[:REVO3_ULTRA_JOINT_COUNT]
         self.currents = list(currents or [0.0] * REVO3_ULTRA_JOINT_COUNT)[:REVO3_ULTRA_JOINT_COUNT]
+        self.positions_deg = self.positions
+        self.velocities_rpm = self.velocities
+        self.currents_ma = self.currents
         self.fault_codes = [0] * REVO3_ULTRA_JOINT_COUNT
         self.temperatures = [34.0] * REVO3_ULTRA_JOINT_COUNT
         self.speeds = self.velocities

@@ -31,6 +31,10 @@ and activate it with `.venv\Scripts\Activate.ps1`.
 
 ## Run
 
+After installation, `revo3-gui` works from any directory. Run `revo3-gui --check`
+to check dependency imports without opening devices, then `revo3-gui --mock`
+to verify the interface. The commands below remain available from the repository root.
+
 ```bash
 python python/gui/main.py
 python python/gui/main.py --revo3-modbus
@@ -44,6 +48,28 @@ python python/gui/main.py --mock revo3-hp-ft-touch
 The regular Revo3 touch UI is shown only when `hand.touch.layout` is available. If the SDK cannot identify the underlying register mapping, it fails closed; the GUI does not provide a manual override.
 
 For `hp_fingertip_ft`, the GUI shows force, torque, resultant force, status, and tare controls without a heatmap because the layout declares `point_count=0` and frames return `points=None`. The heatmap is shown only for `hp_*` layouts that declare point-array data.
+
+## Logs and Diagnostics
+
+Choose **Help > Export Diagnostics...** to save a ZIP containing OS, Python and
+dependency versions, cached connection/device labels, displayed FPS, and up to
+three current-session log files (last 2 MiB each). Export runs in the background
+and does not issue device commands. Wait for export to finish before closing.
+The ZIP can contain device serial numbers, port names, and local paths from logs;
+review it before sharing. It does not collect environment variables, firmware
+images, or recorded sensor datasets.
+
+If the GUI cannot start, run `revo3-gui --diagnostics support.zip` or
+`python python/gui/main.py --diagnostics support.zip`. This offline
+command works without GUI dependencies and exports environment metadata only.
+
+GUI logs use `~/Library/Logs/BrainCo/Revo3` on macOS,
+`%LOCALAPPDATA%/BrainCo/Revo3/logs` on Windows, and
+`${XDG_STATE_HOME:-~/.local/state}/brainco/revo3/logs` on Linux.
+Set `REVO3_LOG_DIR` to override the directory. Logs use UTC timestamps and rotate
+at 2 MiB with two backups per session. Older sessions are retained; remove them
+when no longer needed. Uncaught Python/worker exceptions and startup failures
+are logged; native crashes and operating-system termination are not covered.
 
 ## Touch Sampling and Rendering
 

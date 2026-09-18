@@ -50,6 +50,11 @@ class I18n(QObject):
 
 # English translations aligned with SDK 2.x public API & models
 TRANSLATIONS_EN = {
+    "export_diagnostics": "Export Diagnostics...",
+    "diagnostics_failed": "Could not save the diagnostic ZIP. Check the destination and application log.",
+    "diagnostics_saved": "Diagnostics saved: ",
+    "diagnostics_replace": "The file already exists. Replace it?\n{path}",
+    "diagnostics_wait": "Please wait for the diagnostic export to finish, then close again.",
     # Main window
     "app_title": "BC Revo3 SDK GUI",
     "menu_file": "File",
@@ -579,6 +584,11 @@ TRANSLATIONS_EN = {
 
 # Chinese translations aligned with SDK 2.x public API & models
 TRANSLATIONS_ZH = {
+    "export_diagnostics": "导出诊断包...",
+    "diagnostics_failed": "无法保存诊断 ZIP，请检查保存目录和应用日志。",
+    "diagnostics_saved": "诊断包已保存：",
+    "diagnostics_replace": "文件已存在，是否替换？\n{path}",
+    "diagnostics_wait": "请等待诊断导出完成后再关闭窗口。",
     # Main window
     "app_title": "BC Revo3 SDK 控制台",
     "menu_file": "文件",

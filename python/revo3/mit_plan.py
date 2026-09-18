@@ -86,10 +86,36 @@ async def run(args: argparse.Namespace) -> None:
             minimum = config.joint_min_position_deg[joint]
             maximum = config.joint_max_position_deg[joint]
             if not (math.isfinite(minimum) and math.isfinite(maximum) and minimum < maximum):
-                raise RuntimeError(f"Invalid configured position limits for joint {joint}")
-            if not minimum <= initial_positions[joint] <= maximum:
                 raise RuntimeError(
-                    f"Initial feedback for joint {joint} is outside the configured position range"
+                    f"Invalid configured position limits for J{joint}: "
+                    f"limits=[{minimum:.4f}, {maximum:.4f}] deg"
+                )
+            if not math.isfinite(initial_positions[joint]):
+                raise RuntimeError(
+                    f"Invalid initial feedback for J{joint}: "
+                    f"initial={initial_positions[joint]} deg, "
+                    f"limits=[{minimum:.4f}, {maximum:.4f}] deg"
+                )
+            if not minimum <= initial_positions[joint] <= maximum:
+                below_minimum = initial_positions[joint] < minimum
+                excess = (
+                    minimum - initial_positions[joint]
+                    if below_minimum
+                    else initial_positions[joint] - maximum
+                )
+                message = (
+                    f"Initial feedback for J{joint} is outside the configured position range: "
+                    f"initial={initial_positions[joint]:.4f} deg, "
+                    f"limits=[{minimum:.4f}, {maximum:.4f}] deg, "
+                    f"{'below minimum' if below_minimum else 'above maximum'} by {excess:.4f} deg"
+                )
+                if excess > args.initial_position_tolerance_deg:
+                    raise RuntimeError(message)
+                print(
+                    f"Warning: {message}; accepted with initial position tolerance "
+                    f"{args.initial_position_tolerance_deg:.4f} deg. "
+                    "The trajectory starts from and returns to this measured position.",
+                    flush=True,
                 )
             target_positions[joint] = minimum + args.range_fraction * (maximum - minimum)
             distance = target_positions[joint] - initial_positions[joint]
@@ -168,6 +194,15 @@ def parse_args() -> argparse.Namespace:
         help="Target fraction within the configured position range (0.05 to 0.95)",
     )
     parser.add_argument("--duration", type=float, default=0.8, help="Seconds per segment")
+    parser.add_argument(
+        "--initial-position-tolerance-deg",
+        type=float,
+        default=0.0,
+        help=(
+            "Allowed initial position overrun in degrees (default: 0); "
+            "the trajectory returns to the measured initial position"
+        ),
+    )
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--frequency", type=int, default=100)
     parser.add_argument("--command-timeout-ms", type=int, default=100)
@@ -188,6 +223,8 @@ def parse_args() -> argparse.Namespace:
         and MIN_RANGE_FRACTION <= args.range_fraction <= MAX_RANGE_FRACTION
         and math.isfinite(args.duration)
         and args.duration > 0.0
+        and math.isfinite(args.initial_position_tolerance_deg)
+        and args.initial_position_tolerance_deg >= 0.0
         and math.isfinite(args.kp)
         and 0.0 <= args.kp <= 10.0
         and math.isfinite(args.kd)

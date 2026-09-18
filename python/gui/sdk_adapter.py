@@ -226,13 +226,13 @@ class GuiHandAdapter:
         return snapshot
 
     async def get_all_joint_positions(self, _slave_id=None):
-        return list((await self.get_motor_status_data()).positions)
+        return list((await self.get_motor_status_data()).positions_deg)
 
     async def get_all_joint_velocities(self, _slave_id=None):
-        return list((await self.get_motor_status_data()).velocities)
+        return list((await self.get_motor_status_data()).velocities_rpm)
 
     async def get_all_joint_currents(self, _slave_id=None):
-        return list((await self.get_motor_status_data()).currents)
+        return list((await self.get_motor_status_data()).currents_ma)
 
     async def get_all_joint_operating_states(self, _slave_id=None):
         return list((await self.get_motor_status_data()).operating_states)

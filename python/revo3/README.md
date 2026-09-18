@@ -37,6 +37,18 @@ Before opening a ServoSession, the example validates the initial feedback and
 generated quintic peak velocity against the configured position and speed
 envelopes. The command timeout must be at least one requested send period.
 
+## Motion Demonstrations
+
+Four standalone demos share `demo_motion.py`: `opposition_demo.py` (thumb
+opposition), `finger_function_demo.py` (flexion, grasp shapes and lateral
+motion), `gesture_dance_demo.py` (pose choreography), and
+`servo_classic_demo.py` (the classic sinusoidal servo motion using 2.x).
+They default to offline preview without importing the SDK. Pass `--run` to
+connect and move a matching 21-joint hand. Candidate poses require hardware
+calibration, including separate left/right checks. See
+[MOTION_DEMOS.zh-CN.md](MOTION_DEMOS.zh-CN.md) for commands, editable profiles,
+limits, interruption behavior and the differences from 1.x servo.
+
 ## Specialized Workflows
 
 | File | Purpose |

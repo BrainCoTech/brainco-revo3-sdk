@@ -1,6 +1,6 @@
 # Revo3 SDK API Reference Manual
 
-> API Version: 2.0.1
+> API Version: 2.0.2
 >
 > Language: [简体中文 (`zh-CN`)](REVO3_API.zh-CN.md) | English (`en-US`)
 
@@ -604,7 +604,7 @@ finally:
 
 The SDK exposes raw touch data through `TouchLayout` and a normalized `TouchFrame`. Applications can read:
 
-- `mt_*`: Contains 11 palm/finger modules, supporting `PointArray` and the 42-value `LegacyForceSummary` compatibility mode used by a small number of shipped devices; the latter is scheduled for removal.
+- `mt_*`: Contains 11 palm/finger modules. Runtime point counts are read from holding registers `4037~4047`; supported palm layouts include the 36-point DV2 and 71-point DV3 variants. It supports `PointArray` and the 42-value `LegacyForceSummary` compatibility mode used by a small number of shipped devices; the latter is scheduled for removal.
 - `mx_*`: Contains 11 palm/finger modules; point counts are dynamically read from device input registers.
 - `hp_*`: Contains 5 fingertip modules. `hp_fingertip_48` provides a 48-point array, 3D force, 2D torque, and module resultant force; `hp_fingertip_ft` omits the point array and provides the latter three signals only.
 - `hp_* + mt_*`: Hybrid tactile topology; the 11 public modules use sparse numbering aligned with the protocol physical IDs: module 0 is the `mt_*` palm, modules 1/3/5/7/9 are `hp_*` fingertips, and modules 2/4/6/8/10 are `mt_*` fingerpads. Fingertip and fingerpad indices each increase from Thumb to Pinky (1/3/5/7/9 and 2/4/6/8/10 respectively); unused `mt_*` fingertip channels in the hybrid hardware are not exposed.
@@ -728,17 +728,17 @@ These methods route by the active layout. An unsupported operation returns `Unsu
 - `read_mode` and `set_read_mode` apply to layouts containing `mt_*`.
 - `value_mode` and `set_value_mode` expose only `Adc` (0) and `Force` (2). Register value `1` is unused for `mt_*` and is not part of the public enum.
 - `tare` routes to every supported touch family. `cancel_tare` and `tare_status` require a protocol that provides a cancellable tare state machine.
-- `point_counts` and `restart` currently require a layout containing `mx_*`.
+- `point_counts` requires a layout containing `mt_*` or `mx_*`; `restart` requires `mx_*`.
 
 Public operation arguments use `module_index`, taking the public `module_id` of the target module. `TouchLayout` and `TouchFrame` expose `module_id` as a stable logical module ID; hybrid layouts use sparse IDs aligned with the protocol physical IDs, so `module_id` does not equal the `modules` array position there. Other register-level private IDs remain private to the routing layer and are never accepted by the public API.
 
 Touch-module serial numbers are read from `hand.device_info.touch_serial_numbers`.
 
-`point_counts()` currently depends on `mx_*` metadata registers and returns `UnsupportedCapability` when the layout does not contain `mx_*`. When a layout contains `mx_*` modules, the C ABI `revo3_device_touch_get_layout()` refreshes their runtime point counts and returns them through `CRevo3TouchLayout.modules[*].point_count`; other touch families return their known layout point counts directly. Touch-module serial numbers are read from `hand.device_info.touch_serial_numbers` or `CRevo3DeviceInfo.touch_serial_numbers`. Protocols without module serial-number registers report an empty list rather than fabricated values.
+`point_counts()` supports `mt_*` and `mx_*` metadata registers and returns `UnsupportedCapability` when the layout contains neither array family. For `mt_*`, the SDK reads holding registers `4037~4047` once per connection and uses the returned counts for layout IDs and point-array read lengths. A zero count suppresses the corresponding array read. If this new register block fails but established register `4023` remains readable, the SDK treats the device as older firmware and uses the legacy fixed counts for that connection; failure of both reads remains a communication error. The C ABI `revo3_device_touch_get_layout()` refreshes runtime counts and returns them through `CRevo3TouchLayout.modules[*].point_count`. Touch-module serial numbers are read from `hand.device_info.touch_serial_numbers` or `CRevo3DeviceInfo.touch_serial_numbers`. Protocols without module serial-number registers report an empty list rather than fabricated values.
 
 ### 4.4 Health & Safety State API
 
-`HealthSnapshot` is read-only. It contains system state, the global error code, current, voltage, power, system temperature, per-motor fault codes, faulted motor count, and `safety_state`. Per-motor fault codes come from input registers 2120..2140 and are collected separately from the high-rate `HandState`. Motor-module temperatures and the online bitmask are health diagnostic queries exposed as `hand.health.motor_module_temperatures_c()` and `hand.health.motor_online_mask()`. These values are not duplicated in `HealthSnapshot`. A complete protection-state model and its `SafetyState` mapping still require confirmed firmware semantics and on-device fault-path tests.
+`HealthSnapshot` is read-only. It contains system state, the global error code, current, voltage, power, system temperature, per-motor raw status codes, faulted motor count, and `safety_state`. Per-motor status codes come from input registers 2120..2140, contain both fault and non-fault status bits, and are collected separately from the high-rate `HandState`. Bit 11 means Running, so `0x0800` does not count as a motor fault; `0x0900` means Running and Stalled. Bit 5 means CalibrationFailed and bit 9 means Calibrating on motor firmware 0.4 and later; Calibrating does not count as a fault. Motor-module temperatures and the online bitmask are health diagnostic queries exposed as `hand.health.motor_module_temperatures_c()` and `hand.health.motor_online_mask()`. These values are not duplicated in `HealthSnapshot`. A complete protection-state model and its `SafetyState` mapping still require confirmed firmware semantics and on-device fault-path tests.
 
 `HealthSnapshot` and `SafetyState` are software-level diagnostics collected and aggregated over ordinary Modbus RTU or CAN FD links. They are not functional-safety states and must not be used as evidence for an ISO 13849 PL or IEC 61508 SIL claim, a safety PLC decision, an Emergency Stop circuit, or STO. Confirmed errors produce `SafetyState::Faulted`; insufficient information produces `SafetyState::Unknown`. Software Stop and Servo timeout provide software-level control degradation only. Independent safety measures must be selected through the system risk assessment.
 
@@ -815,6 +815,8 @@ Python and C++ callers must pass a defined enum member. An unknown integer is an
 
 - `hand.config.snapshot()` returns `DeviceConfig`, including `slave_id`, RS485 baud rate, device switches, protection current, position and speed limits, and `persistence_scope`. `hand.config` also provides explicitly named per-setting setters, but no bulk update that overwrites unrelated fields. Firmware is the sole source of truth for persistence.
 - `hand.config.runtime_options` returns `RuntimeOptions`, and `hand.config.set_runtime_options(...)` updates process-local defaults for pull interval and streaming-control send timeout. They are not written to the device. A pull interval is not a device sample period or a fixed-rate guarantee.
+The thumb specification names MCP, PIP, and DIP correspond to SDK joints J20 (CMC Flex, 0 to 75 degrees), J17 (MCP, -10 to 90 degrees), and J18 (IP, -20 to 90 degrees). Logical order and channel mapping are unchanged. Default limits initialize the local cache only; device readback replaces them without writing device configuration.
+
 - Communication settings use the `Rs485Baudrate` / `CanFdBaudrate` enums. The corresponding C ABI symbols are `revo3_device_set_rs485_baudrate()` / `revo3_device_set_canfd_baudrate()`.
 
 ```python
@@ -1015,7 +1017,7 @@ Python configuration fields and constructor defaults are:
 
 #### Module Information and Maintenance
 
-- `point_counts()`: read the `mx_*` runtime point counts.
+- `point_counts()`: read `mt_*` or `mx_*` runtime point counts.
 - `restart(module_index=None)`: restart `mx_*` modules.
 - `hand.device_info.touch_serial_numbers`: read the discovered touch module serial numbers; the C ABI exposes them through `CRevo3DeviceInfo.touch_serial_numbers`.
 
@@ -1080,7 +1082,7 @@ Read-only system health and safety status snapshot:
 | `voltage_v` | `float` | Bus voltage (V), converted from the raw register value with 0.01 V resolution |
 | `power_w` | `float` | Total system power (W), converted from the raw register value with 0.01 W resolution |
 | `temperature_c` | `int` | Controller chip/board temperature (°C) |
-| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | Per-joint raw fault codes from input registers 2120..2140 |
+| `motor_fault_codes` | `list[int]` / `std::array<int, 21>` | Per-joint raw status codes from input registers 2120..2140; the compatibility field name includes both fault and non-fault status bits |
 | `faulted_motor_count` | `int` | Number of motors with a non-zero defined fault code |
 | `safety_state` | [`SafetyState`](#safetystate-enum) | System safety diagnostic state (`Normal` / `RecoveryRequired` / `Faulted` / `Unknown`) |
 | `observed_at` | [`Timestamp`](#timestamp) | Observation timestamp |
