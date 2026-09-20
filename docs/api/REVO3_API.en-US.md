@@ -1,6 +1,6 @@
 # Revo3 SDK API Reference Manual
 
-> API Version: 2.0.3
+> API Version: 2.0.6
 >
 > Language: [简体中文 (`zh-CN`)](REVO3_API.zh-CN.md) | English (`en-US`)
 
@@ -1050,6 +1050,7 @@ Python configuration fields and constructor defaults are:
 | `await hand.config.set_global_protect_current(ma)` | `hand.config().set_global_protect_current(ma)` | `None` | Set global protection current |
 | `await hand.config.set_joint_protect_current(i, ma)` | `hand.config().set_joint_protect_current(i, ma)` | `None` | Set joint protection current |
 | `await hand.config.set_joint_position_limits(i, min, max)` | `hand.config().set_joint_position_limits(i, min, max)` | `None` | Set joint position limits |
+| `await hand.config.set_all_joint_position_limits(minimums, maximums)` | `hand.config().set_all_joint_position_limits(minimums, maximums)` | `None` | Validate and synchronize all 21 joint position limits |
 | `await hand.config.set_joint_speed_limits(i, min, max)` | `hand.config().set_joint_speed_limits(i, min, max)` | `None` | Set joint speed limits |
 | `await hand.config.set_rs485_baudrate(baudrate)` | `hand.config().set_rs485_baudrate(baudrate)` | `None` / `void` | Set RS485 baudrate |
 | `await hand.config.set_canfd_baudrate(baudrate)` | `hand.config().set_canfd_baudrate(baudrate)` | `None` / `void` | Set CANFD baudrate |

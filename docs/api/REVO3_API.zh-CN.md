@@ -1,6 +1,6 @@
 # Revo3 SDK API 参考手册
 
-> API 版本：2.0.3
+> API 版本：2.0.6
 >
 > 语言说明：简体中文（`zh-CN`）| [English (en-US)](REVO3_API.en-US.md)
 
@@ -1032,7 +1032,7 @@ Python 配置字段和构造默认值如下；字段均可在调用 `configure()
 Config、Calibration 和 Maintenance 也按以下职责归类：
 
 - **Config 通信参数**：`set_rs485_baudrate()`、`set_canfd_baudrate()`。
-- **Config 位置/速度限制**：`set_joint_position_limits()`、`set_joint_speed_limits()`。
+- **Config 位置/速度限制**：`set_joint_position_limits()`、`set_all_joint_position_limits()`、`set_joint_speed_limits()`。
 - **Calibration 零位与默认参数**：`zero_positions()`、`set_zero_positions()`、`reset_finger_defaults()`。
 - **Maintenance 升级生命周期**：`abort_firmware_update()`、`reset_firmware_update_state()`；`reboot()` 和 `update_firmware()` 返回 `OperationHandle`，其他维护操作返回 awaitable。
 
@@ -1143,6 +1143,7 @@ C ABI 的 `module_index` 使用负数表示全部模组；非负值表示公开 
 | `await hand.config.set_global_protect_current(ma)` | `hand.config().set_global_protect_current(ma)` | `None` | 设置全局保护电流 |
 | `await hand.config.set_joint_protect_current(i, ma)` | `hand.config().set_joint_protect_current(i, ma)` | `None` | 设置单关节保护电流 |
 | `await hand.config.set_joint_position_limits(i, min, max)` | `hand.config().set_joint_position_limits(i, min, max)` | `None` | 设置单关节位置限制 |
+| `await hand.config.set_all_joint_position_limits(minimums, maximums)` | `hand.config().set_all_joint_position_limits(minimums, maximums)` | `None` | 校验并同步整手 21 个关节位置限制 |
 | `await hand.config.set_joint_speed_limits(i, min, max)` | `hand.config().set_joint_speed_limits(i, min, max)` | `None` | 设置单关节速度限制 |
 | `await hand.config.set_rs485_baudrate(baudrate)` | `hand.config().set_rs485_baudrate(baudrate)` | `None` / `void` | 设置 RS485 波特率 |
 | `await hand.config.set_canfd_baudrate(baudrate)` | `hand.config().set_canfd_baudrate(baudrate)` | `None` / `void` | 设置 CANFD 波特率 |
