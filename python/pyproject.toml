@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "revo3-examples"
-version = "2.0.6"
+version = "2.1.0"
 description = "BrainCo Revo3 SDK Python Examples"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "bc-revo3-sdk>=2.0.6,<3",
+    "bc-revo3-sdk>=2.1.0,<3",
     "colorlog>=6.9.0",
     "pyserial>=3.5",
 ]
