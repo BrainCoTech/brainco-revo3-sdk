@@ -1,5 +1,7 @@
 # Revo3 动作演示
 
+[English](MOTION_DEMOS.md) | [简体中文](MOTION_DEMOS.zh-CN.md)
+
 四个 Python 示例使用 SDK 2.x 的 `Manager -> Hand` 接口，面向 21 关节 Revo3 手型。
 默认只做离线预览，不导入 SDK、不连接设备。实机执行必须加 `--run`。
 当前内置姿态是空载候选值，已做部分右手实机试跑，尚未完成全关节验收；左右手需要分别校准，不能仅凭角度限位判断手指之间不会干涉。
@@ -14,22 +16,22 @@
 从仓库根目录运行；实机执行前需激活已安装兼容 SDK 的 Python 环境。
 
 ```bash
-# 离线预览，不需要安装 SDK
+# Offline preview; the SDK is not required
 python python/revo3/opposition_demo.py
 python python/revo3/finger_function_demo.py
 python python/revo3/gesture_dance_demo.py
 python python/revo3/servo_classic_demo.py
 
-# 导出右手对掌候选姿态；文件已存在时拒绝覆盖
+# Export a candidate right-hand opposition profile; refuse to overwrite an existing file
 python python/revo3/opposition_demo.py --side right --export-profile /tmp/opposition-right.json
 
-# 编辑并检查姿态后，指定设备执行；替换端口和设备地址
+# After reviewing the profile, replace the port and device address
 python python/revo3/opposition_demo.py --profile /tmp/opposition-right.json --side right --port /dev/ttyUSB0 --slave-id 127 --run
 
-# 手势舞：减速至 0.5 倍，执行两遍
+# Run the gesture dance twice at 0.5x speed
 python python/revo3/gesture_dance_demo.py --tempo 0.5 --repeat 2 --side right --port /dev/ttyUSB0 --slave-id 127 --run
 
-# 经典 servo：仅食指屈伸关节，0~30°，0.25 Hz，4 个周期
+# Run four classic servo cycles on the index flexion joints at 0-30 degrees and 0.25 Hz
 python python/revo3/servo_classic_demo.py --joints 13 14 15 --maximum 30 --frequency 0.25 --cycles 4 --side right --port /dev/ttyUSB0 --slave-id 127 --run
 ```
 

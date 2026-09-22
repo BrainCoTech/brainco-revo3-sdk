@@ -45,8 +45,9 @@ motion), `gesture_dance_demo.py` (pose choreography), and
 They default to offline preview without importing the SDK. Pass `--run` to
 connect and move a matching 21-joint hand. Candidate poses require hardware
 calibration, including separate left/right checks. See
-[MOTION_DEMOS.zh-CN.md](MOTION_DEMOS.zh-CN.md) for commands, editable profiles,
-limits, interruption behavior and the differences from 1.x servo.
+[MOTION_DEMOS.md](MOTION_DEMOS.md) ([简体中文](MOTION_DEMOS.zh-CN.md)) for
+commands, editable profiles, limits, interruption behavior and the differences
+from 1.x servo.
 
 ## Specialized Workflows
 

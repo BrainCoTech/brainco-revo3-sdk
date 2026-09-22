@@ -1,5 +1,7 @@
 # BrainCo Revo3 SDK 2.x Python Examples
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 All examples use the 2.x `Manager -> Hand` object API.
 
 ## Install

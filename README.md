@@ -1,5 +1,7 @@
 # BrainCo Revo3 SDK Examples
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 This repository provides example applications and integration code demonstrating how to control BrainCo Revo3 dexterous hands using the SDK.
 
 ## Layout

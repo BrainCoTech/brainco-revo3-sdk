@@ -1,5 +1,7 @@
 # Revo3 C and C++ Examples
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 The public C ABI header is C11 compatible. C++ examples require a C++17
 compliant compiler or newer and use the RAII wrapper from
 `dist/include/revo3/revo3.hpp`. They are Revo3-only and cover Modbus and CANFD
