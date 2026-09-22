@@ -14,6 +14,18 @@ BASE_URL="https://app.brainco.cn/universal/bc-revo3-sdk/libs/${LIB_VERSION}"
 echo_y() { printf "\033[1;33m%s\033[0m\n" "$*"; } # Yellow
 echo_r() { printf "\033[0;31m%s\033[0m\n" "$*"; } # Red
 
+has_current_public_header() {
+  local header="$1"
+  [ -f "$header" ] &&
+    grep -Fq "FINGERTIP_FORCE_TORQUE_MODULE_COUNT" "$header"
+}
+
+has_current_cpp_header() {
+  local header="$1"
+  [ -f "$header" ] &&
+    grep -Fq "result.product_code = detail::string_from(descriptor.product_code);" "$header"
+}
+
 # Determine platform and library name
 OS_TYPE=$(uname -s)
 ARCH=$(uname -m)
@@ -55,8 +67,8 @@ esac
 
 # Reuse an installation only when its version and required public artifacts match.
 if [ -f "$VERSION_FILE" ] && grep -Fqx "[bc-revo3-sdk] Version: $LIB_VERSION" "$VERSION_FILE" && \
-  [ -f "$DIST_DIR/include/revo3-sdk.h" ] && \
-  [ -f "$DIST_DIR/include/revo3/revo3.hpp" ] && \
+  has_current_public_header "$DIST_DIR/include/revo3-sdk.h" && \
+  has_current_cpp_header "$DIST_DIR/include/revo3/revo3.hpp" && \
   [ -f "$DIST_DIR/$SDK_LIBRARY_RELATIVE" ]; then
   echo_y "[bc-revo3-sdk] (${LIB_VERSION}) is already installed"
   cat "$VERSION_FILE"
@@ -134,6 +146,14 @@ if [ ! -f "$STAGED_DIST/include/revo3-sdk.h" ] || \
   [ ! -f "$STAGED_DIST/include/revo3/revo3.hpp" ] || \
   [ ! -f "$STAGED_DIST/$SDK_LIBRARY_RELATIVE" ]; then
   echo_r "Error: Downloaded SDK package is missing required public artifacts."
+  exit 1
+fi
+if ! has_current_public_header "$STAGED_DIST/include/revo3-sdk.h"; then
+  echo_r "Error: Downloaded SDK package contains an outdated public C header."
+  exit 1
+fi
+if ! has_current_cpp_header "$STAGED_DIST/include/revo3/revo3.hpp"; then
+  echo_r "Error: Downloaded SDK package contains an outdated public C++ header."
   exit 1
 fi
 

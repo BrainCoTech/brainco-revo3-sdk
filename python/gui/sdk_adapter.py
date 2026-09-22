@@ -14,10 +14,10 @@ TOUCH_VALUE_MODE_ADC = 0
 TOUCH_VALUE_MODE_FORCE = 2
 
 
-def touch_value_mode_options(has_mt_touch: bool, has_mx_touch: bool):
+def touch_value_mode_options(has_pressure_array_touch: bool, has_high_density_matrix_touch: bool):
     """Return public TouchValueMode values supported by the active layout."""
     options = [("ADC", TOUCH_VALUE_MODE_ADC)]
-    if has_mt_touch or has_mx_touch:
+    if has_pressure_array_touch or has_high_density_matrix_touch:
         options.append(("Force", TOUCH_VALUE_MODE_FORCE))
     return options
 
@@ -836,12 +836,12 @@ class GuiHandAdapter:
         return await self.hand.config.set_canfd_baudrate(baudrate)
 
     async def get_touch_read_mode(self, _slave_id=None):
-        if not _has_touch_layout_prefix(self.touch_layout, "mt_"):
+        if not _has_touch_layout_prefix(self.touch_layout, "pressure_array_"):
             return None
         return await self.hand.touch.read_mode()
 
     async def set_touch_read_mode(self, _slave_id, mode):
-        if not _has_touch_layout_prefix(self.touch_layout, "mt_"):
+        if not _has_touch_layout_prefix(self.touch_layout, "pressure_array_"):
             return None
         mode = _to_sdk_enum(
             "TouchReadMode",
@@ -893,9 +893,9 @@ class GuiHandAdapter:
             force3d = getattr(module, "force3d", None)
             torque2d = getattr(module, "torque2d", None)
             resultant_force = getattr(module, "resultant_force_mn", None)
-            is_hp_module = layout_id.startswith("hp_")
+            is_fingertip_force_torque_module = layout_id.startswith("fingertip_force_torque_")
             if (
-                is_hp_module
+                is_fingertip_force_torque_module
                 or force3d is not None
                 or torque2d is not None
                 or resultant_force is not None
@@ -947,13 +947,13 @@ class GuiHandAdapter:
 
     async def get_touch_module_serial_number(self, slave_id, module):
         serial_numbers = await self.get_touch_module_serial_numbers(slave_id)
-        if _has_touch_layout_prefix(self.touch_layout, "mx_"):
+        if _has_touch_layout_prefix(self.touch_layout, "high_density_matrix_"):
             mapped = map_touch_metadata_by_public_module_id(
-                self.touch_layout, "mx_", serial_numbers, None
+                self.touch_layout, "high_density_matrix_", serial_numbers, None
             )
             serial_number = mapped[int(module)]
             if serial_number is None:
-                raise ValueError(f"module {module} is not an mx_* touch module")
+                raise ValueError(f"module {module} is not an high_density_matrix_* touch module")
             return serial_number
         return serial_numbers[int(module)]
 
@@ -999,7 +999,7 @@ class GuiHandAdapter:
         module_ids = [
             int(getattr(module, "module_id", 0) or 0)
             for module in modules
-            if str(getattr(module, "layout_id", "")).startswith("mx_")
+            if str(getattr(module, "layout_id", "")).startswith("high_density_matrix_")
         ]
         if not modules:
             module_ids = list(range(11))

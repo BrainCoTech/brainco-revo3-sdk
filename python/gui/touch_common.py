@@ -1,8 +1,8 @@
 """Touch Sensor Shared Components
 
 Common chart widgets, constants, and utilities used across all touch sensor panels:
-- mt_* piezoresistive array panels
-- hp_* fingertip force/torque panels
+- pressure_array_* piezoresistive array panels
+- fingertip_force_torque_* fingertip force/torque panels
 - TouchPanelRevo3 (Revo3 Tactile Arrays)
 """
 
@@ -25,10 +25,10 @@ from .styles import COLORS, is_dark_mode
 
 logger = logging.getLogger("revo3.vision_touch")
 
-# The hp_* product specification defines a 30 N Fz measurement range and a
+# The fingertip_force_torque_* product specification defines a 30 N Fz measurement range and a
 # 0.05 Nm Mx/My measurement range. Fx/Fy and Fn remain dynamically scaled.
-HP_FORCE_DISPLAY_BASELINE_MN = 30000.0
-HP_TORQUE_DISPLAY_BASELINE_NM = 0.05
+FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN = 30000.0
+FINGERTIP_FORCE_TORQUE_TORQUE_DISPLAY_BASELINE_NM = 0.05
 TEXT_UPDATE_INTERVAL_S = 0.1
 
 
@@ -770,11 +770,11 @@ class ForceCompassWidget(QWidget):
 
 
 # =============================================================================
-# hp_* Fingertip Module Card Widget
+# fingertip_force_torque_* Fingertip Module Card Widget
 # =============================================================================
 
 class HpForceTorqueModuleCard(QGroupBox):
-    """Card widget for displaying one hp_* 6D force/torque fingertip module.
+    """Card widget for displaying one fingertip_force_torque_* 6D force/torque fingertip module.
 
     Layout:
     - Top: Status + Sensor + prominent Zero button
@@ -814,7 +814,7 @@ class HpForceTorqueModuleCard(QGroupBox):
         self._last_chart_range_update = 0.0
         self._last_text_update = 0.0
 
-        self.setTitle(f"🖐️ {name} (hp_* Mod {module_idx} / TouchID {universal_id})")
+        self.setTitle(f"🖐️ {name} (fingertip_force_torque_* Mod {module_idx} / TouchID {universal_id})")
         self._setup_ui()
 
     def _setup_ui(self):
@@ -839,7 +839,7 @@ class HpForceTorqueModuleCard(QGroupBox):
         if self.on_zero_cb:
             zero_btn = QPushButton("🎯  当前指尖清零")
             zero_btn.setToolTip(
-                f"仅校准当前 HP 指尖模块：{self.module_name}"
+                f"仅校准当前 Fingertip Force/Torque 指尖模块：{self.module_name}"
             )
             zero_btn.setFixedHeight(34)
             zero_btn.setMinimumWidth(150)
@@ -876,7 +876,7 @@ class HpForceTorqueModuleCard(QGroupBox):
         # 2D Compass Dial
         self.compass = ForceCompassWidget(
             title=f"{self.module_name} Force Compass",
-            max_force=HP_FORCE_DISPLAY_BASELINE_MN,
+            max_force=FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN,
         )
         vis_row.addWidget(self.compass, 1)
 
@@ -892,8 +892,8 @@ class HpForceTorqueModuleCard(QGroupBox):
             self.ft_plot.setBackground('#0f172a')
             self.ft_plot.showGrid(x=True, y=True, alpha=0.2)
             self.ft_plot.setYRange(
-                -HP_FORCE_DISPLAY_BASELINE_MN,
-                HP_FORCE_DISPLAY_BASELINE_MN,
+                -FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN,
+                FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN,
             )
             self.ft_plot.setXRange(0, self.MAX_CHART_POINTS)
             self.ft_plot.setTitle("Force History", color='#94a3b8', size='9pt')
@@ -905,8 +905,8 @@ class HpForceTorqueModuleCard(QGroupBox):
             self.torque_plot.setBackground('#0f172a')
             self.torque_plot.showGrid(x=True, y=True, alpha=0.2)
             self.torque_plot.setYRange(
-                -HP_TORQUE_DISPLAY_BASELINE_NM,
-                HP_TORQUE_DISPLAY_BASELINE_NM,
+                -FINGERTIP_FORCE_TORQUE_TORQUE_DISPLAY_BASELINE_NM,
+                FINGERTIP_FORCE_TORQUE_TORQUE_DISPLAY_BASELINE_NM,
             )
             self.torque_plot.setXRange(0, self.MAX_CHART_POINTS)
             self.torque_plot.setTitle("Torque History", color='#94a3b8', size='9pt')
@@ -945,18 +945,18 @@ class HpForceTorqueModuleCard(QGroupBox):
         self.fx_lbl = QLabel("Fx: +0 mN")
         self.fy_lbl = QLabel("Fy: +0 mN")
         self.fz_lbl = QLabel("Fz: +0 mN")
-        self.mx_lbl = QLabel("Mx: +0.0000 Nm")
+        self.high_density_matrix_lbl = QLabel("Mx: +0.0000 Nm")
         self.my_lbl = QLabel("My: +0.0000 Nm")
         self.fn_lbl = QLabel("Fn: +0 mN")
 
-        for lbl in (self.fx_lbl, self.fy_lbl, self.fz_lbl, self.mx_lbl, self.my_lbl):
+        for lbl in (self.fx_lbl, self.fy_lbl, self.fz_lbl, self.high_density_matrix_lbl, self.my_lbl):
             lbl.setStyleSheet(lbl_style)
         self.fn_lbl.setStyleSheet(fn_style)
 
         grid.addWidget(self.fx_lbl, 0, 0)
         grid.addWidget(self.fy_lbl, 0, 1)
         grid.addWidget(self.fz_lbl, 0, 2)
-        grid.addWidget(self.mx_lbl, 0, 3)
+        grid.addWidget(self.high_density_matrix_lbl, 0, 3)
         grid.addWidget(self.my_lbl, 0, 4)
         grid.addWidget(self.fn_lbl, 0, 5)
         layout.addLayout(grid)
@@ -990,14 +990,14 @@ class HpForceTorqueModuleCard(QGroupBox):
             layout.addWidget(no_points_label)
 
     def update_payload(self, mod_payload, render_visuals=True, force_text=False):
-        """Update status, metrics, compass, chart, and heatmap from an hp_* payload."""
+        """Update status, metrics, compass, chart, and heatmap from an fingertip_force_torque_* payload."""
         if not mod_payload:
             return
 
         fx = getattr(mod_payload, "fx", 0.0)
         fy = getattr(mod_payload, "fy", 0.0)
         fz = getattr(mod_payload, "fz", 0.0)
-        mx_nm = getattr(mod_payload, "mx", 0.0)
+        high_density_matrix_nm = getattr(mod_payload, "mx", 0.0)
         my_nm = getattr(mod_payload, "my", 0.0)
         fn = getattr(mod_payload, "resultant_force_mn", 0.0)
 
@@ -1030,7 +1030,7 @@ class HpForceTorqueModuleCard(QGroupBox):
             self.fx_lbl.setText(f"Fx: {fx:+.1f} mN")
             self.fy_lbl.setText(f"Fy: {fy:+.1f} mN")
             self.fz_lbl.setText(f"Fz: {fz:+.1f} mN")
-            self.mx_lbl.setText(f"Mx: {mx_nm:+.4f} Nm")
+            self.high_density_matrix_lbl.setText(f"Mx: {high_density_matrix_nm:+.4f} Nm")
             self.my_lbl.setText(f"My: {my_nm:+.4f} Nm")
             self.fn_lbl.setText(f"Fn: {fn:+.1f} mN")
 
@@ -1038,14 +1038,14 @@ class HpForceTorqueModuleCard(QGroupBox):
             return
 
         # -- 2D Force Compass Update --
-        self.compass.set_values(fx, fy, fz, mx_nm, my_nm, fn)
+        self.compass.set_values(fx, fy, fz, high_density_matrix_nm, my_nm, fn)
 
         # -- 6D Chart Update --
         values = {
             "fx": fx,
             "fy": fy,
             "fz": fz,
-            "mx": mx_nm,
+            "mx": high_density_matrix_nm,
             "my": my_nm,
             "resultant_force_mn": fn,
         }
@@ -1070,7 +1070,7 @@ class HpForceTorqueModuleCard(QGroupBox):
                 ]
                 if force_vals:
                     force_abs = max(
-                        HP_FORCE_DISPLAY_BASELINE_MN,
+                        FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN,
                         max(abs(value) for value in force_vals) * 1.1,
                     )
                     self.ft_plot.setYRange(-force_abs, force_abs)
@@ -1082,7 +1082,7 @@ class HpForceTorqueModuleCard(QGroupBox):
                 ]
                 if torque_vals and self.torque_plot is not None:
                     torque_abs = max(
-                        HP_TORQUE_DISPLAY_BASELINE_NM,
+                        FINGERTIP_FORCE_TORQUE_TORQUE_DISPLAY_BASELINE_NM,
                         max(abs(value) for value in torque_vals) * 1.1,
                     )
                     self.torque_plot.setYRange(-torque_abs, torque_abs)

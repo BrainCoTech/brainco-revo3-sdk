@@ -7,39 +7,39 @@
 #include <thread>
 #include <vector>
 
-static revo3::TouchLayout build_hp_mt_layout() {
+static revo3::TouchLayout build_force_torque_pressure_array_layout() {
   revo3::TouchLayout layout;
-  std::vector<revo3::TouchSignal> hp_signals = {
+  std::vector<revo3::TouchSignal> fingertip_force_torque_signals = {
       revo3::TouchSignal::TouchPoint,     revo3::TouchSignal::Force3D,
       revo3::TouchSignal::Torque2D,       revo3::TouchSignal::ResultantForce,
   };
-  // 5 HP Fingertips (module_id: 1, 3, 5, 7, 9)
+  // 5 Fingertip Force/Torque Fingertips (module_id: 1, 3, 5, 7, 9)
   for (uint8_t i = 0; i < 5; ++i) {
     revo3::TouchModuleLayout mod{};
-    mod.layout_id = "hp_fingertip_48";
+    mod.layout_id = "fingertip_force_torque_48";
     mod.module_id = i * 2 + 1;
     mod.region = revo3::TouchRegion::Fingertip;
     mod.region_index = i;
-    mod.signals = hp_signals;
+    mod.signals = fingertip_force_torque_signals;
     mod.point_count = 48;
     layout.modules.push_back(mod);
   }
-  // 5 MT FingerPads (module_id: 2, 4, 6, 8, 10)
-  uint16_t mt_pad_counts[5] = {57, 52, 52, 52, 52};
+  // 5 Pressure Array FingerPads (module_id: 2, 4, 6, 8, 10)
+  uint16_t pressure_array_pad_counts[5] = {57, 52, 52, 52, 52};
   for (uint8_t i = 0; i < 5; ++i) {
     revo3::TouchModuleLayout mod{};
-    mod.layout_id = (i == 0) ? "mt_thumbpad_57" : "mt_fingerpad_52";
+    mod.layout_id = (i == 0) ? "pressure_array_thumb_pad_57" : "pressure_array_finger_pad_52";
     mod.module_id = (i + 1) * 2;
     mod.region = revo3::TouchRegion::FingerPad;
     mod.region_index = i;
     mod.signals = {revo3::TouchSignal::TouchPoint};
-    mod.point_count = mt_pad_counts[i];
+    mod.point_count = pressure_array_pad_counts[i];
     layout.modules.push_back(mod);
   }
-  // 1 MT Palm (module_id: 0)
+  // 1 Pressure Array Palm (module_id: 0)
   {
     revo3::TouchModuleLayout mod{};
-    mod.layout_id = "mt_palm_36";
+    mod.layout_id = "pressure_array_palm_36";
     mod.module_id = 0;
     mod.region = revo3::TouchRegion::Palm;
     mod.region_index = 0;
@@ -58,7 +58,11 @@ int main(int argc, char **argv) {
     revo3::DiscoveryOptions discovery;
     bool test_tare = false;
     for (int index = 1; index < argc; ++index) {
-      if (std::strcmp(argv[index], "--test-tare") == 0) {
+      if (std::strcmp(argv[index], "--help") == 0 ||
+          std::strcmp(argv[index], "-h") == 0) {
+        std::printf("Usage: %s [PORT] [--test-tare]\n", argv[0]);
+        return 0;
+      } else if (std::strcmp(argv[index], "--test-tare") == 0) {
         test_tare = true;
       } else {
         discovery.port = argv[index];
@@ -66,7 +70,7 @@ int main(int argc, char **argv) {
     }
 
     std::printf("=================================================================\n");
-    std::printf("      Revo3 C++ SDK HP + MT Hybrid Touch Verification Demo       \n");
+    std::printf("      Revo3 C++ SDK Fingertip Force/Torque + Pressure Array Hybrid Touch Verification Demo       \n");
     std::printf("=================================================================\n");
 
     revo3::Manager manager;
@@ -80,9 +84,9 @@ int main(int argc, char **argv) {
     const char *point_unit =
         value_mode == revo3::TouchValueMode::Force ? "mN" : "ADC";
 
-    // 1. Set HP + MT Hybrid Layout
-    std::printf("\n--- 1. Setting HP + MT Hybrid Layout (11 Modules) ---\n");
-    touch.set_layout(build_hp_mt_layout());
+    // 1. Set Fingertip Force/Torque + Pressure Array Hybrid Layout
+    std::printf("\n--- 1. Setting Fingertip Force/Torque + Pressure Array Hybrid Layout (11 Modules) ---\n");
+    touch.set_layout(build_force_torque_pressure_array_layout());
     const auto active_layout = touch.layout();
     std::printf("[OK] Registered layout with %zu modules, %zu regions\n",
                 active_layout.modules.size(), active_layout.regions.size());
@@ -101,7 +105,7 @@ int main(int argc, char **argv) {
                   static_cast<unsigned long long>(frame.sequence),
                   frame.modules.size());
       for (const auto &m : frame.modules) {
-        if (m.layout_id.rfind("hp_", 0) == 0) {
+        if (m.layout_id.rfind("fingertip_force_torque_", 0) == 0) {
           const char *fname = (m.region_index < 5) ? finger_names[m.region_index] : "Tip";
           std::printf("  [%-6s Tip] ID=%2u | Fx=%+7.1f Fy=%+7.1f Fz=%+7.1f mN | Mx=%+6.4f My=%+6.4f Nm | Fn=%7.1f mN | Pts=%zu\n",
                       fname, m.module_id,

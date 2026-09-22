@@ -65,10 +65,8 @@ Use one of `move_joint()`, `flex_finger()`, or `move_thumb()` instead when the
 application needs a narrower motion scope. The `quickstart` flags demonstrate
 each alternative without starting overlapping motions.
 
-`move_to()` returns immediately with a handle, so the C++ API does not need
-coroutines for the core motion path. A future C++20 async adapter should only be
-added after discovery, subscriptions, cancellation, and executor behavior are
-truly asynchronous end to end.
+`move_to()` returns immediately with a handle, so the core C++ motion path does
+not require coroutines.
 
 Build the pure C++ EtherCAT example on Linux:
 
@@ -105,11 +103,11 @@ Device discovery and examples:
 ```
 
 `touch_sensor` is read-only. On Ultra VisionTouch it reports only detected
-main-link `mt_*`/`mx_*` finger-pad and palm modules; independent vision tactile
+main-link pressure-array or high-density-array finger-pad and palm modules; independent vision tactile
 fingertips are outside this SDK snapshot.
 
 If the serial number and register 135 cannot identify an Ultra VisionTouch
-hand with an `mt_*` main-link array, apply confirmed session overrides:
+hand with a pressure-array main-link topology, apply confirmed session overrides:
 
 ```bash
 ./c/build/demo/touch_sensor --port /dev/ttyUSB0 \
@@ -117,7 +115,7 @@ hand with an `mt_*` main-link array, apply confirmed session overrides:
 ```
 
 Use `--layout vision-mx --mx-point-counts <11 comma-separated counts>` for a
-confirmed `mx_*` array. These overrides do not write device registers, and the
+confirmed high-density tactile array. These overrides do not write device registers, and the
 layout intentionally excludes the independent vision tactile fingertips.
 
 `firmware_update` is the standalone destructive maintenance workflow. It
@@ -135,7 +133,7 @@ envelope, stop the example before opening the ServoSession. The demo reuses
 `common/revo3_mit_plan.hpp`, which is also shared with the EtherCAT example,
 and prints periodic position feedback plus the measured command rate.
 
-`touch_hybrid` requires a confirmed `hp_*` + `mt_*` hardware layout. It changes
+`touch_hybrid` requires a confirmed fingertip force/torque and pressure-array hardware layout. It changes
 only the current SDK session's parsing layout by default. Pass `--test-tare`
 only when changing touch calibration state is intended.
 
@@ -225,7 +223,10 @@ To inspect and release the occupied serial port:
 # 1. Find process holding the serial port
 lsof /dev/tty.usbserial*
 
-# 2. Terminate the zombie process
+# 2. Ask the process to terminate cleanly
+kill <PID>
+
+# 3. If it does not exit, force termination
 kill -9 <PID>
 ```
 
@@ -279,22 +280,23 @@ send-rate option, JSON profile loading, or relax-on-finish option. Gains are
 fixed at Kp=1, Kd=0.1. `--tempo` scales transitions, not sine frequency.
 
 
-On 2026-09-18, all four C++ entrypoints completed an empty-hand run on a right
-21-joint hand with controller firmware 0.1.1 over BrainCo CANFD. J2, J12 and J20
-were explicitly excluded. Maximum return errors were 0.85 degrees (dance),
-1.47 degrees (opposition), 0.73 degrees (finger functions at tempo 2.5), and
-0.96 degrees (classic at 0..60 degrees, 0.75 Hz, three cycles). These are return
-checks for that run, not whole-trajectory tracking, contact, or all-joint acceptance.
-
-The standalone opposition demo now retains the later approach trials: index
+The standalone opposition demo uses these candidate targets: index
 thumb targets `[73,45,40,10,15]` degrees and finger flexion `[75,65,50]`;
 other fingers use thumb `[70,40,35,10,15]` and flexion `[70,60,45]`.
-After 0.6 seconds of thumb alignment, the first 90% of flexion takes 1.2 seconds and the final 10% takes 0.35 seconds, followed by a 0.5-second hold and 0.8-second release. Device speed limits may extend these durations.
-These trials excluded J2/J12/J20, so the configured J20 target was not actuated.
-Index clearance improved but remains uncalibrated; the other three fingertips
-still remain far apart. The dance opposition pose is unchanged. The earlier
-return-error results above refer to the previous profile, not these saved values.
+After 0.6 seconds of thumb alignment, the first 90% of flexion takes 1.2
+seconds and the final 10% takes 0.35 seconds, followed by a 0.5-second hold and
+0.8-second release. Device speed limits may extend these durations. These
+targets are uncalibrated candidate poses and do not guarantee fingertip contact.
+The dance opposition pose uses a separate target.
 
-Fast defaults retain 0.8-second general transitions, 0.35-second individual and collective lateral swings with two repetitions, and the smooth 6.5-second overlapping wave. Middle/ring lateral targets are +/-12 degrees; pinky is -12/+7 and index is -7/+12 degrees. Saved opposition endpoint angles are unchanged. Both languages use the same generated pose table.
+Default timing uses 0.8-second general transitions, 0.35-second individual and
+collective lateral swings with two repetitions, and a smooth 6.5-second
+overlapping wave. Middle/ring lateral targets are +/-12 degrees; pinky is
+-12/+7 and index is -7/+12 degrees. Python and C++ use the same generated pose
+table.
 
-Final fast-profile rerun on 2026-09-18 used native SDK 2.0.2, firmware 0.1.1 and explicit exclusions J2/J12/J16/J20. All four entries completed; maximum return errors were 0.75 degrees (finger), 0.31 (opposition), 0.49 (dance), and 1.85 (classic). Thumb rotation was not actuated, so opposition/contact and all-joint acceptance remain unverified.
+The default poses have received limited empty-hand validation on a right-hand
+device, but have not passed an acceptance run with all 21 joints active.
+Left-hand mechanical clearance, fingertip contact, object grasping, and holding
+behavior after connection close remain unverified. Start at a reduced tempo and
+calibrate candidate poses for the target hand before regular use.

@@ -1,10 +1,10 @@
-"""Verification script for Revo3 HP + MT Hybrid Touch sensors.
+"""Verification script for Revo3 Fingertip Force/Torque + Pressure Array Hybrid Touch sensors.
 
 Verifies:
-1. Touch layout configuration: 5 HP fingertips (3D force/torque + 48 pts) + 5 MT fingerpads (57/52 pts) + 1 MT palm (36 pts).
+1. Touch layout configuration: 5 Fingertip Force/Torque fingertips (3D force/torque + 48 pts) + 5 Pressure Array fingerpads (57/52 pts) + 1 Pressure Array palm (36 pts).
 2. Live hybrid touch snapshot reading.
-3. HP 5-fingertip force & torque vector parsing (Fx, Fy, Fz, Tx, Ty, Fn).
-4. MT 6-module tactile array reading with runtime ADC/mN unit detection.
+3. Fingertip Force/Torque 5-fingertip force & torque vector parsing (Fx, Fy, Fz, Tx, Ty, Fn).
+4. Pressure Array 6-module tactile array reading with runtime ADC/mN unit detection.
 5. Module enable state querying.
 6. Zero / Tare calibration execution and verification.
 7. Legacy read mode switching (PointArray <-> LegacyForceSummary).
@@ -40,31 +40,31 @@ def touch_read_mode(*names: str):
     raise RuntimeError(f"TouchReadMode does not provide any of: {', '.join(names)}")
 
 
-def build_hp_mt_layout() -> sdk.TouchLayout:
-    """Build canonical HP + MT hybrid touch layout."""
-    hp_signals = [
+def build_force_torque_pressure_array_layout() -> sdk.TouchLayout:
+    """Build canonical Fingertip Force/Torque + Pressure Array hybrid touch layout."""
+    fingertip_force_torque_signals = [
         sdk.TouchSignal.TouchPoint,
         sdk.TouchSignal.Force3D,
         sdk.TouchSignal.Torque2D,
         sdk.TouchSignal.ResultantForce,
     ]
     modules = []
-    # 5 HP Fingertips (0..4)
+    # 5 Fingertip Force/Torque Fingertips (0..4)
     for i in range(5):
         modules.append(
             sdk.TouchModuleLayout(
-                "hp_fingertip_48",
+                "fingertip_force_torque_48",
                 i * 2 + 1,
                 sdk.TouchRegion.Fingertip,
                 i,
-                hp_signals,
+                fingertip_force_torque_signals,
                 48,
             )
         )
-    # 5 MT FingerPads (5..9): Thumb (57), Index..Pinky (52)
-    mt_pad_counts = [57, 52, 52, 52, 52]
-    for i, count in enumerate(mt_pad_counts):
-        layout_id = "mt_thumbpad_57" if i == 0 else "mt_fingerpad_52"
+    # 5 Pressure Array FingerPads (5..9): Thumb (57), Index..Pinky (52)
+    pressure_array_pad_counts = [57, 52, 52, 52, 52]
+    for i, count in enumerate(pressure_array_pad_counts):
+        layout_id = "pressure_array_thumb_pad_57" if i == 0 else "pressure_array_finger_pad_52"
         modules.append(
             sdk.TouchModuleLayout(
                 layout_id,
@@ -75,10 +75,10 @@ def build_hp_mt_layout() -> sdk.TouchLayout:
                 count,
             )
         )
-    # 1 MT Palm (10): 36 points
+    # 1 Pressure Array Palm (10): 36 points
     modules.append(
         sdk.TouchModuleLayout(
-            "mt_palm_36",
+            "pressure_array_palm_36",
             0,
             sdk.TouchRegion.Palm,
             0,
@@ -90,7 +90,7 @@ def build_hp_mt_layout() -> sdk.TouchLayout:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Verify Revo3 HP + MT Hybrid Touch")
+    parser = argparse.ArgumentParser(description="Verify Revo3 Fingertip Force/Torque + Pressure Array Hybrid Touch")
     parser.add_argument("--protocol", choices=["canfd", "modbus", "auto"], default="canfd")
     parser.add_argument("--port", default=None, help="Port name (e.g. brainco:0 or /dev/ttyUSB0)")
     parser.add_argument("--slave-id", type=lambda x: int(x, 0), default=None, help="Slave ID (e.g. 0x7F or 127)")
@@ -115,7 +115,7 @@ async def run(args):
     manager = sdk.Manager()
     try:
         print("=" * 70)
-        print("Revo3 HP + MT Hybrid Touch Verification")
+        print("Revo3 Fingertip Force/Torque + Pressure Array Hybrid Touch Verification")
         print("=" * 70)
         print(f"Connecting to Revo3 device (protocol={args.protocol}, port={args.port}, slave_id={args.slave_id})...")
 
@@ -131,10 +131,10 @@ async def run(args):
         if endpoint is not None:
             print(f"     Transport: {enum_name(endpoint.protocol)} on {endpoint.port_name} (Slave ID: 0x{endpoint.slave_id:02X})")
 
-        # 1. Apply HP + MT Layout
-        print("\n--- 1. Applying HP + MT Hybrid Layout ---")
-        hp_mt_layout = build_hp_mt_layout()
-        await hand.touch.set_layout(hp_mt_layout)
+        # 1. Apply Fingertip Force/Torque + Pressure Array Layout
+        print("\n--- 1. Applying Fingertip Force/Torque + Pressure Array Hybrid Layout ---")
+        force_torque_pressure_array_layout = build_force_torque_pressure_array_layout()
+        await hand.touch.set_layout(force_torque_pressure_array_layout)
         active_layout = hand.touch.layout
         print(f"[OK] Layout registered: modules = {len(active_layout.modules)}")
         for reg in active_layout.regions:
@@ -172,14 +172,14 @@ async def run(args):
                 for m in raw_modules
             ))
 
-            # Parse hp_* fingertips directly from the public TouchFrame model.
-            print("  HP Fingertip Modules (3D Force & Torque):")
-            hp_modules = [
+            # Parse fingertip_force_torque_* fingertips directly from the public TouchFrame model.
+            print("  Fingertip Force/Torque Fingertip Modules (3D Force & Torque):")
+            fingertip_force_torque_modules = [
                 module
                 for module in raw_modules
-                if str(getattr(module, "layout_id", "")).startswith("hp_")
+                if str(getattr(module, "layout_id", "")).startswith("fingertip_force_torque_")
             ]
-            for mod in hp_modules:
+            for mod in fingertip_force_torque_modules:
                 region_index = int(getattr(mod, "region_index", 0))
                 fname = finger_names[region_index] if region_index < len(finger_names) else f"Tip {region_index}"
                 force = getattr(mod, "force3d", None)
@@ -199,14 +199,14 @@ async def run(args):
                     f"Points={len(points)} (max={max(points) if points else 0})"
                 )
 
-            # Parse MT modules (pads + palm) from the canonical module list.
-            print("  mt_* Piezoresistive Array Modules:")
-            mt_modules = [
+            # Parse Pressure Array modules (pads + palm) from the canonical module list.
+            print("  pressure_array_* Piezoresistive Array Modules:")
+            pressure_array_modules = [
                 module
                 for module in raw_modules
                 if enum_name(getattr(module, "region", "")) in ("Palm", "FingerPad")
             ]
-            for module in mt_modules:
+            for module in pressure_array_modules:
                 points = list(getattr(module, "points", []) or [])
                 if points:
                     active = sum(1 for value in points if value > 0)
@@ -235,9 +235,9 @@ async def run(args):
             print("[OK] Global tare command sent successfully.")
             await asyncio.sleep(0.1)
             frame_after = await hand.touch.snapshot()
-            print("Post-Tare HP Resultant Fn:")
+            print("Post-Tare Fingertip Force/Torque Resultant Fn:")
             for mod in frame_after.modules:
-                if not str(mod.layout_id).startswith("hp_"):
+                if not str(mod.layout_id).startswith("fingertip_force_torque_"):
                     continue
                 region_index = int(mod.region_index)
                 fname = finger_names[region_index] if region_index < len(finger_names) else f"Tip {region_index}"
@@ -282,7 +282,7 @@ async def run(args):
             print("[OK] PointArray mode restored.")
 
         print("\n" + "=" * 70)
-        print("[SUCCESS] Revo3 HP + MT Hybrid Touch verification complete!")
+        print("[SUCCESS] Revo3 Fingertip Force/Torque + Pressure Array Hybrid Touch verification complete!")
         print("=" * 70)
 
     finally:

@@ -6,24 +6,24 @@ import asyncio
 from bc_revo3_sdk import main_mod as sdk
 
 
-def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = None) -> sdk.TouchLayout | None:
+def build_standard_layout(layout_type: str, high_density_matrix_point_counts: list[int] | None = None) -> sdk.TouchLayout | None:
     norm = layout_type.lower().replace("+", "_").replace("-", "_")
     if norm in ("auto", "none"):
         return None
 
-    hp_signals = [
+    fingertip_force_torque_signals = [
         sdk.TouchSignal.TouchPoint,
         sdk.TouchSignal.Force3D,
         sdk.TouchSignal.Torque2D,
         sdk.TouchSignal.ResultantForce,
     ]
 
-    if norm in ("vision_mt", "vision_tips_mt_pads_mt_palm"):
+    if norm in ("vision_pressure_array", "vision_tips_pressure_array_pads_pressure_array_palm"):
         modules = []
         for i, count in enumerate([57, 52, 52, 52, 52]):
             modules.append(
                 sdk.TouchModuleLayout(
-                    "mt_thumbpad_57" if i == 0 else "mt_fingerpad_52",
+                    "pressure_array_thumb_pad_57" if i == 0 else "pressure_array_finger_pad_52",
                     (i + 1) * 2,
                     sdk.TouchRegion.FingerPad,
                     i,
@@ -33,7 +33,7 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
             )
         modules.append(
             sdk.TouchModuleLayout(
-                "mt_palm_36",
+                "pressure_array_palm_36",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -43,18 +43,18 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         )
         return sdk.TouchLayout(modules)
 
-    if norm in ("vision_mx", "vision_tips_mx_pads_mx_palm"):
-        if mx_point_counts is None or len(mx_point_counts) != 11:
+    if norm in ("vision_high_density_matrix", "vision_tips_high_density_matrix_pads_high_density_matrix_palm"):
+        if high_density_matrix_point_counts is None or len(high_density_matrix_point_counts) != 11:
             raise ValueError(
-                "vision_mx requires 11 physical module point counts; "
-                "pass --mx-point-counts when they cannot be read automatically"
+                "vision_high_density_matrix requires 11 physical module point counts; "
+                "pass --high-density-matrix-point-counts when they cannot be read automatically"
             )
         modules = []
         for i, physical_id in enumerate([2, 4, 6, 8, 10]):
-            count = mx_point_counts[physical_id]
+            count = high_density_matrix_point_counts[physical_id]
             modules.append(
                 sdk.TouchModuleLayout(
-                    f"mx_fingerpad_{count}",
+                    f"high_density_matrix_finger_pad_{count}",
                     physical_id,
                     sdk.TouchRegion.FingerPad,
                     i,
@@ -62,10 +62,10 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
                     count,
                 )
             )
-        palm_count = mx_point_counts[0]
+        palm_count = high_density_matrix_point_counts[0]
         modules.append(
             sdk.TouchModuleLayout(
-                f"mx_palm_{palm_count}",
+                f"high_density_matrix_palm_{palm_count}",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -75,22 +75,22 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         )
         return sdk.TouchLayout(modules)
 
-    if norm in ("hp_mt", "hp_tips_mt_pads"):
+    if norm in ("force_torque_pressure_array", "fingertip_force_torque_tips_pressure_array_pads"):
         modules = []
         for i in range(5):
             modules.append(
                 sdk.TouchModuleLayout(
-                    "hp_fingertip_48",
+                    "fingertip_force_torque_48",
                     i * 2 + 1,
                     sdk.TouchRegion.Fingertip,
                     i,
-                    hp_signals,
+                    fingertip_force_torque_signals,
                     48,
                 )
             )
-        mt_pad_counts = [57, 52, 52, 52, 52]
-        for i, count in enumerate(mt_pad_counts):
-            layout_id = "mt_thumbpad_57" if i == 0 else "mt_fingerpad_52"
+        pressure_array_pad_counts = [57, 52, 52, 52, 52]
+        for i, count in enumerate(pressure_array_pad_counts):
+            layout_id = "pressure_array_thumb_pad_57" if i == 0 else "pressure_array_finger_pad_52"
             modules.append(
                 sdk.TouchModuleLayout(
                     layout_id,
@@ -103,7 +103,7 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
             )
         modules.append(
             sdk.TouchModuleLayout(
-                "mt_palm_36",
+                "pressure_array_palm_36",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -113,17 +113,17 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         )
         return sdk.TouchLayout(modules)
 
-    if norm in ("hp_mx", "hp_tips_mx_pads"):
-        counts = mx_point_counts or [200, 80, 120, 80, 120, 80, 120, 80, 120, 80, 120]
+    if norm in ("force_torque_high_density_matrix", "fingertip_force_torque_tips_high_density_matrix_pads"):
+        counts = high_density_matrix_point_counts or [200, 80, 120, 80, 120, 80, 120, 80, 120, 80, 120]
         modules = []
         for i in range(5):
             modules.append(
                 sdk.TouchModuleLayout(
-                    "hp_fingertip_48",
+                    "fingertip_force_torque_48",
                     i * 2 + 1,
                     sdk.TouchRegion.Fingertip,
                     i,
-                    hp_signals,
+                    fingertip_force_torque_signals,
                     48,
                 )
             )
@@ -132,7 +132,7 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
             count = counts[phys_idx] if phys_idx < len(counts) else 80
             modules.append(
                 sdk.TouchModuleLayout(
-                    f"mx_fingerpad_{count}",
+                    f"high_density_matrix_finger_pad_{count}",
                     (i + 1) * 2,
                     sdk.TouchRegion.FingerPad,
                     i,
@@ -143,7 +143,7 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         palm_count = counts[0] if counts else 200
         modules.append(
             sdk.TouchModuleLayout(
-                f"mx_palm_{palm_count}",
+                f"high_density_matrix_palm_{palm_count}",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -153,38 +153,40 @@ def build_standard_layout(layout_type: str, mx_point_counts: list[int] | None = 
         )
         return sdk.TouchLayout(modules)
 
-    if norm == "hp":
+    if norm == "fingertip_force_torque":
         modules = [
             sdk.TouchModuleLayout(
-                "hp_fingertip_48",
+                "fingertip_force_torque_48",
                 i,
                 sdk.TouchRegion.Fingertip,
                 i,
-                hp_signals,
+                fingertip_force_torque_signals,
                 48,
             )
             for i in range(5)
         ]
         return sdk.TouchLayout(modules)
 
-    if norm == "mt":
-        mt_counts = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
+    if norm == "pressure_array":
+        pressure_array_counts = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
         modules = [
             sdk.TouchModuleLayout(
-                f"mt_module_{count}",
+                f"pressure_array_module_{count}",
                 i,
                 sdk.TouchRegion.Fingertip if i in (1, 3, 5, 7, 9) else (sdk.TouchRegion.Palm if i == 0 else sdk.TouchRegion.FingerPad),
                 i,
                 [sdk.TouchSignal.TouchPoint],
                 count,
             )
-            for i, count in enumerate(mt_counts)
+            for i, count in enumerate(pressure_array_counts)
         ]
         return sdk.TouchLayout(modules)
 
     raise ValueError(
         f"Unknown layout type: {layout_type}. Supported: "
-        "auto, vision_mt, vision_mx, hp_mt, hp_mx, hp, mt"
+        "auto, vision_pressure_array, vision_high_density_matrix, "
+        "force_torque_pressure_array, force_torque_high_density_matrix, "
+        "fingertip_force_torque, pressure_array"
     )
 
 
@@ -213,14 +215,14 @@ async def run(args: argparse.Namespace) -> None:
         )
 
         if args.layout:
-            mx_counts = args.mx_point_counts
+            high_density_matrix_counts = args.high_density_matrix_point_counts
             norm_layout = args.layout.lower().replace("+", "_")
-            if "mx" in norm_layout and mx_counts is None:
+            if "high_density_matrix" in norm_layout and high_density_matrix_counts is None:
                 try:
-                    mx_counts = await hand.touch.point_counts()
+                    high_density_matrix_counts = await hand.touch.point_counts()
                 except Exception:
                     pass
-            new_layout = build_standard_layout(args.layout, mx_counts)
+            new_layout = build_standard_layout(args.layout, high_density_matrix_counts)
             if new_layout is not None:
                 await hand.touch.set_layout(new_layout)
                 print(f"Applied manual touch layout override: {args.layout}")
@@ -262,12 +264,12 @@ async def run(args: argparse.Namespace) -> None:
         array_modules = [
             module
             for module in layout.modules
-            if module.layout_id.startswith(("mt_", "mx_"))
+            if module.layout_id.startswith(("pressure_array_", "high_density_matrix_"))
         ]
         array_units = {}
-        if any(module.layout_id.startswith("mx_") for module in array_modules):
+        if any(module.layout_id.startswith("high_density_matrix_") for module in array_modules):
             channel_counts = await hand.touch.point_counts()
-            print(f"mx_* ADC channel counts: {channel_counts}")
+            print(f"high_density_matrix_* ADC channel counts: {channel_counts}")
         array_modes = {}
         for module in array_modules:
             mode = await hand.touch.value_mode(module.module_id)
@@ -286,22 +288,22 @@ async def run(args: argparse.Namespace) -> None:
         for cycle in range(args.count):
             frame = await hand.touch.snapshot(module_indices=args.modules)
             modules = list(frame.modules)
-            hp_modules = [
+            fingertip_force_torque_modules = [
                 module for module in modules
-                if (module.layout_id and module.layout_id.startswith("hp_"))
+                if (module.layout_id and module.layout_id.startswith("fingertip_force_torque_"))
                 or module.force3d is not None
             ]
             other_modules = [
                 module for module in modules
                 if not (
-                    (module.layout_id and module.layout_id.startswith("hp_"))
+                    (module.layout_id and module.layout_id.startswith("fingertip_force_torque_"))
                     or module.force3d is not None
                 )
             ]
 
-            if hp_modules:
-                print(f"\n[{cycle:02d}] 5-Finger Force/Touch Telemetry ({len(hp_modules)} modules):")
-                for mod in hp_modules:
+            if fingertip_force_torque_modules:
+                print(f"\n[{cycle:02d}] 5-Finger Force/Touch Telemetry ({len(fingertip_force_torque_modules)} modules):")
+                for mod in fingertip_force_torque_modules:
                     region_index = mod.region_index
                     name = names[region_index] if region_index < len(names) else f"Tip{region_index}"
                     diagnostics = mod.diagnostics
@@ -325,8 +327,8 @@ async def run(args: argparse.Namespace) -> None:
                     )
 
             if other_modules:
-                hdr = "Tactile Array Telemetry" if not hp_modules else "  Pads & Palm Tactile Array"
-                print(f"[{cycle:02d}] {hdr} ({len(other_modules)} modules):" if not hp_modules else f"{hdr} ({len(other_modules)} modules):")
+                hdr = "Tactile Array Telemetry" if not fingertip_force_torque_modules else "  Pads & Palm Tactile Array"
+                print(f"[{cycle:02d}] {hdr} ({len(other_modules)} modules):" if not fingertip_force_torque_modules else f"{hdr} ({len(other_modules)} modules):")
                 for mod in other_modules:
                     pts = mod.points or []
                     pts_max = max(pts) if pts else 0
@@ -341,7 +343,7 @@ async def run(args: argparse.Namespace) -> None:
                         f"non-zero={non_zero:2d}/{len(pts):2d}"
                     )
 
-            if not hp_modules and not other_modules:
+            if not fingertip_force_torque_modules and not other_modules:
                 regional_lens = [len(mod.regional_forces_mn or []) for mod in frame.modules]
                 print(f"[{cycle:02d}] StatusOnly (regional_forces_lens={regional_lens})")
 
@@ -357,7 +359,7 @@ async def run(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port")
-    parser.add_argument("--slave-id", type=lambda value: int(value, 0), default=126)
+    parser.add_argument("--slave-id", type=lambda value: int(value, 0))
     parser.add_argument("--baudrate", type=int, default=5000000, help="Modbus baudrate (default: 5000000)")
     parser.add_argument("--count", type=int, default=30, help="Number of snapshots to read")
     parser.add_argument("--interval", type=float, default=0.1, help="Delay between snapshots in seconds")
@@ -377,22 +379,25 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="auto",
         help=(
-            "Touch layout override: auto, vision_mt, vision_mx, "
-            "hp_mt (hp+mt), hp_mx (hp+mx), hp, mt"
+            "Touch layout override: auto, vision_pressure_array, vision_high_density_matrix, "
+            "force_torque_pressure_array, force_torque_high_density_matrix, "
+            "fingertip_force_torque, pressure_array"
         ),
     )
     parser.add_argument(
-        "--mx-point-counts",
+        "--high-density-matrix-point-counts",
         type=lambda value: [int(item, 0) for item in value.split(",")],
-        help="Comma-separated point counts for physical mx_* modules 0..10",
+        help="Comma-separated point counts for physical high_density_matrix_* modules 0..10",
     )
     args = parser.parse_args()
     if args.count <= 0:
         parser.error("count must be positive")
     if args.interval < 0.0:
         parser.error("interval must be non-negative")
-    if args.mx_point_counts is not None and len(args.mx_point_counts) != 11:
-        parser.error("--mx-point-counts requires exactly 11 comma-separated values")
+    if args.high_density_matrix_point_counts is not None and len(args.high_density_matrix_point_counts) != 11:
+        parser.error(
+            "--high-density-matrix-point-counts requires exactly 11 comma-separated values"
+        )
     if args.modules is not None:
         if not args.modules:
             parser.error("--modules must contain at least one module ID")

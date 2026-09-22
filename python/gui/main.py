@@ -103,6 +103,8 @@ def run_gui(args, report, log_directory):
     window = MainWindow(
         revo3_modbus=args.revo3_modbus,
         mock_type=args.mock,
+        vision_tactile_force_model_dir=args.vision_tactile_force_model_dir,
+        vision_tactile_force_model_mode=args.vision_tactile_force_model_mode,
         canfd=args.canfd,
     )
     window.show()

@@ -7,8 +7,11 @@ This repository provides example applications and integration code demonstrating
 - `c/` - C++ examples using the C ABI, plus a standalone Linux EtherCAT example
 - `python/revo3/` - Python Revo3 demos
 - `python/gui/` - PySide GUI with Revo3 panels and mock mode
-- `docs/api/` - Revo3 2.0 public API reference
-- `docs/device/` - Motor, touch, and collision protocol references
+
+For installation, integration guidance, and the Python and C/C++ API reference,
+see the [Revo 3 SDK documentation](https://app.brainco.cn/universal/bc-revo3-sdk/docs/site/).
+For hardware registers and transport details, see the
+[Revo 3 communication protocol](https://www.brainco-hz.com/docs/revolimb-hand/revo3/protocol.html).
 
 ## Getting Started
 
@@ -41,12 +44,6 @@ make -C c/platform/linux/revo3_ec
 
 ### Python
 
-> **Note:** It is highly recommended to use a virtual environment (such as `conda` or `venv`) before installing the SDK and dependencies.
-> ```bash
-> conda create -n revo3 python=3.10
-> conda activate revo3
-> ```
-
 #### 1. Install the SDK
 
 Create and activate an isolated Python environment first:
@@ -71,7 +68,7 @@ bash python/install_whl.sh 2.1.0
 cd python
 python -m pip install .
 
-# Run Revo3 2.0 Manager examples (requires a real Revo3 device)
+# Run Revo3 2.x Manager examples (requires a real Revo3 device)
 python revo3/quickstart.py
 python revo3/discover_devices.py --help
 python revo3/subscriptions.py --help

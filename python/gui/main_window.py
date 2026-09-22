@@ -104,6 +104,8 @@ class MainWindow(QMainWindow):
         self,
         revo3_modbus=False,
         mock_type=None,
+        vision_tactile_force_model_dir=None,
+        vision_tactile_force_model_mode="none",
         canfd=None,
     ):
         super().__init__()
@@ -115,6 +117,8 @@ class MainWindow(QMainWindow):
         self.revo3_modbus = revo3_modbus
         self.mock_type = mock_type
         self.canfd_arg = canfd
+        self.vision_tactile_force_model_dir = vision_tactile_force_model_dir
+        self.vision_tactile_force_model_mode = vision_tactile_force_model_mode
         self._handling_connection_lost = False
         self._support_worker = None
         self.shared_data = SharedDataManager()

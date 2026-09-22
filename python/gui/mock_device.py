@@ -11,17 +11,17 @@ from common_imports import sdk
 
 
 REVO3_ULTRA_JOINT_COUNT = 21
-# Runtime counts observed on the validated mx_* fixture, not protocol capacities.
-MX_TOUCH_POINT_COUNTS = [53, 56, 22, 21, 27, 21, 27, 21, 27, 21, 27]
+# Runtime counts observed on the validated high_density_matrix_* fixture, not protocol capacities.
+HIGH_DENSITY_MATRIX_TOUCH_POINT_COUNTS = [53, 56, 22, 21, 27, 21, 27, 21, 27, 21, 27]
 
 # MockDeviceInfo reports a right hand, so force-mode mock points use the
 # documented right-hand per-point ranges. The SDK exposes the values in mN.
-MX_FORCE_LIMITS_RAW = [
+HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW = [
     226, 63, 113, 236, 141, 236, 141, 236, 141, 236, 141,
 ]
 
-MT_FORCE_LIMIT_MN = 20000.0
-MT_ADC_MAX = 4096.0
+PRESSURE_ARRAY_FORCE_LIMIT_MN = 20000.0
+PRESSURE_ARRAY_ADC_MAX = 4096.0
 
 
 def _sdk_attr(enum_name: str, fallback):
@@ -43,22 +43,22 @@ def _sdk_enum_member(enum_name: str, names, fallback):
 
 
 def mock_model(mock_type):
-    kind = (mock_type or "revo3-touch").lower().replace("_", "-")
+    kind = (mock_type or "ut1").lower().replace("_", "-")
     if sdk is None:
         return 21
-    if kind in ("revo3", "revo3-ultra", "ultra"):
+    if kind in ("ub1", "ud1"):
         return sdk.Revo3Model.Ultra
-    if kind in ("revo3-vision", "revo3-vision-touch", "vision", "vision-touch"):
+    if kind in ("uv1", "uv2", "uv3", "uv4", "uv5", "uv6"):
         return sdk.Revo3Model.UltraVisionTouch
-    if kind in ("revo3-pro", "pro"):
+    if kind == "pb1":
         return sdk.Revo3Model.Pro
-    if kind in ("revo3-mx-touch", "mx-touch"):
+    if kind in ("ut1", "ut2", "uf1", "uf2", "uf3"):
         return sdk.Revo3Model.UltraTouch
-    if kind in ("revo3-pro-touch", "pro-touch", "revo3-pro-mx-touch", "pro-mx-touch"):
+    if kind == "pt1":
         return sdk.Revo3Model.ProTouch
-    if kind in ("revo3-basic", "basic"):
+    if kind == "db1":
         return sdk.Revo3Model.Basic
-    if kind in ("revo3-basic-touch", "basic-touch", "revo3-basic-mx-touch", "basic-mx-touch"):
+    if kind == "dt1":
         return sdk.Revo3Model.BasicTouch
     return sdk.Revo3Model.UltraTouch
 
@@ -101,15 +101,15 @@ class MockRevo3TouchData:
         tick: float = 0.0,
         read_mode: int = 0,
         is_mx: bool = False,
-        mx_modes=None,
-        mt_value_mode: int = 2,
+        high_density_matrix_modes=None,
+        pressure_array_value_mode: int = 2,
     ):
         physical_sizes = (
-            MX_TOUCH_POINT_COUNTS
+            HIGH_DENSITY_MATRIX_TOUCH_POINT_COUNTS
             if is_mx
             else [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
         )
-        mx_modes = list(mx_modes or [2] * 11)
+        high_density_matrix_modes = list(high_density_matrix_modes or [2] * 11)
         module_sizes = physical_sizes
         
         force_summary_val = int(
@@ -122,7 +122,7 @@ class MockRevo3TouchData:
         
         if int(read_mode) == force_summary_val:
             self.summary_values = [
-                int(MT_FORCE_LIMIT_MN * (0.08 + 0.72 * abs(math.sin(tick + i * 0.31))))
+                int(PRESSURE_ARRAY_FORCE_LIMIT_MN * (0.08 + 0.72 * abs(math.sin(tick + i * 0.31))))
                 for i in range(42)
             ]
             self.modules = [[0] * size for size in module_sizes]
@@ -132,17 +132,17 @@ class MockRevo3TouchData:
             for module_index, size in enumerate(module_sizes):
                 # Calculate the limit from the module layout and data type.
                 if is_mx:
-                    is_force = mx_modes[module_index] == 2
-                    limit_raw = MX_FORCE_LIMITS_RAW[module_index] * 10 if is_force else 255.0
+                    is_force = high_density_matrix_modes[module_index] == 2
+                    limit_raw = HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW[module_index] * 10 if is_force else 255.0
                 else:
                     limit_raw = (
-                        MT_FORCE_LIMIT_MN
-                        if int(mt_value_mode) == 2
-                        else MT_ADC_MAX
+                        PRESSURE_ARRAY_FORCE_LIMIT_MN
+                        if int(pressure_array_value_mode) == 2
+                        else PRESSURE_ARRAY_ADC_MAX
                     )
 
                 if is_mx:
-                    # mx_* mode: fill every point reported by the public layout.
+                    # high_density_matrix_* mode: fill every point reported by the public layout.
                     p_size = module_sizes[module_index]
                     active_part = []
                     for i in range(p_size):
@@ -169,11 +169,13 @@ class MockHand:
     is_mock = True
 
     def __init__(self, mock_type=None):
-        self.mock_type = mock_type or "revo3-touch"
+        self.mock_type = (mock_type or "ut1").lower()
         self.model = mock_model(self.mock_type)
-        self.supports_touch = "touch" in self.mock_type.lower()
-        self.has_mx_touch = self.supports_touch and "mx" in self.mock_type.lower()
-        self.is_hp_touch = self.supports_touch and "hp" in self.mock_type.lower()
+        self.supports_touch = self.mock_type in {
+            "ut1", "ut2", "uf1", "uf2", "uf3", "uv1", "uv2", "uv3", "uv4", "pt1", "dt1"
+        }
+        self.has_high_density_matrix_touch = self.mock_type in {"ut2", "uv3", "uv4"}
+        self.is_fingertip_force_torque_touch = self.mock_type in {"uf1", "uf2", "uf3"}
         self.start_time = time.time()
         self.positions = [0.0] * REVO3_ULTRA_JOINT_COUNT
         self.velocities = [0.0] * REVO3_ULTRA_JOINT_COUNT
@@ -206,7 +208,7 @@ class MockHand:
             hand_side=hand,
             serial_number=(
                 "BCUTL40000000000"
-                if self.has_mx_touch
+                if self.has_high_density_matrix_touch
                 else f"MOCK-{str(self.model).upper()}"
             ),
             firmware_version="mock-3.0.0",
@@ -238,14 +240,14 @@ class MockHand:
 
         if not self.supports_touch:
             modules = []
-        elif self.has_mx_touch:
+        elif self.has_high_density_matrix_touch:
             modules = [
-                MockTouchModule(f"mx_module_{i}", i, MX_TOUCH_POINT_COUNTS[i])
+                MockTouchModule(f"high_density_matrix_module_{i}", i, HIGH_DENSITY_MATRIX_TOUCH_POINT_COUNTS[i])
                 for i in range(11)
             ]
-        elif self.is_hp_touch:
-            force_torque_only = "hp-ft" in self.mock_type.lower()
-            layout_id = "hp_fingertip_ft" if force_torque_only else "hp_fingertip_48"
+        elif self.is_fingertip_force_torque_touch:
+            force_torque_only = self.mock_type == "uf1"
+            layout_id = "fingertip_force_torque" if force_torque_only else "fingertip_force_torque_48"
             point_count = 0 if force_torque_only else 48
             modules = [
                 MockTouchModule(layout_id, i, point_count)
@@ -253,7 +255,7 @@ class MockHand:
             ]
         else:
             modules = [
-                MockTouchModule(f"mt_module_{i}", i, count)
+                MockTouchModule(f"pressure_array_module_{i}", i, count)
                 for i, count in enumerate(
                     [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
                 )
@@ -511,16 +513,16 @@ class MockHand:
     async def get_all_touch_data(self, _slave_id):
         read_mode = self.flags.get("touch_read_mode", 0)
         global_mode = self.flags.get("touch_value_mode", 2)
-        mx_modes = [
+        high_density_matrix_modes = [
             self.flags.get(f"touch_value_mode_{module_id}", global_mode)
             for module_id in range(11)
         ]
         return MockRevo3TouchData(
             time.time() - self.start_time,
             read_mode=read_mode,
-            is_mx=self.has_mx_touch,
-            mx_modes=mx_modes,
-            mt_value_mode=global_mode,
+            is_mx=self.has_high_density_matrix_touch,
+            high_density_matrix_modes=high_density_matrix_modes,
+            pressure_array_value_mode=global_mode,
         )
 
     async def get_touch_read_mode(self, _slave_id):
@@ -562,10 +564,10 @@ class MockHand:
 
 
     async def get_touch_module_serial_numbers(self, _slave_id):
-        return [f"MX-MOCK-{i:02d}" for i in range(11)]
+        return [f"HD-MOCK-{i:02d}" for i in range(11)]
 
     async def get_touch_module_serial_number(self, _slave_id, module_id):
-        return f"MX-MOCK-{int(module_id):02d}"
+        return f"HD-MOCK-{int(module_id):02d}"
 
     async def restart_touch_modules(self, _slave_id):
         return True
@@ -575,7 +577,7 @@ class MockHand:
         return True
 
     async def get_touch_module_point_counts(self, _slave_id):
-        return MX_TOUCH_POINT_COUNTS.copy()
+        return HIGH_DENSITY_MATRIX_TOUCH_POINT_COUNTS.copy()
 
     async def get_touch_value_mode(self, _slave_id):
         value = self.flags.get("touch_value_mode", 2)

@@ -648,7 +648,7 @@ class SharedDataManager(QObject):
             for signal in list(getattr(module, "signals", []) or [])
         }
         is_force_torque_layout = any(
-            layout_id.startswith("hp_") for layout_id in layout_ids
+            layout_id.startswith("fingertip_force_torque_") for layout_id in layout_ids
         ) or bool({"Force3D", "Torque2D", "ResultantForce"} & signal_names)
         return is_force_torque_layout
 

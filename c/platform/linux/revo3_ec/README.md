@@ -201,8 +201,7 @@ payload conversion remains layout-specific and is not covered by these motor
 helpers.
 
 Motor indices accepted by the demo are `0..20`. The fixed EtherCAT PDO has
-23 channels; channels 21 and 22 remain available through `MotorCommand` for
-future firmware use.
+23 channels; `MotorCommand` exposes channels 21 and 22 as reserved channels.
 
 After activation the program waits for the slave to reach OP state before
 entering the main loop. If OP is not reached, the error message includes link,
@@ -245,9 +244,9 @@ Expected full-touch SII/PDO information includes SM2 `DefaultSize=230`, SM3
 than that limit, an unpatched master can stop before the touch PDO category
 and fail to expose SM3/`0x1A01` completely. Raising the local IgH limit, for
 example to 16384 words (32768 bytes, or 32 KiB), can make this host read the
-complete SII and enter OP, but that is a host-side patch. For firmware intended
-for customers or other EtherCAT masters, prefer a smaller default SII/PDO
-layout or confirm that the target master accepts the full SII size.
+complete SII and enter OP, but that is a host-side patch. For released firmware
+and deployments on other EtherCAT masters, prefer a smaller default SII/PDO
+layout or confirm that the deployment target accepts the full SII size.
 
 ## SDO
 

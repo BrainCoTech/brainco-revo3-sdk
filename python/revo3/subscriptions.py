@@ -44,7 +44,7 @@ async def run(args: argparse.Namespace) -> None:
             health = await asyncio.wait_for(health_sub.next(), timeout=args.timeout)
             print(
                 f"Health safety={health.safety_state} "
-                f"system={health.system_state} error={health.system_error_code} "
+                f"system={health.system_state} error={health.error_code} "
                 f"faulted_motors={health.faulted_motor_count}"
             )
 

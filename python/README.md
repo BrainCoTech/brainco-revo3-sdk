@@ -1,6 +1,6 @@
-# BrainCo Revo3 SDK 2.0 Python Examples
+# BrainCo Revo3 SDK 2.x Python Examples
 
-All customer examples use the 2.0 `Manager -> Hand` object API.
+All examples use the 2.x `Manager -> Hand` object API.
 
 ## Install
 
@@ -31,8 +31,8 @@ See `python/revo3/README.md` for the full list.
 
 ## GUI
 
-The PySide GUI uses the same 2.0 Manager/Hand API and does not depend on the
-Legacy `DeviceContext` layer.
+The PySide GUI uses the same 2.x Manager/Hand API and does not depend on the
+legacy `DeviceContext` layer.
 
 ```bash
 python -m pip install './python[gui]'

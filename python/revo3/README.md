@@ -1,6 +1,6 @@
-# Revo3 Python 2.0 Examples
+# Revo3 Python 2.x Examples
 
-These examples use the public 2.0 object model:
+These examples use the public 2.x object model:
 
 `Manager -> Hand -> Motion/State/Touch/Health/Config/Calibration/Maintenance`
 
@@ -25,9 +25,8 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `mit_plan.py` | Quintic full-hand MIT impedance streaming and feedback observation |
 | `units.py` | Offline scalar and batch unit conversions |
 
-These are the customer-facing entry points maintained as the primary 2.0
-examples. They do not use an adapter, operation-level `slave_id`, a collector,
-or a State buffer.
+These are the primary maintained examples. They do not use an adapter,
+operation-level `slave_id`, a collector, or a State buffer.
 
 `mit_plan.py` shares its default motion contract with the C++ `mit_plan.cpp`
 example. Python additionally exposes `--joint`, `--range-fraction`,
@@ -56,7 +55,7 @@ limits, interruption behavior and the differences from 1.x servo.
 | `trajectory_control.py` | Run an explicitly enabled joint and full-hand trajectory sequence |
 | `firmware_update.py` | Update a selected main, image, or motor firmware target |
 | `finger_motion.py` | Run an explicitly enabled finger and thumb motion workflow |
-| `touch_hybrid.py` | Verify a confirmed `hp_*` + `mt_*` hybrid touch layout |
+| `touch_hybrid.py` | Verify a confirmed fingertip force/torque and pressure-array hybrid touch layout |
 
 `firmware_update.py` requires `--run`, defaults to the `main` target, and also
 supports `--target image` and `--target motor`. An `Indeterminate` result does
@@ -118,7 +117,7 @@ whether a command should be retried.
 `touch_hybrid.py` requires a hardware layout confirmed from the target hand's
 BOM or validation record. Its `set_layout()` call changes only SDK parsing for
 the current connection session. `--test-tare` changes calibration state, and
-`--test-modes` changes the `mt_*` read mode; both are disabled by default.
+`--test-modes` changes the pressure-array read mode; both are disabled by default.
 
 When an Ultra VisionTouch serial number and register 135 cannot identify the
 product or its main-link array, use the explicit session overrides in
@@ -143,7 +142,10 @@ If connection fails with `Failed to open ... at 5000000 bps: Invalid argument` o
 # 1. Find process holding the serial port
 lsof /dev/tty.usbserial*
 
-# 2. Terminate the process
+# 2. Ask the process to terminate cleanly
+kill <PID>
+
+# 3. If it does not exit, force termination
 kill -9 <PID>
 ```
 

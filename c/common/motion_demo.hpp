@@ -98,7 +98,7 @@ inline void health(revo3::Hand &hand, const Options &o) {
   for (int j = 0; j < 21; ++j) {
     auto code = h.motor_fault_codes[j];
     known = known || (code & 0x100);
-    if ((code & 0x13f) && !(o.skipped.count(j) && (code & 0x100) && !(code & 0x3f)))
+    if ((code & 0x37) && !o.skipped.count(j))
       throw std::runtime_error("Motor fault: J" + std::to_string(j) + " code=" + std::to_string(code));
   }
   if (h.system_state || h.system_error_code || ((h.safety_state == 2 || h.safety_state == 3 || h.faulted_motor_count) && !known))

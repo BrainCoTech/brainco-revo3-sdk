@@ -677,7 +677,7 @@ class ConnectionPanel(QWidget):
             self._set_connecting_state()
             ctx = MockHand(self.mock_type)
             device_info = run_in_new_loop(lambda: ctx.get_device_info(1))
-            self._on_connect_success(ctx, 1, device_info, PROTO_MOCK, f"Mock ({self.mock_type or 'revo3-touch'})")
+            self._on_connect_success(ctx, 1, device_info, PROTO_MOCK, f"Mock ({self.mock_type or 'ut1'})")
         except Exception as e:
             self._on_connect_error(str(e))
 

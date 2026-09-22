@@ -1,6 +1,7 @@
 # BC Revo3 SDK GUI
 
-This GUI provides the current Revo3 Manager/Hand workflows for device control, telemetry, touch, diagnostics, and maintenance.
+This GUI provides Revo3 Manager/Hand workflows for device control, telemetry,
+touch, diagnostics, and maintenance.
 
 Panels:
 
@@ -16,7 +17,19 @@ Panels:
 
 ## Collision Test Panel
 
-The Revo3 motor panel exposes collision protection controls for hardware testing. The GUI default uses `Hybrid`, `SoftStop`, `debounce_time_ms=50`, `max_cached_status_age_ms=80`, and `auto_clear_time_ms=1000`, with wider position-error and lower current thresholds than the SDK defaults for bench testing. The GUI keeps its existing Data Collection panel, but its adapter now obtains current samples through the 2.0 State pull subscription and stores only GUI-owned display history; it does not use the removed SDK collector or shared buffer. Normal drag mode reduces GUI monitoring to 10Hz so control commands have more bus time. When collision protection is enabled, drag mode keeps the normal monitor frequency so motor status remains fresh. If the dragged joint reports fresh firmware `Stall` samples while the slider is still held, the GUI locally shows a yellow stall guard and blocks that drag until slider release. SDK-confirmed `collision_active` remains the red state. Monitoring-frequency changes and collision config/poll calls run through background watchdog paths, so slow SDK or transport calls are logged but should not freeze the Qt UI.
+The Revo3 motor panel exposes collision protection controls for hardware
+testing. The GUI defaults to `Hybrid`, `SoftStop`, `debounce_time_ms=50`,
+`max_cached_status_age_ms=80`, and `auto_clear_time_ms=1000`. Review the
+position-error and current thresholds before enabling motion; the GUI defaults
+differ from the SDK defaults.
+
+Normal drag mode reduces motor monitoring to 10 Hz so control commands have
+more bus time. When collision protection is enabled, the normal monitoring
+frequency remains active so motor status stays fresh. A fresh firmware `Stall`
+sample while a slider is held activates a yellow local guard and blocks that
+drag until the slider is released. SDK-confirmed `collision_active` status is
+shown in red. Configuration and polling run in background tasks; slow SDK or
+transport calls are written to the application log.
 
 ## Install
 
@@ -39,15 +52,15 @@ to verify the interface. The commands below remain available from the repository
 python python/gui/main.py
 python python/gui/main.py --revo3-modbus
 python python/gui/main.py --mock
-python python/gui/main.py --mock revo3-mx-touch
-python python/gui/main.py --mock revo3-hp-ft-touch
+python python/gui/main.py --mock ut2
+python python/gui/main.py --mock uf1
 ```
 
-`--mock` is for GUI debugging without hardware. Supported mock types include `revo3`, `revo3-touch`, `revo3-mx-touch`, `revo3-hp-ft-touch`, `revo3-pro`, `revo3-pro-touch`, `revo3-basic`, and `revo3-basic-touch`.
+`--mock` is for GUI debugging without hardware. Use a canonical three-character product code such as `UB1`, `UT1`, `UT2`, `UF1`, `PB1`, `PT1`, `DB1`, or `DT1`.
 
 The regular Revo3 touch UI is shown only when `hand.touch.layout` is available. If the SDK cannot identify the underlying register mapping, it fails closed; the GUI does not provide a manual override.
 
-For `hp_fingertip_ft`, the GUI shows force, torque, resultant force, status, and tare controls without a heatmap because the layout declares `point_count=0` and frames return `points=None`. The heatmap is shown only for `hp_*` layouts that declare point-array data.
+For `fingertip_force_torque`, the GUI shows force, torque, resultant force, status, and tare controls without a heatmap because the layout declares `point_count=0` and frames return `points=None`. The heatmap is shown only for fingertip force/torque layouts that declare point-array data.
 
 ## Logs and Diagnostics
 
@@ -79,8 +92,8 @@ The touch sampling request depends on the detected layout and operating system:
 
 | Touch layout | Platform | Sampling request |
 |---|---|---|
-| `hp_*` force/torque layouts | Windows or Linux | Adaptive steps: `5`, `20`, `30`, `60`, `90`, and `120 Hz`; starts at `30 Hz` |
-| `hp_*` force/torque layouts | macOS | Maximum `5 Hz` |
+| Fingertip force/torque layouts | Windows or Linux | Adaptive steps: `5`, `20`, `30`, `60`, `90`, and `120 Hz`; starts at `30 Hz` |
+| Fingertip force/torque layouts | macOS | Maximum `5 Hz` |
 | Other touch layouts | All supported platforms | Maximum `60 Hz` |
 
 For adaptive sampling, the GUI evaluates completed reads every 5 seconds and waits at least 10 seconds between frequency changes. It raises the request when the measured rate reaches at least 90% of the current target without a new read error. It lowers the request when a read fails or the measured rate falls below 70% of the target.

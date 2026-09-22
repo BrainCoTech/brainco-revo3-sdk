@@ -6,6 +6,14 @@ import asyncio
 from bc_revo3_sdk import main_mod as sdk
 
 
+def select_shared_transport(devices):
+    groups = {}
+    for device in devices:
+        key = (str(device.protocol_type), device.port_name)
+        groups.setdefault(key, []).append(device)
+    return next((group for group in groups.values() if len(group) >= 2), None)
+
+
 async def run(args: argparse.Namespace) -> None:
     manager = sdk.Manager()
     try:
@@ -13,9 +21,13 @@ async def run(args: argparse.Namespace) -> None:
         if not devices:
             raise RuntimeError("No Revo3 device detected")
 
-        hands = await manager.connect_all(devices)
-        if len(hands) < 2:
-            raise RuntimeError("At least two Revo3 hands are required")
+        shared_devices = select_shared_transport(devices)
+        if shared_devices is None:
+            raise RuntimeError(
+                "At least two Revo3 hands on the same transport port are required; "
+                "multiple CANFD adapter channels cannot share one process"
+            )
+        hands = await manager.connect_all(shared_devices)
         def hand_by_serial_number(serial_number: str) -> sdk.Hand:
             hand = next(
                 (

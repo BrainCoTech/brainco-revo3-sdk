@@ -12,7 +12,11 @@ int main(int argc, char **argv) {
   bool calibrate = false;
   bool reboot = false;
   for (int index = 1; index < argc; ++index) {
-    if (std::strcmp(argv[index], "--calibrate") == 0) {
+    if (std::strcmp(argv[index], "--help") == 0 ||
+        std::strcmp(argv[index], "-h") == 0) {
+      std::printf("Usage: %s [PORT] [--calibrate] [--reboot]\n", argv[0]);
+      return 0;
+    } else if (std::strcmp(argv[index], "--calibrate") == 0) {
       calibrate = true;
     } else if (std::strcmp(argv[index], "--reboot") == 0) {
       reboot = true;

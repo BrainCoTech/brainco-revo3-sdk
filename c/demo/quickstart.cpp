@@ -13,27 +13,6 @@ enum class MoveScope { None, Hand, Joint, Finger, Thumb };
 constexpr std::uint8_t kSafetyRecoveryRequired = 1;
 constexpr std::uint8_t kSafetyFaulted = 2;
 
-const char *model_name(Revo3Model model) {
-  switch (model) {
-  case REVO3_MODEL_ULTRA:
-    return "Revo3 Ultra";
-  case REVO3_MODEL_ULTRA_TOUCH:
-    return "Revo3 Ultra Touch";
-  case REVO3_MODEL_ULTRA_VISION_TOUCH:
-    return "Revo3 Ultra VisionTouch";
-  case REVO3_MODEL_PRO:
-    return "Revo3 Pro";
-  case REVO3_MODEL_PRO_TOUCH:
-    return "Revo3 Pro Touch";
-  case REVO3_MODEL_BASIC:
-    return "Revo3 Basic";
-  case REVO3_MODEL_BASIC_TOUCH:
-    return "Revo3 Basic Touch";
-  default:
-    return "Revo3";
-  }
-}
-
 bool health_has_fault(const revo3::HealthSnapshot &health) {
   return health.safety_state == kSafetyRecoveryRequired ||
          health.safety_state == kSafetyFaulted || health.system_state != 0 ||
@@ -118,10 +97,16 @@ int main(int argc, char **argv) {
                 device_info.serial_number.empty() ? "unknown" : device_info.serial_number.c_str(),
                 device_info.hand_side == revo3::HandSide::Right ? "Right" : "Left");
     std::printf("Slave ID: %u\n", hand.slave_id());
-    std::printf("Model: %s | Hardware revision: %s | Firmware: %s\n",
-                model_name(static_cast<Revo3Model>(device_info.model)),
-                device_info.hardware_revision.empty() ? "unknown" : device_info.hardware_revision.c_str(),
-                firmware_info.controller_firmware_version.empty() ? "unknown" : firmware_info.controller_firmware_version.c_str());
+    std::printf("Product code: %s | Hardware revision: %s | Firmware: %s\n",
+                device_info.product_code.empty()
+                    ? "unknown"
+                    : device_info.product_code.c_str(),
+                device_info.hardware_revision.empty()
+                    ? "unknown"
+                    : device_info.hardware_revision.c_str(),
+                firmware_info.controller_firmware_version.empty()
+                    ? "unknown"
+                    : firmware_info.controller_firmware_version.c_str());
     std::printf("Layout:   %s (%u DOF)\n\n", layout->layout_id.c_str(),
                 layout->joint_count);
 
@@ -184,7 +169,7 @@ int main(int argc, char **argv) {
       } else {
         revo3::OperationHandle motion;
         if (move_scope == MoveScope::Joint) {
-          motion = hand.motion().move_joint(0, 30.0F, 1500ms);
+          motion = hand.motion().move_joint(1, 30.0F, 1500ms);
         } else if (move_scope == MoveScope::Finger) {
           motion = hand.motion().flex_finger(1, 30.0F, 1500ms);
         } else if (move_scope == MoveScope::Thumb) {

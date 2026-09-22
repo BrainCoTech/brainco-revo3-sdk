@@ -11,7 +11,7 @@ import time
 JOINT_COUNT = 21
 FINGERS = {"pinky": 0, "ring": 4, "middle": 8, "index": 12}
 FLEX_JOINTS = tuple(base + offset for base in FINGERS.values() for offset in (1, 2, 3))
-MOTOR_FAULT_MASK = 0x013F
+MOTOR_FAULT_MASK = 0x0037
 
 
 def pose(flex=(0.0, 0.0, 0.0), spread=False, thumb=None):
@@ -286,13 +286,12 @@ async def stream_health(hand, sdk, excluded):
     if not excluded:
         return await check_health(hand, sdk)
     health = await hand.health.snapshot()
-    # Only explicit stalled-joint exclusions are permitted; other faults stop.
+    # Stalled is a product status and does not block continued control.
     faults = {j: code for j, code in enumerate(health.motor_fault_codes)
-              if code & MOTOR_FAULT_MASK and not (j in excluded and code & 0x0100 and not code & 0x003F)}
-    known_stalls = any(code & 0x0100 for code in health.motor_fault_codes)
+              if code & MOTOR_FAULT_MASK and j not in excluded}
     if (health.system_state or health.error_code or faults or
-            (health.safety_state in (sdk.SafetyState.Faulted, sdk.SafetyState.RecoveryRequired)
-             and not known_stalls) or (health.faulted_motor_count and not known_stalls)):
+            health.safety_state in (sdk.SafetyState.Faulted, sdk.SafetyState.RecoveryRequired)
+            or health.faulted_motor_count):
         raise RuntimeError(f"Motion health check failed: faults={faults}, system={health.system_state}/{health.error_code}")
 
 
@@ -397,9 +396,16 @@ async def run_connected(args, profile):
         hand = await manager.connect_auto(port=args.port, slave_id=args.slave_id)
         if hand.joint_layout is None or hand.joint_layout.joint_count != JOINT_COUNT:
             raise ValueError("These demos require a 21-joint Revo3 hand")
-        expected_side = sdk.HandSide.Left if args.side == "left" else sdk.HandSide.Right
-        if hand.device_info is None or hand.device_info.hand_side != expected_side:
+        device_side = hand.device_info.hand_side if hand.device_info is not None else None
+        if device_side not in (sdk.HandSide.Left, sdk.HandSide.Right):
+            raise ValueError("Connected hand side is unavailable")
+        detected_side = "left" if device_side == sdk.HandSide.Left else "right"
+        if args.side is not None and args.side != detected_side:
             raise ValueError("Connected hand does not match --side")
+        print(f"Connected hand side: {detected_side}")
+        if args.kind != "classic":
+            profile = profile if profile is not None else default_profile(args.kind, detected_side)
+            validate_profile(profile, args.kind, detected_side)
         config = await hand.config.snapshot()
         if config.software_stop_enabled or config.teaching_mode_enabled:
             raise RuntimeError("Resolve software stop or zero-force mode before running motion demos")
@@ -460,7 +466,7 @@ async def run_connected(args, profile):
 
 def parser_for(kind):
     parser = argparse.ArgumentParser(description=f"Revo3 {kind} demo. Default: offline preview, no SDK import or connection.")
-    parser.add_argument("--side", choices=("left", "right"), default="right")
+    parser.add_argument("--side", choices=("left", "right"), help="Require this hand side; otherwise detect it when connected")
     parser.add_argument("--port")
     parser.add_argument("--slave-id", type=lambda value: int(value, 0))
     parser.add_argument("--run", action="store_true", help="Connect and execute motion")
@@ -522,16 +528,19 @@ def main(kind, argv=None):
                 raise ValueError("Skipped joints must be unique and in 0..20")
             if args.repeat < 1:
                 raise ValueError("repeat must be positive")
-            profile = json.loads(args.profile.read_text()) if args.profile else default_profile(kind, args.side)
-            validate_profile(profile, kind, args.side)
+            profile = json.loads(args.profile.read_text()) if args.profile else None
+            if not args.run or args.export_profile:
+                profile = profile if profile is not None else default_profile(kind, args.side or "right")
+                validate_profile(profile, kind, args.side or profile["side"])
             if args.export_profile:
                 with args.export_profile.open("x", encoding="utf-8") as output:
                     json.dump(profile, output, indent=2, allow_nan=False)
                     output.write("\n")
                 print(f"Exported {args.export_profile}; no connection opened")
                 return 0
-            print(json.dumps(profile, indent=2, allow_nan=False))
-            if not profile["calibrated"]:
+            if profile is not None:
+                print(json.dumps(profile, indent=2, allow_nan=False))
+            if profile is None or not profile["calibrated"]:
                 print("Candidate poses: fingertip contact and finger clearance require hardware calibration.")
         if not args.run:
             print("Offline preview only. Pass --run to connect and move after checking the work area and independent stop path.")

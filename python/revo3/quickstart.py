@@ -9,15 +9,9 @@ REVO3_MOTOR_FAULT_MASK = (
     (1 << 0)
     | (1 << 1)
     | (1 << 2)
-    | (1 << 3)
     | (1 << 4)
     | (1 << 5)
-    | (1 << 8)
 )
-
-
-def enum_name(value) -> str:
-    return str(value).rsplit(".", 1)[-1]
 
 
 def parse_motor_fault_code(code: int) -> str:
@@ -103,9 +97,16 @@ async def run(args: argparse.Namespace) -> None:
         slave_id = getattr(hand, "slave_id", args.slave_id if args.slave_id is not None else 1)
 
         print(f"Device: {sn} ({side})")
-        model = enum_name(device_info.model) if device_info else "unknown"
+        product_code = (
+            device_info.product_code
+            if device_info and device_info.product_code
+            else "unknown"
+        )
         print(f"Slave ID: {slave_id}")
-        print(f"Model: {model} | Hardware revision: {hw_ver} | Firmware: {fw_ver}")
+        print(
+            f"Product code: {product_code} | Hardware revision: {hw_ver} | "
+            f"Firmware: {fw_ver}"
+        )
         print(f"Layout: {layout.layout_id} ({layout.joint_count} DOF)")
         touch_layout = hand.touch.layout
         touch_status = (
@@ -136,22 +137,8 @@ async def run(args: argparse.Namespace) -> None:
                 health,
                 strict=args.strict_health or not args.allow_unhealthy,
             )
-            ultra_models = {
-                hand_type
-                for hand_type in (
-                    getattr(sdk.Revo3Model, "Ultra", None),
-                    getattr(sdk.Revo3Model, "UltraTouch", None),
-                    getattr(sdk.Revo3Model, "UltraVisionTouch", None),
-                )
-                if hand_type is not None
-            }
-            is_ultra = (
-                device_info is not None
-                and device_info.model in ultra_models
-                and layout.joint_count == 21
-            )
-            if not is_ultra:
-                raise RuntimeError("Motion currently requires a 21-DOF Revo3 Ultra")
+            if layout.joint_count != 21:
+                raise RuntimeError("Motion currently requires a supported 21-joint layout")
             if args.speed is not None and (args.move_finger or args.move_thumb):
                 raise RuntimeError("--speed is supported by move_to and move_joint only")
             duration = args.duration
@@ -251,7 +238,7 @@ def parse_args() -> argparse.Namespace:
     motion.add_argument("--move-joint", action="store_true")
     motion.add_argument("--move-finger", action="store_true")
     motion.add_argument("--move-thumb", action="store_true")
-    parser.add_argument("--joint-index", type=int, default=0)
+    parser.add_argument("--joint-index", type=int, default=1)
     parser.add_argument("--finger-index", type=int, choices=range(1, 5), default=1)
     parser.add_argument(
         "--angle", "--deg", "--flexion",

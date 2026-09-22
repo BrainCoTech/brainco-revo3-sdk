@@ -1,7 +1,7 @@
 """Revo3 Touch Panel - For Revo3 Tactile Array devices
 
 Displays Revo3 tactile array data:
-- Summary: 42 regional force values or mx_* module aggregates
+- Summary: 42 regional force values or high_density_matrix_* module aggregates
 - Detail: 11 tactile array modules as heatmaps
 
 Tabs:
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from .touch_common import (
-    HP_FORCE_DISPLAY_BASELINE_MN, SummaryChart, HeatmapChart,
+    FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN, SummaryChart, HeatmapChart,
     HpForceTorqueModuleCard, build_status_cards, run_async, logger
 )
 from .i18n import tr
@@ -86,21 +86,21 @@ REVO3_MODULE_POINTS = {
 TOUCH_RENDER_INTERVAL_MS = 16
 STATUS_UPDATE_INTERVAL_S = 0.1
 
-# mt_* force display ceiling pending a confirmed physical measurement range.
-MT_FORCE_LIMIT_MN = 20000.0
-MT_ADC_MAX = 4096.0
+# pressure_array_* force display ceiling pending a confirmed physical measurement range.
+PRESSURE_ARRAY_FORCE_LIMIT_MN = 20000.0
+PRESSURE_ARRAY_ADC_MAX = 4096.0
 
 # The SDK exposes force-mode points in mN. These raw limits are converted with
 # raw * 10 mN. Unknown hand sides use the larger limit to avoid display clipping.
-MX_FORCE_LIMITS_RAW_LEFT = [
+HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_LEFT = [
     249, 63, 141, 236, 141, 236, 141, 236, 141, 236, 141,
 ]
-MX_FORCE_LIMITS_RAW_RIGHT = [
+HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_RIGHT = [
     226, 63, 113, 236, 141, 236, 141, 236, 141, 236, 141,
 ]
-MX_FORCE_LIMITS_RAW = [
+HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW = [
     max(left, right)
-    for left, right in zip(MX_FORCE_LIMITS_RAW_LEFT, MX_FORCE_LIMITS_RAW_RIGHT)
+    for left, right in zip(HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_LEFT, HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_RIGHT)
 ]
 
 REVO3_HEATMAP_LAYOUT = {
@@ -213,7 +213,7 @@ def _get_revo3_coord_map(module_name: str):
     return None
 
 
-def _mx_channel_grid(point_count: int):
+def _high_density_matrix_channel_grid(point_count: int):
     """Build a compact channel grid from the module-reported point count."""
     point_count = max(1, int(point_count))
     cols = math.isqrt(point_count)
@@ -226,18 +226,18 @@ def _mx_channel_grid(point_count: int):
     return rows, cols
 
 
-def _hp_module_point_count(layout, module_id: int) -> int:
-    """Return the declared point count for one hp_* module."""
+def _fingertip_force_torque_module_point_count(layout, module_id: int) -> int:
+    """Return the declared point count for one fingertip_force_torque_* module."""
     for module in list(getattr(layout, "modules", []) or []):
         if int(getattr(module, "module_id", -1)) != int(module_id):
             continue
         layout_id = str(getattr(module, "layout_id", "") or "")
-        if not layout_id.startswith("hp_"):
+        if not layout_id.startswith("fingertip_force_torque_"):
             continue
         declared_count = getattr(module, "point_count", None)
         if declared_count is not None:
             return max(0, int(declared_count))
-        return 48 if layout_id.startswith("hp_fingertip_48") else 0
+        return 48 if layout_id.startswith("fingertip_force_torque_48") else 0
     return 0
 
 
@@ -261,9 +261,9 @@ class Revo3TouchSubPanel(QWidget):
         super().__init__()
         self.device = None
         self.slave_id = 1
-        self.mx_modes = [TOUCH_VALUE_MODE_ADC] * 11
+        self.high_density_matrix_modes = [TOUCH_VALUE_MODE_ADC] * 11
         self.detail_charts = [None] * 11
-        self.hp_force_torque_cards = []
+        self.fingertip_force_torque_force_torque_cards = []
         self.sensor_cards = []
         self.sensor_bars = []
         self.sensor_labels = []
@@ -283,10 +283,10 @@ class Revo3TouchSubPanel(QWidget):
         self.read_output_mode_btn = None
         self.read_tare_status_btn = None
         self.restart_btn = None
-        self.has_hp_touch = False
+        self.has_fingertip_force_torque_touch = False
         self.is_hybrid = False
-        self.has_mx_touch = False
-        self.has_mt_touch = False
+        self.has_high_density_matrix_touch = False
+        self.has_pressure_array_touch = False
         self._active_touch_layout = None
         self._detected_touch_layout = None
         self._touch_layout_override_supported = False
@@ -302,9 +302,9 @@ class Revo3TouchSubPanel(QWidget):
         self._render_timer.setInterval(TOUCH_RENDER_INTERVAL_MS)
         self._render_timer.setTimerType(Qt.PreciseTimer)
         self._render_timer.timeout.connect(self._render_latest_data)
-        self._mx_frame_counts_synced = False
-        self.mx_point_counts = [0] * 11
-        self.mx_module_sns = []
+        self._high_density_matrix_frame_counts_synced = False
+        self.high_density_matrix_point_counts = [0] * 11
+        self.high_density_matrix_module_sns = []
         self.module_info = [
             # (module_id, name_en, name_zh, row, col)
             (0, "Palm", "手掌", 0, 0),
@@ -338,11 +338,11 @@ class Revo3TouchSubPanel(QWidget):
         self.layout_combo = QComboBox()
         self.layout_combo.addItems([
             "Auto",
-            "Hybrid HP+MT",
-            "Hybrid HP+MX",
-            "Pure HP",
-            "Pure MT",
-            "Pure MX",
+            "Hybrid Fingertip Force/Torque+Pressure Array",
+            "Hybrid Fingertip Force/Torque+High-Density Matrix",
+            "Pure Fingertip Force/Torque",
+            "Pure Pressure Array",
+            "Pure High-Density Matrix",
         ])
         self.layout_combo.currentIndexChanged.connect(self._on_layout_changed)
         self.layout_combo.setEnabled(False)
@@ -389,25 +389,25 @@ class Revo3TouchSubPanel(QWidget):
         ctrl_layout.addWidget(self.disable_all_btn)
 
         self.read_sn_btn = QPushButton("Read SN")
-        self.read_sn_btn.clicked.connect(self._read_mx_module_sns)
+        self.read_sn_btn.clicked.connect(self._read_high_density_matrix_module_sns)
         self.read_sn_btn.setEnabled(False)
         self.read_sn_btn.setVisible(False)
         ctrl_layout.addWidget(self.read_sn_btn)
 
         self.read_points_btn = QPushButton("Read Points")
-        self.read_points_btn.clicked.connect(self._read_mx_point_counts)
+        self.read_points_btn.clicked.connect(self._read_high_density_matrix_point_counts)
         self.read_points_btn.setEnabled(False)
         self.read_points_btn.setVisible(False)
         ctrl_layout.addWidget(self.read_points_btn)
 
         self.read_output_mode_btn = QPushButton("Read Module Value Mode")
-        self.read_output_mode_btn.clicked.connect(self._read_mx_output_mode)
+        self.read_output_mode_btn.clicked.connect(self._read_high_density_matrix_output_mode)
         self.read_output_mode_btn.setEnabled(False)
         self.read_output_mode_btn.setVisible(False)
         ctrl_layout.addWidget(self.read_output_mode_btn)
 
         self.read_tare_status_btn = QPushButton("Read Tare State")
-        self.read_tare_status_btn.clicked.connect(self._read_mx_tare_status)
+        self.read_tare_status_btn.clicked.connect(self._read_high_density_matrix_tare_status)
         self.read_tare_status_btn.setEnabled(False)
         self.read_tare_status_btn.setVisible(False)
         ctrl_layout.addWidget(self.read_tare_status_btn)
@@ -551,11 +551,11 @@ class Revo3TouchSubPanel(QWidget):
 
     @staticmethod
     def _populate_value_mode_combo(
-        combo, has_mt_touch, has_mx_touch, current_value=TOUCH_VALUE_MODE_ADC
+        combo, has_pressure_array_touch, has_high_density_matrix_touch, current_value=TOUCH_VALUE_MODE_ADC
     ):
         combo.blockSignals(True)
         combo.clear()
-        for label, value in touch_value_mode_options(has_mt_touch, has_mx_touch):
+        for label, value in touch_value_mode_options(has_pressure_array_touch, has_high_density_matrix_touch):
             combo.addItem(label, value)
         target_index = combo.findData(int(current_value))
         combo.setCurrentIndex(max(0, target_index))
@@ -567,10 +567,10 @@ class Revo3TouchSubPanel(QWidget):
         return int(index if value is None else value)
 
     def _get_module_chart_config(self, mod_key: str):
-        if self.has_mx_touch:
+        if self.has_high_density_matrix_touch:
             idx = REVO3_MODULE_NAMES.index(mod_key)
-            pts = self.mx_point_counts[idx]
-            rows, cols = _mx_channel_grid(pts)
+            pts = self.high_density_matrix_point_counts[idx]
+            rows, cols = _high_density_matrix_channel_grid(pts)
             return pts, rows, cols, None
         pts = REVO3_MODULE_POINTS[mod_key]
         rows, cols = REVO3_HEATMAP_LAYOUT[mod_key]
@@ -606,10 +606,10 @@ class Revo3TouchSubPanel(QWidget):
                 "🤙 Pinky Pad",
             ]
             colors = REVO3_MODULE_COLORS
-            y_range = (0, int(HP_FORCE_DISPLAY_BASELINE_MN))
+            y_range = (0, int(FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN))
             y_label = "mN"
             chart_title = "Touch Summary (Hybrid 11 Modules)"
-        elif self.has_hp_touch and not self.is_hybrid:
+        elif self.has_fingertip_force_torque_touch and not self.is_hybrid:
             names = ["ThumbTip", "IndexTip", "MiddleTip", "RingTip", "PinkyTip"]
             colors = [
                 (255, 100, 100),  # Thumb Tip
@@ -618,10 +618,10 @@ class Revo3TouchSubPanel(QWidget):
                 (255, 255, 100),  # Ring Tip
                 (255, 100, 255),  # Pinky Tip
             ]
-            y_range = (0, int(HP_FORCE_DISPLAY_BASELINE_MN))
+            y_range = (0, int(FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN))
             y_label = "mN (Fn)"
             chart_title = "Touch Summary (Fn Force)"
-        elif self.has_mx_touch:
+        elif self.has_high_density_matrix_touch:
             names = [item[1] for item in self.module_info]
             colors = [
                 (100, 255, 255),  # Palm
@@ -632,8 +632,8 @@ class Revo3TouchSubPanel(QWidget):
                 (255, 100, 255), (255, 100, 255),  # Pinky Tip, Pad
             ]
             per_point_limits_mn = [
-                self._mx_force_limit_raw(module_id) * 10.0
-                for module_id in range(len(MX_FORCE_LIMITS_RAW))
+                self._high_density_matrix_force_limit_raw(module_id) * 10.0
+                for module_id in range(len(HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW))
             ]
             y_range = (0, int(max(per_point_limits_mn)))
             y_label = "mN"
@@ -641,7 +641,7 @@ class Revo3TouchSubPanel(QWidget):
         else:
             names = REVO3_SUMMARY_NAMES
             colors = REVO3_SUMMARY_COLORS
-            y_range = (0, int(MT_FORCE_LIMIT_MN))
+            y_range = (0, int(PRESSURE_ARRAY_FORCE_LIMIT_MN))
             y_label = "mN"
             chart_title = "Touch Summary (Force)"
 
@@ -655,7 +655,7 @@ class Revo3TouchSubPanel(QWidget):
         self.overview_layout.addWidget(self.summary_chart, 0, 0, 1, 1)
 
         self.summary_compasses = []
-        if self.has_hp_touch:
+        if self.has_fingertip_force_torque_touch:
             from .touch_common import ForceCompassWidget
             compass_group = QGroupBox("5-Finger 2D Force Vector Compass (5 指尖矢量罗盘全景)")
             compass_group.setStyleSheet("""
@@ -672,11 +672,11 @@ class Revo3TouchSubPanel(QWidget):
             c_lay.setContentsMargins(4, 4, 4, 4)
             c_lay.setSpacing(4)
 
-            hp_names = ["👍 拇指", "👆 食指", "🖕 中指", "💍 无名指", "🤙 小指"]
-            for i, c_name in enumerate(hp_names):
+            fingertip_force_torque_names = ["👍 拇指", "👆 食指", "🖕 中指", "💍 无名指", "🤙 小指"]
+            for i, c_name in enumerate(fingertip_force_torque_names):
                 comp = ForceCompassWidget(
                     title=c_name,
-                    max_force=HP_FORCE_DISPLAY_BASELINE_MN,
+                    max_force=FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN,
                 )
                 comp.setMaximumHeight(160)
                 self.summary_compasses.append(comp)
@@ -688,10 +688,10 @@ class Revo3TouchSubPanel(QWidget):
             self.status_layout, names, colors, is_compact=True
         )
 
-    def _build_hp_mt_layout(self):
+    def _build_force_torque_pressure_array_layout(self):
         if sdk is None:
             return None
-        hp_signals = [
+        fingertip_force_torque_signals = [
             sdk.TouchSignal.TouchPoint,
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
@@ -701,17 +701,17 @@ class Revo3TouchSubPanel(QWidget):
         for i in range(5):
             modules.append(
                 sdk.TouchModuleLayout(
-                    "hp_fingertip_48",
+                    "fingertip_force_torque_48",
                     i * 2 + 1,
                     sdk.TouchRegion.Fingertip,
                     i,
-                    hp_signals,
+                    fingertip_force_torque_signals,
                     48,
                 )
             )
-        mt_pad_counts = [57, 52, 52, 52, 52]
-        for i, count in enumerate(mt_pad_counts):
-            layout_id = "mt_thumbpad_57" if i == 0 else "mt_fingerpad_52"
+        pressure_array_pad_counts = [57, 52, 52, 52, 52]
+        for i, count in enumerate(pressure_array_pad_counts):
+            layout_id = "pressure_array_thumb_pad_57" if i == 0 else "pressure_array_finger_pad_52"
             modules.append(
                 sdk.TouchModuleLayout(
                     layout_id,
@@ -724,7 +724,7 @@ class Revo3TouchSubPanel(QWidget):
             )
         modules.append(
             sdk.TouchModuleLayout(
-                "mt_palm_36",
+                "pressure_array_palm_36",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -734,16 +734,16 @@ class Revo3TouchSubPanel(QWidget):
         )
         return sdk.TouchLayout(modules)
 
-    def _build_hp_mx_layout(self, mx_point_counts=None):
+    def _build_force_torque_high_density_matrix_layout(self, high_density_matrix_point_counts=None):
         if sdk is None:
             return None
-        counts = list(mx_point_counts or self.mx_point_counts or [])
+        counts = list(high_density_matrix_point_counts or self.high_density_matrix_point_counts or [])
         required_ids = [0, 2, 4, 6, 8, 10]
         if len(counts) < 11 or any(counts[index] <= 0 for index in required_ids):
             raise RuntimeError(
-                "hp+mx layout override requires confirmed point counts for palm and finger pads"
+                "force-torque/high-density-matrix layout override requires confirmed point counts for palm and finger pads"
             )
-        hp_signals = [
+        fingertip_force_torque_signals = [
             sdk.TouchSignal.TouchPoint,
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
@@ -753,11 +753,11 @@ class Revo3TouchSubPanel(QWidget):
         for i in range(5):
             modules.append(
                 sdk.TouchModuleLayout(
-                    "hp_fingertip_48",
+                    "fingertip_force_torque_48",
                     i * 2 + 1,
                     sdk.TouchRegion.Fingertip,
                     i,
-                    hp_signals,
+                    fingertip_force_torque_signals,
                     48,
                 )
             )
@@ -766,7 +766,7 @@ class Revo3TouchSubPanel(QWidget):
             count = counts[phys_idx]
             modules.append(
                 sdk.TouchModuleLayout(
-                    f"mx_fingerpad_{count}",
+                    f"high_density_matrix_finger_pad_{count}",
                     phys_idx,
                     sdk.TouchRegion.FingerPad,
                     i,
@@ -777,7 +777,7 @@ class Revo3TouchSubPanel(QWidget):
         palm_count = counts[0]
         modules.append(
             sdk.TouchModuleLayout(
-                f"mx_palm_{palm_count}",
+                f"high_density_matrix_palm_{palm_count}",
                 0,
                 sdk.TouchRegion.Palm,
                 0,
@@ -787,10 +787,10 @@ class Revo3TouchSubPanel(QWidget):
         )
         return sdk.TouchLayout(modules)
 
-    def _build_hp_layout(self):
+    def _build_fingertip_force_torque_layout(self):
         if sdk is None:
             return None
-        hp_signals = [
+        fingertip_force_torque_signals = [
             sdk.TouchSignal.TouchPoint,
             sdk.TouchSignal.Force3D,
             sdk.TouchSignal.Torque2D,
@@ -798,35 +798,35 @@ class Revo3TouchSubPanel(QWidget):
         ]
         modules = [
             sdk.TouchModuleLayout(
-                "hp_fingertip_48",
+                "fingertip_force_torque_48",
                 i,
                 sdk.TouchRegion.Fingertip,
                 i,
-                hp_signals,
+                fingertip_force_torque_signals,
                 48,
             )
             for i in range(5)
         ]
         return sdk.TouchLayout(modules)
 
-    def _build_mt_layout(self):
+    def _build_pressure_array_layout(self):
         if sdk is None:
             return None
-        mt_counts = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
+        pressure_array_counts = [36, 31, 57, 21, 52, 21, 52, 21, 52, 21, 52]
         modules = []
-        for i, count in enumerate(mt_counts):
+        for i, count in enumerate(pressure_array_counts):
             if i == 0:
                 region = sdk.TouchRegion.Palm
-                layout_id = "mt_palm_36"
+                layout_id = "pressure_array_palm_36"
                 region_index = 0
             elif i in (1, 3, 5, 7, 9):
                 region = sdk.TouchRegion.Fingertip
                 region_index = i // 2
-                layout_id = "mt_thumbtip_31" if i == 1 else "mt_fingertip_21"
+                layout_id = "pressure_array_thumb_tip_31" if i == 1 else "pressure_array_fingertip_21"
             else:
                 region = sdk.TouchRegion.FingerPad
                 region_index = i // 2 - 1
-                layout_id = "mt_thumbpad_57" if i == 2 else "mt_fingerpad_52"
+                layout_id = "pressure_array_thumb_pad_57" if i == 2 else "pressure_array_finger_pad_52"
             modules.append(
                 sdk.TouchModuleLayout(
                     layout_id,
@@ -839,13 +839,13 @@ class Revo3TouchSubPanel(QWidget):
             )
         return sdk.TouchLayout(modules)
 
-    def _build_mx_layout(self, mx_point_counts=None):
+    def _build_high_density_matrix_layout(self, high_density_matrix_point_counts=None):
         if sdk is None:
             return None
-        counts = list(mx_point_counts or self.mx_point_counts or [])
+        counts = list(high_density_matrix_point_counts or self.high_density_matrix_point_counts or [])
         if len(counts) < 11 or any(count <= 0 for count in counts[:11]):
             raise RuntimeError(
-                "mx layout override requires confirmed point counts for all 11 modules"
+                "high-density-matrix layout override requires confirmed point counts for all 11 modules"
             )
         modules = []
         for i in range(11):
@@ -853,15 +853,15 @@ class Revo3TouchSubPanel(QWidget):
             if i == 0:
                 region = sdk.TouchRegion.Palm
                 region_index = 0
-                layout_id = f"mx_palm_{point_count}"
+                layout_id = f"high_density_matrix_palm_{point_count}"
             elif i in (1, 3, 5, 7, 9):
                 region = sdk.TouchRegion.Fingertip
                 region_index = i // 2
-                layout_id = f"mx_fingertip_{point_count}"
+                layout_id = f"high_density_matrix_fingertip_{point_count}"
             else:
                 region = sdk.TouchRegion.FingerPad
                 region_index = i // 2 - 1
-                layout_id = f"mx_fingerpad_{point_count}"
+                layout_id = f"high_density_matrix_finger_pad_{point_count}"
             modules.append(
                 sdk.TouchModuleLayout(
                     layout_id,
@@ -891,36 +891,36 @@ class Revo3TouchSubPanel(QWidget):
                 new_layout = None
                 if index == 0:
                     new_layout = self._detected_touch_layout
-                elif index == 1:  # Hybrid HP+MT
-                    new_layout = self._build_hp_mt_layout()
-                elif index == 2:  # Hybrid HP+MX
-                    mx_counts = None
+                elif index == 1:  # Hybrid Fingertip Force/Torque+Pressure Array
+                    new_layout = self._build_force_torque_pressure_array_layout()
+                elif index == 2:  # Hybrid Fingertip Force/Torque+High-Density Matrix
+                    high_density_matrix_counts = None
                     try:
                         raw_counts = await self.device.get_touch_module_point_counts(
                             self.slave_id
                         )
-                        mx_counts = self._mx_values_by_public_module_id(
+                        high_density_matrix_counts = self._high_density_matrix_values_by_public_module_id(
                             raw_counts, 0
                         )
                     except Exception:
                         pass
-                    new_layout = self._build_hp_mx_layout(mx_counts)
-                elif index == 3:  # Pure HP
-                    new_layout = self._build_hp_layout()
-                elif index == 4:  # Pure MT
-                    new_layout = self._build_mt_layout()
-                elif index == 5:  # Pure MX
-                    mx_counts = None
+                    new_layout = self._build_force_torque_high_density_matrix_layout(high_density_matrix_counts)
+                elif index == 3:  # Pure Fingertip Force/Torque
+                    new_layout = self._build_fingertip_force_torque_layout()
+                elif index == 4:  # Pure Pressure Array
+                    new_layout = self._build_pressure_array_layout()
+                elif index == 5:  # Pure High-Density Matrix
+                    high_density_matrix_counts = None
                     try:
                         raw_counts = await self.device.get_touch_module_point_counts(
                             self.slave_id
                         )
-                        mx_counts = self._mx_values_by_public_module_id(
+                        high_density_matrix_counts = self._high_density_matrix_values_by_public_module_id(
                             raw_counts, 0
                         )
                     except Exception:
                         pass
-                    new_layout = self._build_mx_layout(mx_counts)
+                    new_layout = self._build_high_density_matrix_layout(high_density_matrix_counts)
 
                 if new_layout is not None:
                     await self.device.set_touch_layout(self.slave_id, new_layout)
@@ -932,9 +932,9 @@ class Revo3TouchSubPanel(QWidget):
 
         run_async(apply)
 
-    def _on_hp_module_zero(self, module_idx: int):
-        if module_idx < len(self.hp_force_torque_cards) and self.hp_force_torque_cards[module_idx] is not None:
-            self.hp_force_torque_cards[module_idx].clear_chart()
+    def _on_fingertip_force_torque_module_zero(self, module_idx: int):
+        if module_idx < len(self.fingertip_force_torque_force_torque_cards) and self.fingertip_force_torque_force_torque_cards[module_idx] is not None:
+            self.fingertip_force_torque_force_torque_cards[module_idx].clear_chart()
         public_module_id = module_idx * 2 + 1 if self.is_hybrid else module_idx
         if hasattr(self.device, "calibrate_touch_zero_single"):
             run_async(lambda: self.device.calibrate_touch_zero_single(self.slave_id, public_module_id))
@@ -950,40 +950,40 @@ class Revo3TouchSubPanel(QWidget):
                 widget.deleteLater()
 
         self.detail_charts = [None] * 11
-        self.hp_force_torque_cards = []
+        self.fingertip_force_torque_force_torque_cards = []
 
         if self.is_hybrid:
             # ── Hybrid Mode: 2 Top-level Category Tabs ──
-            # 1. Tab: "🌟 HP" -> 5 Fingertip Cards in Sub-Tabs
-            hp_container = QWidget()
-            hp_lay = QVBoxLayout(hp_container)
-            hp_lay.setContentsMargins(4, 4, 4, 4)
+            # 1. Tab: "🌟 Fingertip Force/Torque" -> 5 Fingertip Cards in Sub-Tabs
+            fingertip_force_torque_container = QWidget()
+            fingertip_force_torque_lay = QVBoxLayout(fingertip_force_torque_container)
+            fingertip_force_torque_lay.setContentsMargins(4, 4, 4, 4)
 
-            hp_subtabs = QTabWidget()
-            hp_module_info = [
+            fingertip_force_torque_subtabs = QTabWidget()
+            fingertip_force_torque_module_info = [
                 ("Thumb", "👍 拇指尖 (ThumbTip)", 0, 1, (255, 100, 100)),
                 ("Index", "👆 食指尖 (IndexTip)", 1, 3, (100, 255, 100)),
                 ("Middle", "🖕 中指尖 (MiddleTip)", 2, 5, (100, 100, 255)),
                 ("Ring", "💍 无名指尖 (RingTip)", 3, 7, (255, 255, 100)),
                 ("Pinky", "🤙 小指尖 (PinkyTip)", 4, 9, (255, 100, 255)),
             ]
-            for name, tab_title, mod_idx, universal_id, color in hp_module_info:
+            for name, tab_title, mod_idx, universal_id, color in fingertip_force_torque_module_info:
                 card = HpForceTorqueModuleCard(
                     name=name,
                     module_idx=mod_idx,
                     universal_id=universal_id,
                     color=color,
-                    point_count=_hp_module_point_count(
+                    point_count=_fingertip_force_torque_module_point_count(
                         self._active_touch_layout, universal_id
                     ),
-                    on_zero_cb=self._on_hp_module_zero,
+                    on_zero_cb=self._on_fingertip_force_torque_module_zero,
                 )
-                self.hp_force_torque_cards.append(card)
-                hp_subtabs.addTab(card, tab_title)
-            hp_lay.addWidget(hp_subtabs, 1)
-            self.tabs.addTab(hp_container, "🌟 HP")
+                self.fingertip_force_torque_force_torque_cards.append(card)
+                fingertip_force_torque_subtabs.addTab(card, tab_title)
+            fingertip_force_torque_lay.addWidget(fingertip_force_torque_subtabs, 1)
+            self.tabs.addTab(fingertip_force_torque_container, "🌟 Fingertip Force/Torque")
 
-            # 2. Tab: "🗺️ MT/MX" -> 6 Modules (Palm + 5 Pads) in Sub-Tabs
+            # 2. Tab: "🗺️ Pressure Array/High-Density Matrix" -> 6 Modules (Palm + 5 Pads) in Sub-Tabs
             array_container = QWidget()
             array_lay = QVBoxLayout(array_container)
             array_lay.setContentsMargins(4, 4, 4, 4)
@@ -1020,12 +1020,12 @@ class Revo3TouchSubPanel(QWidget):
                 array_subtabs.addTab(card_widget, tab_title)
 
             array_lay.addWidget(array_subtabs, 1)
-            array_tab_title = "🗺️ MT" if self.has_mt_touch else ("🗺️ MX" if self.has_mx_touch else "🗺️ Array")
+            array_tab_title = "🗺️ Pressure Array" if self.has_pressure_array_touch else ("🗺️ High-Density Matrix" if self.has_high_density_matrix_touch else "🗺️ Array")
             self.tabs.addTab(array_container, array_tab_title)
             return
 
-        if self.has_hp_touch and not self.is_hybrid:
-            hp_module_info = [
+        if self.has_fingertip_force_torque_touch and not self.is_hybrid:
+            fingertip_force_torque_module_info = [
                 ("Thumb", "👍 拇指", 0, 1, (255, 100, 100)),
                 ("Index", "👆 食指", 1, 3, (100, 255, 100)),
                 ("Middle", "🖕 中指", 2, 5, (100, 100, 255)),
@@ -1033,18 +1033,18 @@ class Revo3TouchSubPanel(QWidget):
                 ("Pinky", "🤙 小指", 4, 9, (255, 100, 255)),
             ]
 
-            for name, tab_title, mod_idx, universal_id, color in hp_module_info:
+            for name, tab_title, mod_idx, universal_id, color in fingertip_force_torque_module_info:
                 card = HpForceTorqueModuleCard(
                     name=name,
                     module_idx=mod_idx,
                     universal_id=universal_id,
                     color=color,
-                    point_count=_hp_module_point_count(
+                    point_count=_fingertip_force_torque_module_point_count(
                         self._active_touch_layout, mod_idx
                     ),
-                    on_zero_cb=self._on_hp_module_zero,
+                    on_zero_cb=self._on_fingertip_force_torque_module_zero,
                 )
-                self.hp_force_torque_cards.append(card)
+                self.fingertip_force_torque_force_torque_cards.append(card)
 
                 container = QWidget()
                 lay = QVBoxLayout(container)
@@ -1079,7 +1079,7 @@ class Revo3TouchSubPanel(QWidget):
                 )
                 self.detail_charts[mod_idx] = chart
 
-                if self.has_mx_touch or self.has_mt_touch:
+                if self.has_high_density_matrix_touch or self.has_pressure_array_touch:
                     container = QWidget()
                     lay = QHBoxLayout(container)
                     lay.setContentsMargins(4, 4, 4, 4)
@@ -1109,7 +1109,7 @@ class Revo3TouchSubPanel(QWidget):
                     )
                     self.detail_charts[mod_idx] = chart
 
-                    if self.has_mx_touch or self.has_mt_touch:
+                    if self.has_high_density_matrix_touch or self.has_pressure_array_touch:
                         container = QWidget()
                         lay = QHBoxLayout(container)
                         lay.setContentsMargins(0, 0, 0, 0)
@@ -1144,7 +1144,7 @@ class Revo3TouchSubPanel(QWidget):
                 for i, m in enumerate(force_torque_modules)
             }
             if curr_idx == 0:
-                target_ids = [1, 3, 5, 7, 9] if self.is_hybrid else list(range(len(self.hp_force_torque_cards)))
+                target_ids = [1, 3, 5, 7, 9] if self.is_hybrid else list(range(len(self.fingertip_force_torque_force_torque_cards)))
                 fn_str = ", ".join(
                     [
                         f"{getattr(modules_by_id.get(mod_id), 'resultant_force_mn', 0.0):+.1f}mN"
@@ -1193,17 +1193,17 @@ class Revo3TouchSubPanel(QWidget):
                     f"| lengths={lengths} | max={maxima}"
                 )
 
-    def _sync_mx_point_counts_from_frame(self, modules):
-        if not self.has_mx_touch or self._mx_frame_counts_synced:
+    def _sync_high_density_matrix_point_counts_from_frame(self, modules):
+        if not self.has_high_density_matrix_touch or self._high_density_matrix_frame_counts_synced:
             return
         observed_counts = [len(module or []) for module in list(modules)[:11]]
         if len(observed_counts) != 11 or any(count <= 0 for count in observed_counts):
             return
-        self._mx_frame_counts_synced = True
-        if observed_counts == self.mx_point_counts:
+        self._high_density_matrix_frame_counts_synced = True
+        if observed_counts == self.high_density_matrix_point_counts:
             return
-        self.mx_point_counts = observed_counts
-        logger.info(f"mx_* touch point counts synchronized from frame: {observed_counts}")
+        self.high_density_matrix_point_counts = observed_counts
+        logger.info(f"high_density_matrix_* touch point counts synchronized from frame: {observed_counts}")
         self._rebuild_status_cards()
         self._rebuild_detail_tabs()
         self._refresh_detail_chart_units()
@@ -1257,7 +1257,7 @@ class Revo3TouchSubPanel(QWidget):
                 ft_modules_by_id.setdefault(idx, m)
 
             if not self.is_hybrid:
-                slot_count = len(self.hp_force_torque_cards)
+                slot_count = len(self.fingertip_force_torque_force_torque_cards)
                 fn_list = [
                     getattr(ft_modules_by_id.get(i), "resultant_force_mn", 0.0)
                     for i in range(slot_count)
@@ -1266,13 +1266,13 @@ class Revo3TouchSubPanel(QWidget):
                     self.summary_chart.add_data(fn_list)
                 for idx, val in enumerate(fn_list):
                     if status_update_due and idx < len(self.sensor_bars):
-                        bar_max = max(int(HP_FORCE_DISPLAY_BASELINE_MN), int(val * 1.1))
+                        bar_max = max(int(FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN), int(val * 1.1))
                         self.sensor_bars[idx].setRange(0, bar_max)
                         self.sensor_bars[idx].setValue(int(min(val, float(bar_max))))
                         self.sensor_labels[idx].setText(f"Fn:{val:+.1f}mN")
 
-            # Update 5 HP cards on Tab 1
-            for idx, card in enumerate(self.hp_force_torque_cards):
+            # Update 5 Fingertip Force/Torque cards on Tab 1
+            for idx, card in enumerate(self.fingertip_force_torque_force_torque_cards):
                 lookup_id = idx * 2 + 1 if self.is_hybrid else idx
                 m = ft_modules_by_id.get(lookup_id)
                 if card is not None and m is not None:
@@ -1299,12 +1299,12 @@ class Revo3TouchSubPanel(QWidget):
 
         modules = getattr(revo3_data, 'modules', []) or []
         summary = list(getattr(revo3_data, "summary_values", []) or [])
-        self._sync_mx_point_counts_from_frame(modules)
+        self._sync_high_density_matrix_point_counts_from_frame(modules)
 
         if self.is_hybrid:
             summary_11 = [0.0] * 11
             raw_summary = summary
-            mt_summary_slices = {
+            pressure_array_summary_slices = {
                 0: (0, 1),
                 2: (4, 10),
                 4: (13, 18),
@@ -1315,14 +1315,14 @@ class Revo3TouchSubPanel(QWidget):
 
             for i in range(11):
                 if i in (1, 3, 5, 7, 9):
-                    # HP Fingertip modules (Universal IDs 1, 3, 5, 7, 9)
+                    # Fingertip Force/Torque Fingertip modules (Universal IDs 1, 3, 5, 7, 9)
                     m = ft_modules_by_id.get(i)
                     fn_val = float(getattr(m, "resultant_force_mn", 0.0) or 0.0) if m is not None else 0.0
                     st = getattr(m, "status", 0) if m is not None else 0
                     summary_11[i] = fn_val
                     if status_update_due and i < len(self.sensor_bars):
                         bar_max = max(
-                            int(HP_FORCE_DISPLAY_BASELINE_MN), int(fn_val * 1.1)
+                            int(FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN), int(fn_val * 1.1)
                         )
                         self.sensor_bars[i].setRange(0, bar_max)
                         self.sensor_bars[i].setValue(int(min(max(fn_val, 0.0), float(bar_max))))
@@ -1331,8 +1331,8 @@ class Revo3TouchSubPanel(QWidget):
                 else:
                     # Array palm and fingerpad modules (public IDs 0, 2, 4, 6, 8, 10).
                     pts = list(modules[i] or []) if (modules and i < len(modules)) else []
-                    if not pts and len(raw_summary) >= 42 and i in mt_summary_slices:
-                        s_start, s_end = mt_summary_slices[i]
+                    if not pts and len(raw_summary) >= 42 and i in pressure_array_summary_slices:
+                        s_start, s_end = pressure_array_summary_slices[i]
                         pts = raw_summary[s_start:s_end]
 
                     max_v = float(max(pts)) if pts else 0.0
@@ -1348,7 +1348,7 @@ class Revo3TouchSubPanel(QWidget):
 
             if summary_visible and self.summary_chart is not None:
                 self.summary_chart.add_data(summary_11)
-        elif self.has_mx_touch and modules:
+        elif self.has_high_density_matrix_touch and modules:
             summary_11 = [0.0] * 11
             for i, module_points in enumerate(modules[:11]):
                 summary_11[i] = max(list(module_points or [0.0]))
@@ -1358,8 +1358,8 @@ class Revo3TouchSubPanel(QWidget):
             for i, val in enumerate(summary_11):
                 if status_update_due and i < len(self.sensor_bars):
                     is_force = (
-                        self.mx_modes[i] == TOUCH_VALUE_MODE_FORCE
-                        if i < len(self.mx_modes)
+                        self.high_density_matrix_modes[i] == TOUCH_VALUE_MODE_FORCE
+                        if i < len(self.high_density_matrix_modes)
                         else True
                     )
                     pts = list(modules[i] or []) if i < len(modules) else []
@@ -1374,7 +1374,7 @@ class Revo3TouchSubPanel(QWidget):
                         a_avg = sum(active_vals) / len(active_vals) if active_vals else 0
                         cnt = len(active_vals)
 
-                        point_limit_mN = self._mx_force_limit_raw(i) * 10.0
+                        point_limit_mN = self._high_density_matrix_force_limit_raw(i) * 10.0
                         sum_limit_mN = point_limit_mN * n_total
                         avg_limit_mN = point_limit_mN
 
@@ -1382,10 +1382,10 @@ class Revo3TouchSubPanel(QWidget):
                         self.sensor_bars[i].setRange(0, int(avg_limit_mN))
                         self.sensor_bars[i].setValue(min(int(avg_v), int(avg_limit_mN)))
 
-                        sn_str = self.mx_module_sns[i] if (self.has_mx_touch and i < len(self.mx_module_sns)) else ""
-                        if not sn_str and self.has_mx_touch:
+                        sn_str = self.high_density_matrix_module_sns[i] if (self.has_high_density_matrix_touch and i < len(self.high_density_matrix_module_sns)) else ""
+                        if not sn_str and self.has_high_density_matrix_touch:
                             sn_str = "—"
-                        sn_line = f"\nSN: {sn_str}" if self.has_mx_touch else ""
+                        sn_line = f"\nSN: {sn_str}" if self.has_high_density_matrix_touch else ""
                         self.sensor_labels[i].setText(
                             f"max:{max_v:.0f} avg:{avg_v:.0f}/{avg_limit_mN:.0f} mN\n"
                             f"sum:{sum_v:.0f}/{sum_limit_mN:.0f} mN  cnt:{cnt}/{n_total}"
@@ -1405,10 +1405,10 @@ class Revo3TouchSubPanel(QWidget):
                         self.sensor_bars[i].setRange(0, 255)
                         self.sensor_bars[i].setValue(min(int(avg_v), 255))
 
-                        sn_str = self.mx_module_sns[i] if (self.has_mx_touch and i < len(self.mx_module_sns)) else ""
-                        if not sn_str and self.has_mx_touch:
+                        sn_str = self.high_density_matrix_module_sns[i] if (self.has_high_density_matrix_touch and i < len(self.high_density_matrix_module_sns)) else ""
+                        if not sn_str and self.has_high_density_matrix_touch:
                             sn_str = "—"
-                        sn_line = f"\nSN: {sn_str}" if self.has_mx_touch else ""
+                        sn_line = f"\nSN: {sn_str}" if self.has_high_density_matrix_touch else ""
                         self.sensor_labels[i].setText(
                             f"max:{int(max_v)} avg:{avg_v:.0f}/255\n"
                             f"sum:{int(sum_v)}  cnt:{cnt}/{n_total}"
@@ -1418,7 +1418,7 @@ class Revo3TouchSubPanel(QWidget):
             summary_42 = list(summary[:42])
             if summary_visible:
                 self.summary_chart.add_data(summary_42)
-            value_unit, limit_val, _ = self._mt_chart_scale()
+            value_unit, limit_val, _ = self._pressure_array_chart_scale()
             is_force = value_unit == "force"
             for i, val in enumerate(summary_42):
                 if status_update_due and i < len(self.sensor_bars):
@@ -1448,21 +1448,21 @@ class Revo3TouchSubPanel(QWidget):
                     limit = 255.0
                     value_unit = "adc"
                     stats_limit = 255.0
-                    if self.has_mx_touch:
+                    if self.has_high_density_matrix_touch:
                         is_force = (
-                            self.mx_modes[i] == TOUCH_VALUE_MODE_FORCE
-                            if i < len(self.mx_modes)
+                            self.high_density_matrix_modes[i] == TOUCH_VALUE_MODE_FORCE
+                            if i < len(self.high_density_matrix_modes)
                             else True
                         )
                         if is_force:
-                            limit = self._mx_force_limit_raw(i) * 10.0
+                            limit = self._high_density_matrix_force_limit_raw(i) * 10.0
                             value_unit = "force"
                             stats_limit = limit
                         else:
                             limit = 255.0
                             stats_limit = 255.0
                     elif hasattr(self, "read_mode_combo") and self.read_mode_combo is not None:
-                        value_unit, limit, stats_limit = self._mt_chart_scale()
+                        value_unit, limit, stats_limit = self._pressure_array_chart_scale()
 
                     if self.detail_charts[i].isVisible():
                         self.detail_charts[i].add_data(
@@ -1487,19 +1487,19 @@ class Revo3TouchSubPanel(QWidget):
 
         if self.is_hybrid:
             if self.tabs.count() > 1:
-                self.tabs.setTabText(1, "🌟 HP")
+                self.tabs.setTabText(1, "🌟 Fingertip Force/Torque")
             if self.tabs.count() > 2:
-                array_tab_title = "🗺️ MT" if self.has_mt_touch else ("🗺️ MX" if self.has_mx_touch else "🗺️ Array")
+                array_tab_title = "🗺️ Pressure Array" if self.has_pressure_array_touch else ("🗺️ High-Density Matrix" if self.has_high_density_matrix_touch else "🗺️ Array")
                 self.tabs.setTabText(2, array_tab_title)
-        elif self.has_hp_touch:
-            hp_tab_names = [
+        elif self.has_fingertip_force_torque_touch:
+            fingertip_force_torque_tab_names = [
                 ("touch_thumb", "👍"),
                 ("touch_index", "👆"),
                 ("touch_middle", "🖕"),
                 ("touch_ring", "💍"),
                 ("touch_pinky", "🤙"),
             ]
-            for i, (tr_key, icon) in enumerate(hp_tab_names):
+            for i, (tr_key, icon) in enumerate(fingertip_force_torque_tab_names):
                 if i + 1 < self.tabs.count():
                     self.tabs.setTabText(i + 1, f"{icon} {tr(tr_key)}")
         else:
@@ -1593,14 +1593,14 @@ class Revo3TouchSubPanel(QWidget):
         )
 
     def _update_value_mode_texts(self):
-        mt_only = self.is_hybrid and self.has_mt_touch and not self.has_mx_touch
-        label_key = "mt_touch_value_mode" if mt_only else "touch_value_mode"
-        button_key = "btn_read_mt_mode" if mt_only else "btn_read_mode"
+        pressure_array_only = self.is_hybrid and self.has_pressure_array_touch and not self.has_high_density_matrix_touch
+        label_key = "pressure_array_touch_value_mode" if pressure_array_only else "touch_value_mode"
+        button_key = "btn_read_pressure_array_mode" if pressure_array_only else "btn_read_mode"
         self.value_mode_label.setText(tr(label_key))
         self.read_output_mode_btn.setText(tr(button_key))
         tooltip = (
-            "仅适用于 MT 手掌和指腹；HP 指尖不支持 ADC/Force 数值模式"
-            if mt_only
+            "仅适用于 Pressure Array 手掌和指腹；Fingertip Force/Torque 指尖不支持 ADC/Force 数值模式"
+            if pressure_array_only
             else "读取支持数值模式配置的触觉模块"
         )
         self.value_mode_label.setToolTip(tooltip)
@@ -1609,10 +1609,10 @@ class Revo3TouchSubPanel(QWidget):
 
     def _on_tab_changed(self, index):
         self._render_latest_data(force=True)
-        if not self.device or (self.has_hp_touch and not self.is_hybrid):
+        if not self.device or (self.has_fingertip_force_torque_touch and not self.is_hybrid):
             return
-        if self.has_mx_touch:
-            run_async(self._refresh_active_tab_mx_modes)
+        if self.has_high_density_matrix_touch:
+            run_async(self._refresh_active_tab_high_density_matrix_modes)
             return
         # Tab 0 uses legacy summary mode (1); detail tabs use point-array mode (0).
         target_type = 1 if index == 0 else 0
@@ -1630,7 +1630,7 @@ class Revo3TouchSubPanel(QWidget):
             self.read_mode_combo.setCurrentIndex(target_type)
 
     def _on_read_mode_changed(self, index):
-        if not self.device or not self.has_mt_touch:
+        if not self.device or not self.has_pressure_array_touch:
             return
         # Combo index 0 = PointArray, 1 = LegacyForceSummary.
         val = int(index)
@@ -1654,7 +1654,7 @@ class Revo3TouchSubPanel(QWidget):
             logger.error(f"Failed to set touch read mode: {e}")
 
     def _on_global_value_mode_changed(self, index):
-        if not self.device or not (self.has_mt_touch or self.has_mx_touch):
+        if not self.device or not (self.has_pressure_array_touch or self.has_high_density_matrix_touch):
             return
         val = self._combo_value_mode(self.value_mode_combo, index)
         self._global_value_mode = val
@@ -1664,8 +1664,8 @@ class Revo3TouchSubPanel(QWidget):
         }.get(val, str(val))
         logger.info(f"Setting global touch value mode to {val} ({mode_str})")
         try:
-            for i in range(len(self.mx_modes)):
-                self.mx_modes[i] = val
+            for i in range(len(self.high_density_matrix_modes)):
+                self.high_density_matrix_modes[i] = val
                 combo = self.findChild(QComboBox, f"mode_{i}")
                 if combo:
                     combo.blockSignals(True)
@@ -1682,22 +1682,22 @@ class Revo3TouchSubPanel(QWidget):
             logger.error(f"Failed to set global touch value mode: {e}")
 
     def _refresh_detail_chart_units(self):
-        if self.has_hp_touch and not self.is_hybrid:
+        if self.has_fingertip_force_torque_touch and not self.is_hybrid:
             return
-        if self.has_mx_touch:
-            mx_module_ids = [
+        if self.has_high_density_matrix_touch:
+            high_density_matrix_module_ids = [
                 int(getattr(module, "module_id", -1))
                 for module in list(
                     getattr(self._active_touch_layout, "modules", []) or []
                 )
-                if str(getattr(module, "layout_id", "")).startswith("mx_")
+                if str(getattr(module, "layout_id", "")).startswith("high_density_matrix_")
             ]
-            if not mx_module_ids:
-                mx_module_ids = list(range(len(self.mx_modes)))
+            if not high_density_matrix_module_ids:
+                high_density_matrix_module_ids = list(range(len(self.high_density_matrix_modes)))
             active_modes = [
-                self.mx_modes[module_id]
-                for module_id in mx_module_ids
-                if 0 <= module_id < len(self.mx_modes)
+                self.high_density_matrix_modes[module_id]
+                for module_id in high_density_matrix_module_ids
+                if 0 <= module_id < len(self.high_density_matrix_modes)
             ]
             has_force = any(
                 mode == TOUCH_VALUE_MODE_FORCE for mode in active_modes
@@ -1705,7 +1705,7 @@ class Revo3TouchSubPanel(QWidget):
             has_adc = any(
                 mode != TOUCH_VALUE_MODE_FORCE for mode in active_modes
             )
-            if (has_force and has_adc) or (self.has_hp_touch and has_adc):
+            if (has_force and has_adc) or (self.has_fingertip_force_torque_touch and has_adc):
                 summary_unit = "mN / ADC"
             elif has_force:
                 summary_unit = "mN"
@@ -1713,12 +1713,12 @@ class Revo3TouchSubPanel(QWidget):
                 summary_unit = "ADC"
             summary_limit = max(
                 max(
-                    self._mx_force_limit_raw(module_id) * 10.0
-                    for module_id in range(len(MX_FORCE_LIMITS_RAW))
+                    self._high_density_matrix_force_limit_raw(module_id) * 10.0
+                    for module_id in range(len(HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW))
                 )
                 if has_force else 0,
                 255.0 if has_adc else 0,
-                HP_FORCE_DISPLAY_BASELINE_MN if self.has_hp_touch else 0,
+                FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN if self.has_fingertip_force_torque_touch else 0,
             )
             if self.summary_chart is not None:
                 self.summary_chart.set_y_axis((0, int(summary_limit)), summary_unit)
@@ -1727,23 +1727,23 @@ class Revo3TouchSubPanel(QWidget):
                 if chart is None:
                     continue
                 is_force = (
-                    self.mx_modes[i] == TOUCH_VALUE_MODE_FORCE
-                    if i < len(self.mx_modes)
+                    self.high_density_matrix_modes[i] == TOUCH_VALUE_MODE_FORCE
+                    if i < len(self.high_density_matrix_modes)
                     else True
                 )
                 if is_force:
-                    limit = self._mx_force_limit_raw(i) * 10.0
+                    limit = self._high_density_matrix_force_limit_raw(i) * 10.0
                     chart.set_value_unit("force", limit, stats_max_limit=limit)
                 else:
                     chart.set_value_unit("adc", 255.0, stats_max_limit=255.0)
             return
 
-        value_unit, max_limit, stats_limit = self._mt_chart_scale()
+        value_unit, max_limit, stats_limit = self._pressure_array_chart_scale()
         if self.summary_chart is not None:
             summary_label = "mN" if value_unit == "force" else "ADC"
             summary_limit = max_limit
-            if self.has_hp_touch:
-                summary_limit = max(summary_limit, HP_FORCE_DISPLAY_BASELINE_MN)
+            if self.has_fingertip_force_torque_touch:
+                summary_limit = max(summary_limit, FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN)
                 if value_unit != "force":
                     summary_label = "mN / ADC"
             self.summary_chart.set_y_axis(
@@ -1755,29 +1755,29 @@ class Revo3TouchSubPanel(QWidget):
                     value_unit, max_limit, stats_max_limit=stats_limit
                 )
 
-    def _mt_chart_scale(self):
+    def _pressure_array_chart_scale(self):
         if self.read_mode_combo.currentIndex() == 1:
-            return "force", MT_FORCE_LIMIT_MN, None
+            return "force", PRESSURE_ARRAY_FORCE_LIMIT_MN, None
         if self._global_value_mode == TOUCH_VALUE_MODE_FORCE:
-            return "force", MT_FORCE_LIMIT_MN, MT_FORCE_LIMIT_MN
-        return "adc", MT_ADC_MAX, MT_ADC_MAX
+            return "force", PRESSURE_ARRAY_FORCE_LIMIT_MN, PRESSURE_ARRAY_FORCE_LIMIT_MN
+        return "adc", PRESSURE_ARRAY_ADC_MAX, PRESSURE_ARRAY_ADC_MAX
 
     def _array_chart_scale(self, module_id):
-        if self._module_layout_id(module_id).startswith("mx_"):
+        if self._module_layout_id(module_id).startswith("high_density_matrix_"):
             is_force = (
-                self.mx_modes[module_id] == TOUCH_VALUE_MODE_FORCE
-                if 0 <= module_id < len(self.mx_modes)
+                self.high_density_matrix_modes[module_id] == TOUCH_VALUE_MODE_FORCE
+                if 0 <= module_id < len(self.high_density_matrix_modes)
                 else False
             )
             if is_force:
-                limit = self._mx_force_limit_raw(module_id) * 10.0
+                limit = self._high_density_matrix_force_limit_raw(module_id) * 10.0
                 return "force", limit, limit
             return "adc", 255.0, 255.0
-        return self._mt_chart_scale()
+        return self._pressure_array_chart_scale()
 
-    def _mx_force_limit_raw(self, module_id):
-        if not 0 <= module_id < len(MX_FORCE_LIMITS_RAW):
-            raise IndexError(f"mx_* module ID {module_id} is out of range")
+    def _high_density_matrix_force_limit_raw(self, module_id):
+        if not 0 <= module_id < len(HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW):
+            raise IndexError(f"high_density_matrix_* module ID {module_id} is out of range")
 
         side = self._hand_side
         side_name = str(getattr(side, "name", side) or "").lower()
@@ -1787,15 +1787,15 @@ class Revo3TouchSubPanel(QWidget):
             side_value = None
 
         if side_name == "right" or side_name.endswith(".right") or side_value == 1:
-            return MX_FORCE_LIMITS_RAW_RIGHT[module_id]
+            return HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_RIGHT[module_id]
         if side_name == "left" or side_name.endswith(".left") or side_value == 0:
-            return MX_FORCE_LIMITS_RAW_LEFT[module_id]
-        return MX_FORCE_LIMITS_RAW[module_id]
+            return HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW_LEFT[module_id]
+        return HIGH_DENSITY_MATRIX_FORCE_LIMITS_RAW[module_id]
 
     def _read_read_mode(self):
         if not self.device:
             return
-        if not self.has_mt_touch:
+        if not self.has_pressure_array_touch:
             return
         async def fetch():
             try:
@@ -1820,13 +1820,13 @@ class Revo3TouchSubPanel(QWidget):
         if not self.device:
             return
         logger.info("Calibrating touch sensor zero drift...")
-        for card in getattr(self, "hp_force_torque_cards", []):
+        for card in getattr(self, "fingertip_force_torque_force_torque_cards", []):
             if card is not None:
                 card.clear_chart()
         if hasattr(self, "summary_chart") and self.summary_chart is not None:
             self.summary_chart.clear()
         try:
-            if self.has_mt_touch and hasattr(self.device, "calibrate_touch_zero"):
+            if self.has_pressure_array_touch and hasattr(self.device, "calibrate_touch_zero"):
                 run_async(lambda: self.device.calibrate_touch_zero(self.slave_id))
             else:
                 run_async(lambda: self.device.calibrate_touch_zero(self.slave_id))
@@ -1836,8 +1836,8 @@ class Revo3TouchSubPanel(QWidget):
     def _zero_cancel(self):
         if not self.device:
             return
-        if not self.has_mx_touch:
-            logger.info("mt_* touch does not support tare cancellation; ignoring request.")
+        if not self.has_high_density_matrix_touch:
+            logger.info("pressure_array_* touch does not support tare cancellation; ignoring request.")
             return
         logger.info("Canceling global touch sensor zero drift...")
         try:
@@ -1846,19 +1846,19 @@ class Revo3TouchSubPanel(QWidget):
             logger.error(f"Failed to cancel global touch zero drift: {e}")
 
     def _update_zero_buttons(self, enabled: bool):
-        has_touch = self.has_hp_touch or self.has_mt_touch or self.has_mx_touch
+        has_touch = self.has_fingertip_force_torque_touch or self.has_pressure_array_touch or self.has_high_density_matrix_touch
         if hasattr(self, "zero_calibrate_btn") and self.zero_calibrate_btn:
             self.zero_calibrate_btn.setEnabled(enabled and has_touch)
             self.zero_calibrate_btn.setVisible(has_touch)
         if hasattr(self, "zero_cancel_btn") and self.zero_cancel_btn:
-            self.zero_cancel_btn.setEnabled(enabled and self.has_mx_touch)
-            self.zero_cancel_btn.setVisible(self.has_mx_touch)
+            self.zero_cancel_btn.setEnabled(enabled and self.has_high_density_matrix_touch)
+            self.zero_cancel_btn.setVisible(self.has_high_density_matrix_touch)
         if hasattr(self, "restart_btn") and self.restart_btn:
-            self.restart_btn.setEnabled(enabled and self.has_mx_touch)
-            self.restart_btn.setVisible(self.has_mx_touch)
+            self.restart_btn.setEnabled(enabled and self.has_high_density_matrix_touch)
+            self.restart_btn.setVisible(self.has_high_density_matrix_touch)
 
-    def _update_mx_read_buttons(self, enabled: bool):
-        is_matrix = bool(enabled and self.device and self.has_mx_touch)
+    def _update_high_density_matrix_read_buttons(self, enabled: bool):
+        is_matrix = bool(enabled and self.device and self.has_high_density_matrix_touch)
         read_sn_btn = getattr(self, "read_sn_btn", None)
         if read_sn_btn is not None:
             supported = is_matrix and hasattr(
@@ -1872,7 +1872,7 @@ class Revo3TouchSubPanel(QWidget):
             supported = bool(
                 enabled
                 and self.device
-                and (self.has_mt_touch or self.has_mx_touch)
+                and (self.has_pressure_array_touch or self.has_high_density_matrix_touch)
                 and hasattr(self.device, "get_touch_value_mode")
             )
             read_output_mode_btn.setEnabled(supported)
@@ -1898,7 +1898,7 @@ class Revo3TouchSubPanel(QWidget):
     def _restart_touch(self):
         if not self.device or not hasattr(self.device, "restart_touch_modules"):
             return
-        logger.info("Restarting supported mx_* touch modules")
+        logger.info("Restarting supported high_density_matrix_* touch modules")
         run_async(lambda: self.device.restart_touch_modules(self.slave_id))
 
     def _module_layout_id(self, module_id):
@@ -1907,16 +1907,16 @@ class Revo3TouchSubPanel(QWidget):
                 return str(getattr(module, "layout_id", "") or "")
         return ""
 
-    def _mx_modules(self):
+    def _high_density_matrix_modules(self):
         return [
             module
             for module in list(getattr(self._active_touch_layout, "modules", []) or [])
-            if str(getattr(module, "layout_id", "") or "").startswith("mx_")
+            if str(getattr(module, "layout_id", "") or "").startswith("high_density_matrix_")
         ]
 
-    def _mx_values_by_public_module_id(self, values, default):
+    def _high_density_matrix_values_by_public_module_id(self, values, default):
         return map_touch_metadata_by_public_module_id(
-            self._active_touch_layout, "mx_", values, default
+            self._active_touch_layout, "high_density_matrix_", values, default
         )
 
     def _create_module_ctrl_widget(self, mod_idx, mod_name):
@@ -1963,19 +1963,19 @@ class Revo3TouchSubPanel(QWidget):
 
         # Zero tare for the current module only.
         module_layout_id = self._module_layout_id(mod_idx)
-        module_family = "MT" if module_layout_id.startswith("mt_") else "MX"
+        module_family = "Pressure Array" if module_layout_id.startswith("pressure_array_") else "High-Density Matrix"
         tare_btn = QPushButton(f"当前 {module_family} 模块清零")
         tare_btn.setToolTip(f"仅校准当前模块：{mod_name}")
         tare_btn.clicked.connect(lambda: self._on_module_tare(mod_idx))
         layout.addWidget(tare_btn)
 
-        if module_layout_id.startswith("mx_"):
+        if module_layout_id.startswith("high_density_matrix_"):
             mode_label = QLabel("Value Mode:")
             layout.addWidget(mode_label)
             mode_combo = QComboBox()
             current_mode = (
-                self.mx_modes[mod_idx]
-                if mod_idx < len(self.mx_modes)
+                self.high_density_matrix_modes[mod_idx]
+                if mod_idx < len(self.high_density_matrix_modes)
                 else TOUCH_VALUE_MODE_ADC
             )
             self._populate_value_mode_combo(
@@ -2012,19 +2012,19 @@ class Revo3TouchSubPanel(QWidget):
         run_async(lambda: self.device.calibrate_touch_zero_single(self.slave_id, mod_idx))
 
     def _on_module_tare_cancel(self, mod_idx):
-        if not self.device or not self._module_layout_id(mod_idx).startswith("mx_"):
+        if not self.device or not self._module_layout_id(mod_idx).startswith("high_density_matrix_"):
             return
         logger.info(f"Canceling single module {mod_idx} zero tare")
         run_async(lambda: self.device.set_touch_module_tare(self.slave_id, mod_idx, 2))
 
     def _on_module_restart(self, mod_idx):
-        if not self.device or not self._module_layout_id(mod_idx).startswith("mx_"):
+        if not self.device or not self._module_layout_id(mod_idx).startswith("high_density_matrix_"):
             return
-        logger.info(f"Restarting mx_* touch module {mod_idx}")
+        logger.info(f"Restarting high_density_matrix_* touch module {mod_idx}")
         run_async(lambda: self.device.restart_touch_module(self.slave_id, mod_idx))
 
     def _on_module_mode_change(self, mod_idx, mode_idx):
-        if not self.device or not self._module_layout_id(mod_idx).startswith("mx_"):
+        if not self.device or not self._module_layout_id(mod_idx).startswith("high_density_matrix_"):
             return
         combo = self.findChild(QComboBox, f"mode_{mod_idx}")
         mode_value = self._combo_value_mode(combo, mode_idx) if combo else int(mode_idx)
@@ -2032,8 +2032,8 @@ class Revo3TouchSubPanel(QWidget):
             f"Setting module {mod_idx} value mode to {mode_value} "
             "(0=ADC, 2=Force)"
         )
-        if mod_idx < len(self.mx_modes):
-            self.mx_modes[mod_idx] = mode_value
+        if mod_idx < len(self.high_density_matrix_modes):
+            self.high_density_matrix_modes[mod_idx] = mode_value
         if self.summary_chart is not None:
             self.summary_chart.clear()
         self._refresh_detail_chart_units()
@@ -2043,8 +2043,8 @@ class Revo3TouchSubPanel(QWidget):
             )
         )
 
-    async def _refresh_active_tab_mx_modes(self):
-        if not self.device or not self.has_mx_touch:
+    async def _refresh_active_tab_high_density_matrix_modes(self):
+        if not self.device or not self.has_high_density_matrix_touch:
             return
         # Get active modules from current tab index
         tab_idx = self.tabs.currentIndex()
@@ -2061,9 +2061,9 @@ class Revo3TouchSubPanel(QWidget):
                 if hasattr(self.device, "get_touch_module_value_mode"):
                     mode = await self.device.get_touch_module_value_mode(self.slave_id, mid)
                     mode_val = int(mode)
-                    mode_changed = mid < len(self.mx_modes) and self.mx_modes[mid] != mode_val
-                    if mid < len(self.mx_modes):
-                        self.mx_modes[mid] = mode_val
+                    mode_changed = mid < len(self.high_density_matrix_modes) and self.high_density_matrix_modes[mid] != mode_val
+                    if mid < len(self.high_density_matrix_modes):
+                        self.high_density_matrix_modes[mid] = mode_val
                     if mode_changed and self.summary_chart is not None:
                         self.summary_chart.clear()
                     combo = self.findChild(QComboBox, f"mode_{mid}")
@@ -2138,10 +2138,10 @@ class Revo3TouchSubPanel(QWidget):
             self._read_modules_enabled()
 
     def _read_all_settings(self):
-        if self.has_mt_touch:
+        if self.has_pressure_array_touch:
             self._read_read_mode()
-        if self.has_mt_touch or self.has_mx_touch:
-            self._read_mx_output_mode()
+        if self.has_pressure_array_touch or self.has_high_density_matrix_touch:
+            self._read_high_density_matrix_output_mode()
         self._read_modules_enabled()
 
     def _read_touch_snapshot(self):
@@ -2174,18 +2174,18 @@ class Revo3TouchSubPanel(QWidget):
                 self._detected_touch_layout = layout
             layout_ids = [str(getattr(m, "layout_id", "")) for m in modules]
 
-            self.has_hp_touch = any(lid.startswith("hp_") for lid in layout_ids)
-            self.has_mx_touch = any(lid.startswith("mx_") for lid in layout_ids)
-            self.has_mt_touch = any(lid.startswith("mt_") for lid in layout_ids)
-            self.is_hybrid = self.has_hp_touch and (
-                self.has_mx_touch or self.has_mt_touch
+            self.has_fingertip_force_torque_touch = any(lid.startswith("fingertip_force_torque_") for lid in layout_ids)
+            self.has_high_density_matrix_touch = any(lid.startswith("high_density_matrix_") for lid in layout_ids)
+            self.has_pressure_array_touch = any(lid.startswith("pressure_array_") for lid in layout_ids)
+            self.is_hybrid = self.has_fingertip_force_torque_touch and (
+                self.has_high_density_matrix_touch or self.has_pressure_array_touch
             )
 
-            if self.has_hp_touch and not self.is_hybrid:
+            if self.has_fingertip_force_torque_touch and not self.is_hybrid:
                 if hasattr(self, "modules_group") and self.modules_group:
                     self.modules_group.setTitle("Active Fingertip Modules (5 指尖触觉使能)")
                     self.modules_group.setVisible(True)
-                hp_labels = [
+                fingertip_force_torque_labels = [
                     "👍 拇指尖 (ThumbTip)",
                     "👆 食指尖 (IndexTip)",
                     "🖕 中指尖 (MiddleTip)",
@@ -2194,7 +2194,7 @@ class Revo3TouchSubPanel(QWidget):
                 ]
                 for i, cb in enumerate(self.module_checks):
                     if i < 5:
-                        cb.setText(hp_labels[i])
+                        cb.setText(fingertip_force_torque_labels[i])
                         cb.setVisible(True)
                         cb.setEnabled(True)
                     else:
@@ -2240,24 +2240,24 @@ class Revo3TouchSubPanel(QWidget):
                 if hasattr(self, "ctrl_container") and self.ctrl_container:
                     self.ctrl_container.setVisible(True)
                 if hasattr(self, "read_mode_label"):
-                    self.read_mode_label.setVisible(self.has_mt_touch)
+                    self.read_mode_label.setVisible(self.has_pressure_array_touch)
                 if hasattr(self, "read_mode_combo"):
-                    self.read_mode_combo.setVisible(self.has_mt_touch)
+                    self.read_mode_combo.setVisible(self.has_pressure_array_touch)
                 if hasattr(self, "zero_calibrate_btn"):
                     self.zero_calibrate_btn.setVisible(True)
 
             if hasattr(self, "layout_combo") and self.layout_combo is not None:
                 self.layout_combo.blockSignals(True)
                 if self.is_hybrid:
-                    if self.has_mt_touch:
+                    if self.has_pressure_array_touch:
                         self.layout_combo.setCurrentIndex(1)
-                    elif self.has_mx_touch:
+                    elif self.has_high_density_matrix_touch:
                         self.layout_combo.setCurrentIndex(2)
-                elif self.has_hp_touch:
+                elif self.has_fingertip_force_torque_touch:
                     self.layout_combo.setCurrentIndex(3)
-                elif self.has_mt_touch:
+                elif self.has_pressure_array_touch:
                     self.layout_combo.setCurrentIndex(4)
-                elif self.has_mx_touch:
+                elif self.has_high_density_matrix_touch:
                     self.layout_combo.setCurrentIndex(5)
                 else:
                     self.layout_combo.setCurrentIndex(0)
@@ -2267,18 +2267,18 @@ class Revo3TouchSubPanel(QWidget):
             if hasattr(self, "read_mode_combo") and self.read_mode_combo is not None:
                 self.read_mode_combo.blockSignals(True)
                 self.read_mode_combo.setCurrentIndex(0)
-                self.read_mode_combo.setEnabled(self.has_mt_touch)
+                self.read_mode_combo.setEnabled(self.has_pressure_array_touch)
                 self.read_mode_combo.blockSignals(False)
 
             if hasattr(self, "value_mode_combo") and self.value_mode_combo is not None:
                 self._populate_value_mode_combo(
                     self.value_mode_combo,
-                    self.has_mt_touch,
-                    self.has_mx_touch,
+                    self.has_pressure_array_touch,
+                    self.has_high_density_matrix_touch,
                     self._global_value_mode,
                 )
-                self.value_mode_combo.setEnabled(self.has_mt_touch or self.has_mx_touch)
-            if not self.has_mx_touch:
+                self.value_mode_combo.setEnabled(self.has_pressure_array_touch or self.has_high_density_matrix_touch)
+            if not self.has_high_density_matrix_touch:
                 self.tabs.setCurrentIndex(0)
             self._update_zero_button_texts()
             if hasattr(self, "zero_cancel_btn") and self.zero_cancel_btn:
@@ -2288,7 +2288,7 @@ class Revo3TouchSubPanel(QWidget):
                     else "Cancel Tare"
                 )
             self._update_zero_buttons(True)
-            self._update_mx_read_buttons(True)
+            self._update_high_density_matrix_read_buttons(True)
             self._rebuild_status_cards()
             self._rebuild_detail_tabs()
             await self._fetch_all_settings()
@@ -2302,53 +2302,53 @@ class Revo3TouchSubPanel(QWidget):
             return
         run_async(self._fetch_touch_layout)
 
-    def _read_mx_settings(self):
-        if not self.device or not self.has_mx_touch:
+    def _read_high_density_matrix_settings(self):
+        if not self.device or not self.has_high_density_matrix_touch:
             return
 
         async def fetch():
-            await self._fetch_mx_settings()
+            await self._fetch_high_density_matrix_settings()
 
         run_async(fetch)
 
-    def _read_mx_module_sns(self):
+    def _read_high_density_matrix_module_sns(self):
         if not self.device:
             return
 
         async def fetch():
-            await self._fetch_mx_module_sns()
+            await self._fetch_high_density_matrix_module_sns()
 
         run_async(fetch)
 
-    def _read_mx_point_counts(self):
-        if not self.device or not self.has_mx_touch:
+    def _read_high_density_matrix_point_counts(self):
+        if not self.device or not self.has_high_density_matrix_touch:
             return
 
         async def fetch():
-            await self._fetch_mx_point_counts(rebuild_tabs=True)
+            await self._fetch_high_density_matrix_point_counts(rebuild_tabs=True)
 
         run_async(fetch)
 
-    def _read_mx_output_mode(self):
-        if not self.device or not (self.has_mt_touch or self.has_mx_touch):
+    def _read_high_density_matrix_output_mode(self):
+        if not self.device or not (self.has_pressure_array_touch or self.has_high_density_matrix_touch):
             return
 
         async def fetch():
-            await self._fetch_mx_output_mode()
+            await self._fetch_high_density_matrix_output_mode()
 
         run_async(fetch)
 
-    def _read_mx_tare_status(self):
-        if not self.device or not self.has_mx_touch:
+    def _read_high_density_matrix_tare_status(self):
+        if not self.device or not self.has_high_density_matrix_touch:
             return
 
         async def fetch():
-            await self._fetch_mx_tare_statuses()
+            await self._fetch_high_density_matrix_tare_statuses()
 
         run_async(fetch)
 
     async def _fetch_all_settings(self):
-        if self.has_mt_touch:
+        if self.has_pressure_array_touch:
             try:
                 mode = await self.device.get_touch_read_mode(self.slave_id)
                 if hasattr(self, "read_mode_combo") and self.read_mode_combo is not None:
@@ -2357,15 +2357,15 @@ class Revo3TouchSubPanel(QWidget):
                     self.read_mode_combo.blockSignals(False)
                 self._refresh_detail_chart_units()
             except Exception as e:
-                logger.error(f"Failed to read mt_* touch read mode: {e}")
+                logger.error(f"Failed to read pressure_array_* touch read mode: {e}")
 
-        if self.has_mt_touch or self.has_mx_touch:
-            await self._fetch_mx_output_mode()
+        if self.has_pressure_array_touch or self.has_high_density_matrix_touch:
+            await self._fetch_high_density_matrix_output_mode()
 
         try:
             bits = await self.device.get_all_touch_modules_enabled(self.slave_id)
             logger.info(f"Fetched touch modules enabled bitmask: {bin(bits)}")
-            if self.has_hp_touch and not self.is_hybrid:
+            if self.has_fingertip_force_torque_touch and not self.is_hybrid:
                 for i, cb in enumerate(self.module_checks[:5]):
                     is_on = bool((bits >> i) & 1)
                     cb.blockSignals(True)
@@ -2381,44 +2381,44 @@ class Revo3TouchSubPanel(QWidget):
         except Exception as e:
             logger.error(f"Failed to read touch modules enabled status: {e}")
 
-    async def _fetch_mx_module_sns(self):
+    async def _fetch_high_density_matrix_module_sns(self):
         try:
             if hasattr(self.device, "get_touch_module_serial_numbers"):
                 raw_sns = await self.device.get_touch_module_serial_numbers(self.slave_id)
-                if self.has_mx_touch:
-                    self.mx_module_sns = self._mx_values_by_public_module_id(
+                if self.has_high_density_matrix_touch:
+                    self.high_density_matrix_module_sns = self._high_density_matrix_values_by_public_module_id(
                         [sn if sn else "" for sn in raw_sns], ""
                     )
                 else:
-                    self.mx_module_sns = [sn if sn else "" for sn in raw_sns]
-                logger.info(f"Touch module SNs: {self.mx_module_sns}")
+                    self.high_density_matrix_module_sns = [sn if sn else "" for sn in raw_sns]
+                logger.info(f"Touch module SNs: {self.high_density_matrix_module_sns}")
         except Exception as e:
-            logger.error(f"Failed to read mx_* touch module SNs: {e}")
+            logger.error(f"Failed to read high_density_matrix_* touch module SNs: {e}")
 
-    async def _fetch_mx_point_counts(self, rebuild_tabs=False):
+    async def _fetch_high_density_matrix_point_counts(self, rebuild_tabs=False):
         try:
             raw_counts = []
             if hasattr(self.device, "get_touch_module_point_counts"):
                 raw_counts = await self.device.get_touch_module_point_counts(self.slave_id)
                 if not raw_counts or not all(count > 0 for count in raw_counts):
                     raise RuntimeError(
-                        "mx_* touch point counts must contain one positive value per mx_* module"
+                        "high_density_matrix_* touch point counts must contain one positive value per high_density_matrix_* module"
                     )
-                self.mx_point_counts = self._mx_values_by_public_module_id(
+                self.high_density_matrix_point_counts = self._high_density_matrix_values_by_public_module_id(
                     raw_counts, 0
                 )
-                self._mx_frame_counts_synced = True
-                logger.info(f"mx_* touch point counts: {self.mx_point_counts}")
+                self._high_density_matrix_frame_counts_synced = True
+                logger.info(f"high_density_matrix_* touch point counts: {self.high_density_matrix_point_counts}")
                 if rebuild_tabs:
                     self._rebuild_status_cards()
                     self._rebuild_detail_tabs()
                     self._refresh_detail_chart_units()
             return raw_counts
         except Exception as e:
-            logger.error(f"Failed to read mx_* touch point counts: {e}")
+            logger.error(f"Failed to read high_density_matrix_* touch point counts: {e}")
             return []
 
-    async def _fetch_mx_output_mode(self):
+    async def _fetch_high_density_matrix_output_mode(self):
         try:
             if hasattr(self.device, "get_touch_value_mode"):
                 mode = await self.device.get_touch_value_mode(self.slave_id)
@@ -2428,11 +2428,11 @@ class Revo3TouchSubPanel(QWidget):
                     "(0=ADC, 2=Force)"
                 )
                 self._global_value_mode = mode_value
-                self.mx_modes = [mode_value] * 11
+                self.high_density_matrix_modes = [mode_value] * 11
                 self._populate_value_mode_combo(
                     self.value_mode_combo,
-                    self.has_mt_touch,
-                    self.has_mx_touch,
+                    self.has_pressure_array_touch,
+                    self.has_high_density_matrix_touch,
                     mode_value,
                 )
                 for module in list(
@@ -2448,16 +2448,16 @@ class Revo3TouchSubPanel(QWidget):
                         combo.setCurrentIndex(combo_index)
                     combo.blockSignals(False)
                 self._refresh_detail_chart_units()
-                if self.has_mx_touch:
-                    await self._refresh_active_tab_mx_modes()
+                if self.has_high_density_matrix_touch:
+                    await self._refresh_active_tab_high_density_matrix_modes()
         except Exception as e:
-            logger.error(f"Failed to read mx_* touch value mode: {e}")
+            logger.error(f"Failed to read high_density_matrix_* touch value mode: {e}")
 
-    async def _fetch_mx_tare_statuses(self):
+    async def _fetch_high_density_matrix_tare_statuses(self):
         try:
             if hasattr(self.device, "get_touch_tare_status"):
                 status = await self.device.get_touch_tare_status(self.slave_id)
-                logger.info(f"mx_* touch tare status: {int(status)}")
+                logger.info(f"high_density_matrix_* touch tare status: {int(status)}")
 
             # Read all 11 modules' tare statuses in one Modbus pass
             if hasattr(self.device, "get_touch_module_tare_statuses"):
@@ -2477,19 +2477,19 @@ class Revo3TouchSubPanel(QWidget):
                             color = "#FF3333"
                         lbl.setText(f"Zero Status: <span style='color:{color}; font-weight:bold;'>{st_str}</span>")
         except Exception as e:
-            logger.error(f"Failed to read mx_* touch tare status: {e}")
+            logger.error(f"Failed to read high_density_matrix_* touch tare status: {e}")
 
-    async def _fetch_mx_settings(self):
+    async def _fetch_high_density_matrix_settings(self):
         try:
-            await self._fetch_mx_module_sns()
-            await self._fetch_mx_point_counts(rebuild_tabs=True)
-            await self._fetch_mx_output_mode()
-            await self._fetch_mx_tare_statuses()
+            await self._fetch_high_density_matrix_module_sns()
+            await self._fetch_high_density_matrix_point_counts(rebuild_tabs=True)
+            await self._fetch_high_density_matrix_output_mode()
+            await self._fetch_high_density_matrix_tare_statuses()
 
             # Refresh active tab modes to keep UI dropdowns in sync immediately
-            await self._refresh_active_tab_mx_modes()
+            await self._refresh_active_tab_high_density_matrix_modes()
         except Exception as e:
-            logger.error(f"Failed to read mx_* touch settings: {e}")
+            logger.error(f"Failed to read high_density_matrix_* touch settings: {e}")
 
     def set_device(self, device, slave_id, device_info=None, shared_data=None):
         self.device = device
@@ -2498,11 +2498,11 @@ class Revo3TouchSubPanel(QWidget):
         self.slave_id = slave_id
         resolved_device_info = device_info or getattr(shared_data, "device_info", None)
         self._hand_side = getattr(resolved_device_info, "hand_side", None)
-        self.mx_modes = [TOUCH_VALUE_MODE_ADC] * 11
-        self._mx_frame_counts_synced = False
-        self.has_hp_touch = False
-        self.has_mx_touch = False
-        self.has_mt_touch = False
+        self.high_density_matrix_modes = [TOUCH_VALUE_MODE_ADC] * 11
+        self._high_density_matrix_frame_counts_synced = False
+        self.has_fingertip_force_torque_touch = False
+        self.has_high_density_matrix_touch = False
+        self.has_pressure_array_touch = False
         self.is_hybrid = False
         self._active_touch_layout = None
         self._detected_touch_layout = None
@@ -2523,7 +2523,7 @@ class Revo3TouchSubPanel(QWidget):
         self.snapshot_btn.setEnabled(True)
         self.enable_all_btn.setEnabled(True)
         self.disable_all_btn.setEnabled(True)
-        self._update_mx_read_buttons(False)
+        self._update_high_density_matrix_read_buttons(False)
         self._update_zero_buttons(True)
         for cb in self.module_checks:
             cb.setEnabled(True)
@@ -2536,10 +2536,10 @@ class Revo3TouchSubPanel(QWidget):
         self._latest_touch_sequence = 0
         self._rendered_touch_sequence = 0
         self._hand_side = None
-        self.has_hp_touch = False
+        self.has_fingertip_force_torque_touch = False
         self.is_hybrid = False
-        self.has_mx_touch = False
-        self.has_mt_touch = False
+        self.has_high_density_matrix_touch = False
+        self.has_pressure_array_touch = False
         self._active_touch_layout = None
         self._detected_touch_layout = None
         self._global_value_mode = TOUCH_VALUE_MODE_ADC
@@ -2556,7 +2556,7 @@ class Revo3TouchSubPanel(QWidget):
         self.snapshot_btn.setEnabled(False)
         self.enable_all_btn.setEnabled(False)
         self.disable_all_btn.setEnabled(False)
-        self._update_mx_read_buttons(False)
+        self._update_high_density_matrix_read_buttons(False)
         self._update_zero_buttons(False)
         for cb in self.module_checks:
             cb.setEnabled(False)
