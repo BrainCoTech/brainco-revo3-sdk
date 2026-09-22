@@ -31,6 +31,11 @@ python python/revo3/streaming_control.py
 
 See `python/revo3/README.md` for the full list.
 
+For opposition, finger-function, gesture-dance, and classic-servo examples,
+see the [motion demonstration guide](revo3/MOTION_DEMOS.md)
+([简体中文](revo3/MOTION_DEMOS.zh-CN.md)). The demos preview offline unless
+`--run` is supplied.
+
 ## GUI
 
 The PySide GUI uses the same 2.x Manager/Hand API and does not depend on the

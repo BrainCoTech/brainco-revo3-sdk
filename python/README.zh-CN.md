@@ -30,6 +30,8 @@ python python/revo3/streaming_control.py
 
 完整示例列表见 `python/revo3/README.md`。
 
+对掌、手指功能、手势舞和经典 servo 示例见[动作演示指南](revo3/MOTION_DEMOS.zh-CN.md)（[English](revo3/MOTION_DEMOS.md)）。这些示例默认只做离线预览，只有传入 `--run` 才会连接硬件。
+
 ## GUI
 
 PySide GUI 使用相同的 2.x Manager/Hand API，不依赖旧版 `DeviceContext` 层。

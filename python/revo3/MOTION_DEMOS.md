@@ -55,6 +55,12 @@ Begin calibration with the open-hand pose and one opposition step. At a reduced 
 
 The built-in finger-function, dance, and opposition profiles use `streaming: true` to send continuous MIT position and velocity targets. The dance transitions directly through grasp and claw shapes. Its wave uses three rounds of overlapping smooth pulses with 60/60/45-degree amplitudes and pauses only at display poses such as opposition and the V sign. Finger flexion starts 0.2 seconds after the thumb in dance opposition and 0.15 seconds after it in the standalone fast opposition segment, then decelerates smoothly near the endpoint. These trajectories do not detect contact, guarantee fingertip contact, or support object grasping.
 
+One dance repetition runs this sequence: open hand; two grip-to-claw cycles;
+return to open; three overlapping finger-wave rounds over 6.5 seconds; two
+left-right whole-hand sway cycles; thumb-to-index opposition with a 0.2-second
+finger delay and 0.3-second hold; V sign with a 1-second hold; then return to
+open. `--repeat` repeats the entire sequence.
+
 Optional profile fields are `streaming` (Boolean), per-step `finger_delay` (finger-flexion delay in seconds, less than the transition duration), and `motion: "wave"` (three continuous wave rounds starting and ending at an open pose). The wave defaults to 6.5 seconds, with `duration` scaling the waveform. Older profiles without these fields retain the segmented path.
 
 Use `--skip-joints`, for example `--skip-joints 2 12 20`, only for joints with a confirmed stall fault. The first three demos support this option. Skipped joints receive zero Kp, Kd, feedforward current, and target velocity; they no longer hold actively and are excluded from return-error checks. New motor, electrical, and system faults still stop execution. No joints are skipped by default, and the scripts do not clear faults or release software stop.

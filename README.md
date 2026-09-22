@@ -15,6 +15,21 @@ see the [Revo 3 SDK documentation](https://app.brainco.cn/universal/bc-revo3-sdk
 For hardware registers and transport details, see the
 [Revo 3 communication protocol](https://www.brainco-hz.com/docs/revolimb-hand/revo3/protocol.html).
 
+## Motion Demonstrations
+
+The Python and C++ motion demonstrations preview offline by default and do not
+connect to hardware unless `--run` is supplied:
+
+```bash
+python python/revo3/gesture_dance_demo.py
+./c/build/demo/gesture_dance_demo
+```
+
+See the [motion demonstration guide](python/revo3/MOTION_DEMOS.md)
+([简体中文](python/revo3/MOTION_DEMOS.zh-CN.md)) for the choreography, candidate
+pose calibration, hardware checks, interruption behavior, and Python/C++
+differences.
+
 ## Getting Started
 
 ### C++

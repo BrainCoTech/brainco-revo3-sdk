@@ -12,6 +12,17 @@
 
 安装、集成指南以及 Python 和 C/C++ API 参考见 [Revo 3 SDK 文档](https://app.brainco.cn/universal/bc-revo3-sdk/docs/site/)。硬件寄存器和运输层详细信息见 [Revo 3 通信协议](https://www.brainco-hz.com/docs/revolimb-hand/revo3/protocol.html)。
 
+## 动作演示
+
+Python 和 C++ 动作演示默认只做离线预览，只有传入 `--run` 才会连接硬件：
+
+```bash
+python python/revo3/gesture_dance_demo.py
+./c/build/demo/gesture_dance_demo
+```
+
+动作顺序、候选姿态标定、硬件检查、中断行为以及 Python/C++ 差异见[动作演示指南](python/revo3/MOTION_DEMOS.zh-CN.md)（[English](python/revo3/MOTION_DEMOS.md)）。
+
 ## 快速开始
 
 ### C++

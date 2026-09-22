@@ -123,6 +123,8 @@ kill -9 <PID>
 
 四个 C++17 入口分别演示对掌、手指功能、手势舞和经典正弦 servo。默认仅离线预览，只有传入 `--run` 才会连接设备。C++ 可执行文件不调用 Python。
 
+共享动作顺序、安全边界和 Python/C++ 差异见[动作演示指南](../python/revo3/MOTION_DEMOS.zh-CN.md)（[English](../python/revo3/MOTION_DEMOS.md)）。
+
 ```bash
 ./c/build/demo/opposition_demo
 ./c/build/demo/finger_function_demo
