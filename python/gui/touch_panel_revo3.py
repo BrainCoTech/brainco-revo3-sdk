@@ -19,6 +19,8 @@ from .touch_common import (
     FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN, SummaryChart, HeatmapChart,
     HpForceTorqueModuleCard, build_status_cards, run_async, logger
 )
+
+HP_FORCE_DISPLAY_BASELINE_MN = FINGERTIP_FORCE_TORQUE_FORCE_DISPLAY_BASELINE_MN
 from .i18n import tr
 from .sdk_adapter import (
     TOUCH_VALUE_MODE_ADC,
@@ -200,6 +202,19 @@ REVO3_COORD_MAP = {
         (8, 0),                                           # 36
     ],
 }
+
+# The palm array is mounted in opposite directions on the two hand variants.
+# Build a complete left-hand map from the right-hand physical layout, then
+# apply the left-hand top-row placement shown in the hardware diagram.
+REVO3_COORD_MAP["PalmLeft"] = [(8 - row, 5 - col) for row, col in REVO3_COORD_MAP["Palm"]]
+REVO3_COORD_MAP["PalmLeft"][17] = (0, 5)  # 18
+REVO3_COORD_MAP["PalmLeft"][21] = (0, 4)  # 22
+REVO3_COORD_MAP["PalmLeft"][25] = (0, 3)  # 26
+REVO3_COORD_MAP["PalmLeft"][29] = (0, 2)  # 30
+# Thumb tip/pad have asymmetric mounting and therefore use dedicated left-hand
+# maps instead of a blind horizontal mirror.
+REVO3_COORD_MAP["ThumbTipLeft"] = [(row, 6 - col) for row, col in REVO3_COORD_MAP["ThumbTip"]]
+REVO3_COORD_MAP["ThumbPadLeft"] = list(REVO3_COORD_MAP["ThumbPad"])
 
 
 def _get_revo3_coord_map(module_name: str):
@@ -574,7 +589,17 @@ class Revo3TouchSubPanel(QWidget):
             return pts, rows, cols, None
         pts = REVO3_MODULE_POINTS[mod_key]
         rows, cols = REVO3_HEATMAP_LAYOUT[mod_key]
-        return pts, rows, cols, _get_revo3_coord_map(mod_key)
+        coord_key = mod_key
+        if mod_key in ("Palm", "ThumbTip", "ThumbPad"):
+            side = self._hand_side
+            side_name = str(getattr(side, "name", side) or "").lower()
+            try:
+                side_value = int(side)
+            except (TypeError, ValueError):
+                side_value = None
+            if side_name == "left" or side_name.endswith(".left") or side_value == 0:
+                coord_key = f"{mod_key}Left"
+        return pts, rows, cols, _get_revo3_coord_map(coord_key)
 
     def _rebuild_status_cards(self):
         # 1. Clear status_layout widgets
