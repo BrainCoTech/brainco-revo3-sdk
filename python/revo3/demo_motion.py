@@ -144,7 +144,8 @@ def validate_profile(profile, kind, side):
     return profile
 
 
-def check_positions(positions, config, tolerance=0.0):
+def check_positions(positions, config, tolerance=0.1):
+    """Validate positions while allowing small floating-point boundary noise."""
     if len(positions) != JOINT_COUNT:
         raise ValueError("Expected 21 joint positions")
     for joint, position in enumerate(positions):

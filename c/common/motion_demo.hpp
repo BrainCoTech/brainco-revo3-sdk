@@ -78,10 +78,12 @@ inline Options parse(int argc, char **argv) {
   return o;
 }
 inline void positions_ok(const Values &p, const revo3::DeviceConfig &c) {
+  constexpr double kPositionBoundaryToleranceDeg = 0.1;
   if (p.size() != 21) throw std::runtime_error("Expected 21 positions");
   for (int j = 0; j < 21; ++j) {
     double lo = c.joint_min_position_deg[j], hi = c.joint_max_position_deg[j];
-    if (!std::isfinite(lo) || !std::isfinite(hi) || lo >= hi || !std::isfinite(p[j]) || p[j] < lo || p[j] > hi)
+    if (!std::isfinite(lo) || !std::isfinite(hi) || lo >= hi || !std::isfinite(p[j]) ||
+        p[j] < lo - kPositionBoundaryToleranceDeg || p[j] > hi + kPositionBoundaryToleranceDeg)
       throw std::runtime_error("Position outside limits: J" + std::to_string(j));
   }
 }
