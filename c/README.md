@@ -131,8 +131,10 @@ a 100 Hz quintic trajectory from the initial feedback position to the 50% point
 of each target joint's configured position range and back, with 800 ms per
 segment, `Kp=3.0`, `Kd=0.3`, and zero feedforward current. Invalid position
 or speed limits, including a quintic peak velocity above the configured speed
-envelope, stop the example before opening the ServoSession. The demo reuses
-`common/revo3_mit_plan.hpp`, which is also shared with the EtherCAT example,
+envelope, stop the example before opening the ServoSession. Initial-position
+tolerance defaults to 0.1 degrees and accepts nonnegative overrides. Feedback
+within tolerance is clamped to the nearest configured limit before motion. The
+demo reuses `common/revo3_mit_plan.hpp`, which is also shared with the EtherCAT example,
 and prints periodic position feedback plus the measured command rate.
 
 `touch_hybrid` requires a confirmed fingertip force/torque and pressure-array hardware layout. It changes

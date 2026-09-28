@@ -92,7 +92,7 @@ make -C c/platform/linux/revo3_ec
 
 `firmware_update` 是独立的破坏性维护流程。它支持 `main`、`image` 和 `motor` 目标，默认超时为 600 秒，且没有 `--run` 时拒绝连接。结果为 `Indeterminate` 时不要立即重试；先检查 operation effect 和 recovery requirement，再验证设备状态。
 
-`mit_plan` 与 Python `mit_plan.py` 使用相同默认计划：100 Hz 五次轨迹，从初始反馈位置移动到各目标关节配置范围的 50% 后返回，每段 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。位置或速度限位无效时，示例会在打开 ServoSession 前停止。
+`mit_plan` 与 Python `mit_plan.py` 使用相同默认计划：100 Hz 五次轨迹，从初始反馈位置移动到各目标关节配置范围的 50% 后返回，每段 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。初始位置容差默认 0.1 度，可显式设置为非负值；容差内的越界反馈会先钳制到最近的配置限位。位置或速度限位无效时，示例会在打开 ServoSession 前停止。
 
 `touch_hybrid` 要求已确认的指尖力/力矩和压力阵列硬件布局。默认只改变当前 SDK 会话的解析布局。仅在确实需要改变触觉校准状态时传入 `--test-tare`。
 

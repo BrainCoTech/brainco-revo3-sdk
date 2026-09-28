@@ -89,4 +89,4 @@ python -m pip install '.[gui]'
 python gui/main.py
 ```
 
-Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MIT 阻抗计划：频率为 100 Hz，目标位置为各关节配置位置范围的 50%，每个向外和返回分段用时 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。可复用的 C++ 采样器位于 `c/common/revo3_mit_plan.hpp`。
+Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MIT 阻抗计划：频率为 100 Hz，目标位置为各关节配置位置范围的 50%，每个向外和返回分段用时 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。初始位置容差默认 0.1 度；容差内的越界反馈会在运动前钳制到最近的配置限位。可复用的 C++ 采样器位于 `c/common/revo3_mit_plan.hpp`。

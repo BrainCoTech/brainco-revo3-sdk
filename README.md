@@ -103,4 +103,6 @@ The Python `mit_plan.py` and C++ `mit_plan.cpp` examples share the same
 default quintic MIT impedance plan: 100 Hz, the 50% point of each target
 joint's configured position range, 800 ms per outbound/return segment,
 `Kp=3.0`, `Kd=0.3`, and zero feedforward current. The reusable C++ sampler is
-in `c/common/revo3_mit_plan.hpp`.
+in `c/common/revo3_mit_plan.hpp`. Initial-position tolerance defaults to 0.1
+degrees; accepted out-of-range feedback is clamped to the nearest configured
+limit before motion.

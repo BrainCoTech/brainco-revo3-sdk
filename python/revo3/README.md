@@ -34,7 +34,10 @@ example. Python additionally exposes `--joint`, `--range-fraction`,
 `--kd` for explicit tuning. `--range-fraction` is limited to `0.05~0.95`.
 Before opening a ServoSession, the example validates the initial feedback and
 generated quintic peak velocity against the configured position and speed
-envelopes. The command timeout must be at least one requested send period.
+envelopes. `--initial-position-tolerance-deg` defaults to `0.1` and accepts
+nonnegative overrides. Feedback within tolerance is clamped to the nearest
+configured limit before motion. The command timeout must be at least one
+requested send period.
 
 ## Motion Demonstrations
 
