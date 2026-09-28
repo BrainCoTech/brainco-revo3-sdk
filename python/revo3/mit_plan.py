@@ -12,6 +12,7 @@ DEG_PER_SECOND_PER_RPM = 6.0
 FULL_HAND_JOINTS = (1, 5, 9, 13, 16, 20)
 MIN_RANGE_FRACTION = 0.05
 MAX_RANGE_FRACTION = 0.95
+DEFAULT_INITIAL_POSITION_TOLERANCE_DEG = 0.1
 QUINTIC_PEAK_RATE_FACTOR = 1.875
 
 
@@ -114,9 +115,10 @@ async def run(args: argparse.Namespace) -> None:
                 print(
                     f"Warning: {message}; accepted with initial position tolerance "
                     f"{args.initial_position_tolerance_deg:.4f} deg. "
-                    "The trajectory starts from and returns to this measured position.",
+                    "The trajectory uses the nearest configured position limit.",
                     flush=True,
                 )
+                initial_positions[joint] = min(max(initial_positions[joint], minimum), maximum)
             target_positions[joint] = minimum + args.range_fraction * (maximum - minimum)
             distance = target_positions[joint] - initial_positions[joint]
             minimum_speed = config.joint_min_speed_rpm[joint]
@@ -151,6 +153,7 @@ async def run(args: argparse.Namespace) -> None:
                 f"peak_velocity={peak_speed:.2f}/{allowed_speed:.2f} rpm"
             )
 
+        last_positions = initial_positions.copy()
         session = hand.motion.open_servo(command_timeout_ms=args.command_timeout_ms)
         started_at = time.perf_counter()
         command_count = 0
@@ -197,10 +200,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--initial-position-tolerance-deg",
         type=float,
-        default=0.0,
+        default=DEFAULT_INITIAL_POSITION_TOLERANCE_DEG,
         help=(
-            "Allowed initial position overrun in degrees (default: 0); "
-            "the trajectory returns to the measured initial position"
+            "Allowed nonnegative initial position overrun in degrees (default: 0.1); "
+            "the trajectory uses the nearest configured position limit"
         ),
     )
     parser.add_argument("--repeat", type=int, default=1)

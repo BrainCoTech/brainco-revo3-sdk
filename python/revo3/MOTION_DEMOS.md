@@ -71,7 +71,7 @@ Before the first motion, every target is checked against device position limits,
 
 Continuous requests are sent about every 10 ms, subject to Python, Health-query, and transport timing. This is not a realtime guarantee. Command timeout is 500 ms. Execution is rejected while software stop or zero-force mode is active. On failure, the scripts attempt software stop and do not continue. `--tempo` scales transitions and dwell times while preserving speed limits; it does not change classic servo `--frequency`.
 
-Normal completion returns smoothly to the startup feedback pose. `--feedback-tolerance-deg` defaults to `0` and accepts an explicit value from `0` to `2` for small initial-feedback violations near a limit. It does not relax target limits: feedback within tolerance is clamped to the nearest legal return target. For example, feedback at -0.2 degrees with a 0-degree lower limit returns to 0 degrees when tolerance is 0.5 degrees. Larger violations reject motion.
+Normal completion returns smoothly to the startup feedback pose. `--feedback-tolerance-deg` defaults to `0.1` and retains the configurable range from `0` to `2` for measured feedback near a joint limit. It does not relax target limits: feedback within tolerance is clamped to the nearest legal return target. For example, feedback at -0.06 degrees with a 0-degree lower limit returns to 0 degrees. Larger violations reject motion.
 
 - `--finish hold` (default) retains the final trajectory `kp/kd` and does not enable zero-force mode. Whether holding continues after disconnect requires firmware validation.
 - `--finish relax` explicitly enables zero-force mode after returning; this device state may persist after disconnect.

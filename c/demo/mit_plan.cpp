@@ -27,21 +27,22 @@ constexpr std::size_t kJointCount = 21;
 constexpr std::array<std::size_t, 6> kTargetJoints = {1, 5, 9, 13, 16, 20};
 constexpr int kSegmentDurationMs = 800;
 constexpr double kSegmentDurationSeconds = kSegmentDurationMs / 1000.0;
+constexpr double kDefaultInitialPositionToleranceDeg = 0.1;
 constexpr double kQuinticPeakRateFactor = 1.875;
 
 void print_usage(const char *program) {
   std::printf(
       "Usage: %s [PORT] [--port PORT] [--slave-id ID] "
       "[--initial-position-tolerance-deg DEG] --run\n"
-      "Initial position tolerance defaults to 0 degrees; the trajectory "
-      "returns to the measured initial position.\n",
+      "Initial position tolerance defaults to 0.1 degrees and accepts nonnegative values; "
+      "the trajectory uses the nearest configured position limit.\n",
       program);
 }
 
 struct ProgramOptions {
   bool run = false;
   bool help = false;
-  double initial_position_tolerance_deg = 0.0;
+  double initial_position_tolerance_deg = kDefaultInitialPositionToleranceDeg;
   revo3::DiscoveryOptions discovery;
 };
 
@@ -196,8 +197,9 @@ int main(int argc, char **argv) {
         }
         std::fprintf(stderr,
                      "Warning: %s; accepted with initial position tolerance %.4f deg. "
-                     "The trajectory starts from and returns to this measured position.\n",
+                     "The trajectory uses the nearest configured position limit.\n",
                      message.c_str(), options.initial_position_tolerance_deg);
+        initial[joint] = std::clamp(initial[joint], minimum, maximum);
       }
       target[joint] = minimum + 0.5f * (maximum - minimum);
       const double distance = target[joint] - initial[joint];

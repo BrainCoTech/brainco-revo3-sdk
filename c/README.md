@@ -259,7 +259,8 @@ in opposition. Poses are not calibrated fingertip contact coordinates. A 21-join
 layout and the requested hand side are required. Left-hand mechanical clearance
 still requires separate validation.
 
-Common options: `--tempo`, `--repeat`, `--feedback-tolerance-deg` (0..2 degrees),
+Common options: `--tempo`, `--repeat`, `--feedback-tolerance-deg` (0..2 degrees,
+default 0.1 degrees),
 and `--skip-joints` (comma-separated logical indices, for example `2,12,20`).
 Skipped joints receive zero Kp, Kd, velocity and feedforward current; they do not
 actively hold position. Only explicitly excluded stall faults are tolerated.
@@ -283,7 +284,6 @@ four-finger flexion joints, excluding explicitly skipped joints. Unlike the
 Python classic entrypoint, this C++ example has no custom joint selection,
 send-rate option, JSON profile loading, or relax-on-finish option. Gains are
 fixed at Kp=1, Kd=0.1. `--tempo` scales transitions, not sine frequency.
-
 
 The standalone opposition demo uses these candidate targets: index
 thumb targets `[73,45,40,10,15]` degrees and finger flexion `[75,65,50]`;

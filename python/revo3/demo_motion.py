@@ -144,8 +144,7 @@ def validate_profile(profile, kind, side):
     return profile
 
 
-def check_positions(positions, config, tolerance=0.1):
-    """Validate positions while allowing small floating-point boundary noise."""
+def check_positions(positions, config, tolerance=0.0):
     if len(positions) != JOINT_COUNT:
         raise ValueError("Expected 21 joint positions")
     for joint, position in enumerate(positions):
@@ -474,7 +473,7 @@ def parser_for(kind):
     parser.add_argument("--tempo", type=float, default=1.0, help="Choreography speed multiplier; device speed limits still apply")
     parser.add_argument("--kp", type=float, default=1.0)
     parser.add_argument("--kd", type=float, default=0.1)
-    parser.add_argument("--feedback-tolerance-deg", type=float, default=0.0,
+    parser.add_argument("--feedback-tolerance-deg", type=float, default=0.1,
                         help="Allow measured feedback up to this far outside limits (0..2 deg); all sent targets remain bounded")
     parser.add_argument("--finish", choices=("hold", "relax"), default="hold", help="Return to initial pose, then retain gains or enable zero force")
     if kind == "classic":
