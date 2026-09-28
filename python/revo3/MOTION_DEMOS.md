@@ -47,7 +47,7 @@ The first three demos support `--export-profile` and `--profile`. A profile cont
 - `calibrated`: defaults to `false`; it records manual calibration status and is not software or hardware certification.
 - `steps`: the motion list. Each step contains `name`, 21 `positions_deg` values, transition time `duration`, and dwell time `hold`.
 
-The four-finger logical order is little finger J0-J3, ring J4-J7, middle J8-J11, and index J12-J15. Each finger uses `[Abd, MCP, PIP, DIP]`. Thumb J16-J20 uses `[Rotation, MCP, IP, Abd, Flex]`. Profiles always use logical joints rather than low-level channel numbers.
+The four-finger logical order is little finger J0-J3, ring J4-J7, middle J8-J11, and index J12-J15. Each finger uses `[Abd, MCP, PIP, DIP]`. Thumb targets use `[J16, J17, J18, J19, J20]` order. J16 is CMC Flex (thumb base flexion), and J20 is CMC Rotation (thumb opposition rotation). Profiles always use logical joints rather than low-level channel numbers.
 
 Begin calibration with the open-hand pose and one opposition step. At a reduced tempo, adjust the thumb and target finger gradually, verify clearance, and then expand to the full sequence. Calibrate all four opposition poses independently. The templates express motion intent; they do not calculate fingertip coordinates or use tactile feedback to detect contact. Opposition completion, grasp success, grip force, and collision avoidance require hardware validation. The examples do not support automatic object grasping or music synchronization.
 

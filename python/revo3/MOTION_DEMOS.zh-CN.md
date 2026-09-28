@@ -51,7 +51,7 @@ Pro、Basic 等非 21 关节布局会被拒绝。
 - `steps`：动作列表。每步包含 `name`、21 项 `positions_deg`、过渡秒数 `duration`、停留秒数 `hold`。
 
 四指逻辑顺序为小指 J0~J3、无名指 J4~J7、中指 J8~J11、食指 J12~J15，
-各指依次为 `[Abd, MCP, PIP, DIP]`。拇指 J16~J20 为 `[Rotation, MCP, IP, Abd, Flex]`。
+各指依次为 `[Abd, MCP, PIP, DIP]`。拇指目标按 `[J16, J17, J18, J19, J20]` 编号顺序排列。J16 为 CMC Flex（拇指根部屈伸），J20 为 CMC Rotation（拇指自转对掌）。
 动作配置始终使用逻辑关节，不使用底层通道编号。
 
 校准时先保留张手和单个对掌步骤，以较低节奏逐步调整拇指及目标手指角度；确认指间距离后再扩展到完整序列。
