@@ -1,11 +1,21 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
 
 namespace revo3::examples {
+
+inline double round_trip_speed_limit(double minimum, double maximum) {
+  if (!std::isfinite(minimum) || !std::isfinite(maximum) ||
+      minimum > maximum || maximum <= 0.0) {
+    throw std::invalid_argument("Invalid configured speed limits");
+  }
+  // Signed limits constrain both legs; nonnegative limits describe speed magnitudes.
+  return minimum < 0.0 ? std::min(maximum, std::abs(minimum)) : maximum;
+}
 
 struct MitPlanSample {
   double position = 0.0;

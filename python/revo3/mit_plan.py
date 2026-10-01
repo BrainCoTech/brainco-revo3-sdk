@@ -81,9 +81,9 @@ async def run(args: argparse.Namespace) -> None:
         snapshot = await hand.state.snapshot()
         config = await hand.config.snapshot()
         initial_positions = list(snapshot.positions_deg)
-        last_positions = initial_positions.copy()
-        target_positions = initial_positions.copy()
-        for joint in args.joints:
+        if len(initial_positions) != MOTOR_COUNT:
+            raise RuntimeError("Expected 21 initial joint positions")
+        for joint in range(MOTOR_COUNT):
             minimum = config.joint_min_position_deg[joint]
             maximum = config.joint_max_position_deg[joint]
             if not (math.isfinite(minimum) and math.isfinite(maximum) and minimum < maximum):
@@ -119,15 +119,20 @@ async def run(args: argparse.Namespace) -> None:
                     flush=True,
                 )
                 initial_positions[joint] = min(max(initial_positions[joint], minimum), maximum)
+        target_positions = initial_positions.copy()
+        for joint in args.joints:
+            minimum = config.joint_min_position_deg[joint]
+            maximum = config.joint_max_position_deg[joint]
             target_positions[joint] = minimum + args.range_fraction * (maximum - minimum)
             distance = target_positions[joint] - initial_positions[joint]
             minimum_speed = config.joint_min_speed_rpm[joint]
             maximum_speed = config.joint_max_speed_rpm[joint]
-            allowed_speed = (
-                maximum_speed
-                if distance >= 0.0 or minimum_speed >= 0.0
-                else abs(minimum_speed)
-            )
+            if not (math.isfinite(minimum_speed) and math.isfinite(maximum_speed)
+                    and minimum_speed <= maximum_speed and maximum_speed > 0.0):
+                raise RuntimeError(f"Invalid configured speed limits for joint {joint}")
+            # Signed limits constrain both legs; nonnegative limits describe speed magnitudes.
+            allowed_speed = (min(maximum_speed, abs(minimum_speed))
+                             if minimum_speed < 0.0 else maximum_speed)
             peak_speed = (
                 QUINTIC_PEAK_RATE_FACTOR
                 * abs(distance)

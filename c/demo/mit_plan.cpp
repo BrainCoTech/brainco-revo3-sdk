@@ -165,8 +165,7 @@ int main(int argc, char **argv) {
     const auto config = hand.config().snapshot();
     std::vector<float> initial(state.motors.positions_deg,
                                state.motors.positions_deg + kJointCount);
-    auto target = initial;
-    for (const auto joint : kTargetJoints) {
+    for (std::size_t joint = 0; joint < kJointCount; ++joint) {
       const float minimum = config.joint_min_position_deg[joint];
       const float maximum = config.joint_max_position_deg[joint];
       if (!std::isfinite(minimum) || !std::isfinite(maximum) ||
@@ -201,14 +200,17 @@ int main(int argc, char **argv) {
                      message.c_str(), options.initial_position_tolerance_deg);
         initial[joint] = std::clamp(initial[joint], minimum, maximum);
       }
+    }
+    auto target = initial;
+    for (const auto joint : kTargetJoints) {
+      const float minimum = config.joint_min_position_deg[joint];
+      const float maximum = config.joint_max_position_deg[joint];
       target[joint] = minimum + 0.5f * (maximum - minimum);
       const double distance = target[joint] - initial[joint];
       const double minimum_speed = config.joint_min_speed_rpm[joint];
       const double maximum_speed = config.joint_max_speed_rpm[joint];
-      const double allowed_speed =
-          distance >= 0.0 || minimum_speed >= 0.0
-              ? maximum_speed
-              : std::abs(minimum_speed);
+      const double allowed_speed = revo3::examples::round_trip_speed_limit(
+          minimum_speed, maximum_speed);
       const double peak_speed = kQuinticPeakRateFactor * std::abs(distance) /
                                 kSegmentDurationSeconds / 6.0;
       if (!std::isfinite(allowed_speed) || allowed_speed <= 0.0) {

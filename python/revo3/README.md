@@ -32,9 +32,9 @@ operation-level `slave_id`, a collector, or a State buffer.
 example. Python additionally exposes `--joint`, `--range-fraction`,
 `--duration`, `--repeat`, `--frequency`, `--command-timeout-ms`, `--kp`, and
 `--kd` for explicit tuning. `--range-fraction` is limited to `0.05~0.95`.
-Before opening a ServoSession, the example validates the initial feedback and
-generated quintic peak velocity against the configured position and speed
-envelopes. `--initial-position-tolerance-deg` defaults to `0.1` and accepts
+Before opening a ServoSession, the example validates initial feedback for all
+21 joints, including joints held stationary, and checks the generated quintic
+peak velocity against the speed limits in both outbound and return directions. `--initial-position-tolerance-deg` defaults to `0.1` and accepts
 nonnegative overrides. Feedback within tolerance is clamped to the nearest
 configured limit before motion. The command timeout must be at least one
 requested send period.
