@@ -948,18 +948,18 @@ class HpForceTorqueModuleCard(QGroupBox):
         self.fx_lbl = QLabel("Fx: +0 mN")
         self.fy_lbl = QLabel("Fy: +0 mN")
         self.fz_lbl = QLabel("Fz: +0 mN")
-        self.high_density_matrix_lbl = QLabel("Mx: +0.0000 Nm")
+        self.torque_x_lbl = QLabel("Mx: +0.0000 Nm")
         self.my_lbl = QLabel("My: +0.0000 Nm")
         self.fn_lbl = QLabel("Fn: +0 mN")
 
-        for lbl in (self.fx_lbl, self.fy_lbl, self.fz_lbl, self.high_density_matrix_lbl, self.my_lbl):
+        for lbl in (self.fx_lbl, self.fy_lbl, self.fz_lbl, self.torque_x_lbl, self.my_lbl):
             lbl.setStyleSheet(lbl_style)
         self.fn_lbl.setStyleSheet(fn_style)
 
         grid.addWidget(self.fx_lbl, 0, 0)
         grid.addWidget(self.fy_lbl, 0, 1)
         grid.addWidget(self.fz_lbl, 0, 2)
-        grid.addWidget(self.high_density_matrix_lbl, 0, 3)
+        grid.addWidget(self.torque_x_lbl, 0, 3)
         grid.addWidget(self.my_lbl, 0, 4)
         grid.addWidget(self.fn_lbl, 0, 5)
         layout.addLayout(grid)
@@ -1000,7 +1000,7 @@ class HpForceTorqueModuleCard(QGroupBox):
         fx = getattr(mod_payload, "fx", 0.0)
         fy = getattr(mod_payload, "fy", 0.0)
         fz = getattr(mod_payload, "fz", 0.0)
-        high_density_matrix_nm = getattr(mod_payload, "mx", 0.0)
+        torque_x_nm = getattr(mod_payload, "mx", 0.0)
         my_nm = getattr(mod_payload, "my", 0.0)
         fn = getattr(mod_payload, "resultant_force_mn", 0.0)
 
@@ -1033,7 +1033,7 @@ class HpForceTorqueModuleCard(QGroupBox):
             self.fx_lbl.setText(f"Fx: {fx:+.1f} mN")
             self.fy_lbl.setText(f"Fy: {fy:+.1f} mN")
             self.fz_lbl.setText(f"Fz: {fz:+.1f} mN")
-            self.high_density_matrix_lbl.setText(f"Mx: {high_density_matrix_nm:+.4f} Nm")
+            self.torque_x_lbl.setText(f"Mx: {torque_x_nm:+.4f} Nm")
             self.my_lbl.setText(f"My: {my_nm:+.4f} Nm")
             self.fn_lbl.setText(f"Fn: {fn:+.1f} mN")
 
@@ -1041,14 +1041,14 @@ class HpForceTorqueModuleCard(QGroupBox):
             return
 
         # -- 2D Force Compass Update --
-        self.compass.set_values(fx, fy, fz, high_density_matrix_nm, my_nm, fn)
+        self.compass.set_values(fx, fy, fz, torque_x_nm, my_nm, fn)
 
         # -- 6D Chart Update --
         values = {
             "fx": fx,
             "fy": fy,
             "fz": fz,
-            "mx": high_density_matrix_nm,
+            "mx": torque_x_nm,
             "my": my_nm,
             "resultant_force_mn": fn,
         }
