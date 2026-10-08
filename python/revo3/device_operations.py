@@ -101,9 +101,11 @@ async def run(args: argparse.Namespace) -> None:
         if args.reboot:
             await wait_for_operation("reboot", hand.maintenance.reboot(), args.timeout)
     finally:
-        if hand is not None:
-            await hand.close()
-        await manager.close()
+        try:
+            if hand is not None:
+                await hand.close()
+        finally:
+            await manager.close()
 
 
 def parse_args() -> argparse.Namespace:
