@@ -55,3 +55,10 @@ See [the CLI examples](revo3/README.md) for units and stopping semantics.
 `revo3/firmware_update.py` reports transfer progress; reconnect to verify the
 installed version. `revo3/device_operations.py` refreshes motor SNs and versions
 and reports partial refresh failures before reading the cached results.
+
+## Set the Slave ID (SDK 2.1.2)
+
+Python/C++ `device_operations` adds `--new-slave-id`, with read-only defaults and
+`--run` to write. After an actual write, it closes the old Manager, creates a new
+one, and verifies the device identity. See [the address example](revo3/README.md#set-the-slave-id-sdk-212) for
+commands and bus-isolation requirements.

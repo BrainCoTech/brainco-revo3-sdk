@@ -71,6 +71,30 @@ async def run(args: argparse.Namespace) -> None:
             f"commands_sent={statistics.commands_sent}"
         )
 
+        if args.new_slave_id is not None:
+            if not args.run:
+                print(f"Read-only: would set slave ID to {args.new_slave_id}; add --run to write")
+                return
+            serial_number = info.serial_number if info else None
+            try:
+                await hand.config.set_slave_id(args.new_slave_id)
+            finally:
+                # Release the invalidated transport even when the write result is uncertain.
+                await manager.close()
+                hand = None
+            manager = sdk.Manager()
+            hand = await manager.connect_auto(
+                port=args.port, slave_id=args.new_slave_id, broadcast=False
+            )
+            actual_config = await hand.config.snapshot()
+            if actual_config.slave_id != args.new_slave_id:
+                raise RuntimeError("Rediscovered device has an unexpected slave ID")
+            actual_info = hand.device_info
+            if serial_number and (not actual_info or actual_info.serial_number != serial_number):
+                raise RuntimeError("Rediscovered device has an unexpected serial number")
+            print(f"New Manager connected; verified slave ID: {actual_config.slave_id}")
+            return
+
         if args.calibrate:
             await hand.calibration.calibrate_joints()
             print("calibration command sent")
@@ -89,7 +113,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--reboot", action="store_true")
-    return parser.parse_args()
+    parser.add_argument("--new-slave-id", type=lambda value: int(value, 0))
+    parser.add_argument("--run", action="store_true", help="Write the new ID; physically isolate the target hand first")
+    args = parser.parse_args()
+    if args.new_slave_id is not None:
+        if not 1 <= args.new_slave_id <= 247:
+            parser.error("--new-slave-id must be in 1..247")
+        if args.calibrate or args.reboot:
+            parser.error("Do not combine an ID change with calibration or reboot")
+    return args
 
 
 if __name__ == "__main__":

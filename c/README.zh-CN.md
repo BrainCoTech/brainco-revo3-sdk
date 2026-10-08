@@ -151,8 +151,8 @@ kill -9 <PID>
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
-Linux、macOS 或 Windows 环境。本版本已用 UV5 固件 0.1.2 完成 Modbus 实机
-验证；CANFD 实机验证尚未完成。
+Linux、macOS 或 Windows 环境。2.1.2 最终 wheel 已在 UV5 固件 0.1.2 上通过
+CANFD 局部控制验证。Modbus 曾通过候选实现验证；最终 wheel 的 Modbus 复测未发现设备。
 
 默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
 零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。
@@ -177,3 +177,20 @@ python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode pos
 python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
 ./c/build/demo/discrete_control --scope thumb --mode current
 ```
+
+## 设置从站 ID（SDK 2.1.2）
+
+`device_operations` 新增 `--new-slave-id`。默认只读；添加 `--run` 才写入。
+地址范围为 1–247，调用前在物理总线上隔离目标手，停止运动和 Servo，
+不要与标定或重启同时执行。实际写入会使原 Hand 和传输会话失效，
+只关闭 Hand 不够；示例会关闭旧 Manager，新建 Manager，按新地址连接，
+并核对从站 ID，可用时核对原设备 SN。响应丢失时不自动重试或假定新地址已生效。
+
+从仓库根目录执行，替换实际串口：
+
+```bash
+python python/revo3/device_operations.py --port /dev/ttyUSB0 --new-slave-id 2
+./c/build/demo/device_operations /dev/ttyUSB0 --new-slave-id 2
+```
+
+上面命令只读；确认目标手已隔离后再添加 `--run`。

@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 int main(int argc, char **argv) {
@@ -11,18 +12,39 @@ int main(int argc, char **argv) {
   revo3::DiscoveryOptions discovery;
   bool calibrate = false;
   bool reboot = false;
+  bool run = false;
+  int new_slave_id = 0;
   for (int index = 1; index < argc; ++index) {
     if (std::strcmp(argv[index], "--help") == 0 ||
         std::strcmp(argv[index], "-h") == 0) {
-      std::printf("Usage: %s [PORT] [--calibrate] [--reboot]\n", argv[0]);
+      std::printf("Usage: %s [PORT] [--calibrate] [--reboot] [--new-slave-id ID [--run]]\n", argv[0]);
+      std::printf("ID changes are read-only unless --run is given. Isolate the target hand first.\n");
       return 0;
     } else if (std::strcmp(argv[index], "--calibrate") == 0) {
       calibrate = true;
     } else if (std::strcmp(argv[index], "--reboot") == 0) {
       reboot = true;
+    } else if (std::strcmp(argv[index], "--run") == 0) {
+      run = true;
+    } else if (std::strcmp(argv[index], "--new-slave-id") == 0) {
+      if (++index >= argc) {
+        std::fprintf(stderr, "--new-slave-id requires a value in 1..247\n");
+        return 1;
+      }
+      char *end = nullptr;
+      const long value = std::strtol(argv[index], &end, 0);
+      if (*end != '\0' || value < 1 || value > 247) {
+        std::fprintf(stderr, "--new-slave-id must be in 1..247\n");
+        return 1;
+      }
+      new_slave_id = static_cast<int>(value);
     } else {
       discovery.port = argv[index];
     }
+  }
+  if (new_slave_id && (calibrate || reboot)) {
+    std::fprintf(stderr, "Do not combine an ID change with calibration or reboot\n");
+    return 1;
   }
 
   try {
@@ -59,6 +81,34 @@ int main(int argc, char **argv) {
                 static_cast<long long>(runtime.touch_subscription_period.count()),
                 static_cast<long long>(runtime.health_subscription_period.count()),
                 static_cast<long long>(runtime.servo_command_timeout.count()));
+
+    if (new_slave_id) {
+      if (!run) {
+        std::printf("Read-only: would set slave ID to %d; add --run to write\n", new_slave_id);
+        return 0;
+      }
+      const auto serial_number = hand.device_info().serial_number;
+      try {
+        hand.config().set_slave_id(static_cast<std::uint8_t>(new_slave_id));
+      } catch (...) {
+        manager.close();
+        throw;
+      }
+      manager.close();
+      revo3::Manager new_manager;
+      discovery.slave_id = static_cast<std::uint8_t>(new_slave_id);
+      discovery.broadcast = false;
+      auto new_hand = new_manager.connect_auto(discovery);
+      const auto actual_config = new_hand.config().snapshot();
+      if (actual_config.slave_id != new_slave_id ||
+          (!serial_number.empty() && new_hand.device_info().serial_number != serial_number)) {
+        throw std::runtime_error("Rediscovered device has an unexpected identity");
+      }
+      std::printf("New Manager connected; verified slave ID: %u\n", actual_config.slave_id);
+      new_hand.close();
+      new_manager.close();
+      return 0;
+    }
 
     if (calibrate) {
       hand.calibration().calibrate_joints();

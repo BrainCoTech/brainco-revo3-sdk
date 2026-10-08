@@ -47,8 +47,8 @@ python python/gui/main.py
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
-Linux、macOS 或 Windows 环境。本版本已用 UV5 固件 0.1.2 完成 Modbus 实机
-验证；CANFD 实机验证尚未完成。
+Linux、macOS 或 Windows 环境。2.1.2 最终 wheel 已在 UV5 固件 0.1.2 上通过
+CANFD 局部控制验证。Modbus 曾通过候选实现验证；最终 wheel 的 Modbus 复测未发现设备。
 
 默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
 零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。
@@ -65,3 +65,9 @@ python python/revo3/discrete_control.py --mode mit --help
 确认安装成功。
 
 `device_operations` 示例也会刷新并打印电机 SN 和版本；触觉读取失败后保留已读取的电机缓存，并报告刷新错误。
+
+## 设置从站 ID（SDK 2.1.2）
+
+Python/C++ `device_operations` 新增 `--new-slave-id`，默认只读，添加 `--run` 才写入。
+实际写入后需关闭旧 Manager 并新建 Manager；示例包含重新连接和身份核验。
+命令与物理隔离要求见[从站 ID 示例](revo3/README.md#set-the-slave-id-sdk-212)。

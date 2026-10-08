@@ -1,9 +1,5 @@
 # BrainCo Revo3 SDK Examples
 
-> 2.1.2 candidate examples. Release packages are not published yet; new APIs require the candidate build.
-
-For the candidate, use the matching platform wheel and C library supplied by the maintainer. The 2.1.2 download commands below apply after publication.
-
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 This repository provides example applications and integration code demonstrating how to control BrainCo Revo3 dexterous hands using the SDK.
@@ -115,9 +111,10 @@ limit before motion.
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
-Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. This
-release was verified with UV5 firmware 0.1.2 over Modbus; CANFD hardware
-validation remains pending.
+Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. The
+final 2.1.2 wheel validation passed for scoped controls on UV5 firmware 0.1.2 over
+CANFD. Modbus passed with an earlier candidate implementation; the final-wheel
+Modbus retest found no device.
 
 The default reads the current pose without writing. Add `--run` to send the
 current pose in position mode, zero current in current mode, or the current
@@ -142,3 +139,10 @@ python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode pos
 python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
 ./c/build/demo/discrete_control --scope thumb --mode current
 ```
+
+## Set the Slave ID (SDK 2.1.2)
+
+Python/C++ `device_operations` adds `--new-slave-id`, with read-only defaults and
+`--run` to write. After an actual write, it closes the old Manager, creates a new
+one, and verifies the device identity. See [the address example](python/revo3/README.md#set-the-slave-id-sdk-212) for
+commands and bus-isolation requirements.

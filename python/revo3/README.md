@@ -159,9 +159,10 @@ Always call `hand.close()` and `manager.close()` in `try...finally` blocks or us
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
-Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. This
-release was verified with UV5 firmware 0.1.2 over Modbus; CANFD hardware
-validation remains pending.
+Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. The
+final 2.1.2 wheel validation passed for scoped controls on UV5 firmware 0.1.2 over
+CANFD. Modbus passed with an earlier candidate implementation; the final-wheel
+Modbus retest found no device.
 
 The default reads the current pose without writing. Add `--run` to send the
 current pose in position mode, zero current in current mode, or the current
@@ -186,3 +187,23 @@ python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode pos
 python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
 ./c/build/demo/discrete_control --scope thumb --mode current
 ```
+
+## Set the Slave ID (SDK 2.1.2)
+
+`device_operations` adds `--new-slave-id`. It defaults to read-only; add `--run`
+to write an address in 1–247. Physically isolate the target hand on the bus and
+stop motion and Servo first. Do not combine the operation with calibration or
+reboot. An actual write invalidates the original Hand and transport session.
+Closing Hand alone is insufficient: the example closes the old Manager, creates
+a new Manager, connects at the new address, and verifies the ID and original
+device serial number when available. After a lost response, it does not retry automatically or
+assume the new address took effect.
+
+Run from the repository root and replace the serial port:
+
+```bash
+python python/revo3/device_operations.py --port /dev/ttyUSB0 --new-slave-id 2
+./c/build/demo/device_operations /dev/ttyUSB0 --new-slave-id 2
+```
+
+These commands only read configuration. Add `--run` after isolating the target hand.

@@ -1,9 +1,5 @@
 # BrainCo Revo3 SDK 示例
 
-> 2.1.2 候选示例；正式 SDK 安装包尚未发布。新接口需使用候选构建。
-
-候选版本请使用维护者提供的匹配平台 wheel 和 C 库；下述 2.1.2 下载命令供正式发布后使用。
-
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 本仓库提供使用 SDK 控制 BrainCo Revo3 灵巧手的示例应用和集成代码。
@@ -99,8 +95,8 @@ Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MI
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
-Linux、macOS 或 Windows 环境。本版本已用 UV5 固件 0.1.2 完成 Modbus 实机
-验证；CANFD 实机验证尚未完成。
+Linux、macOS 或 Windows 环境。2.1.2 最终 wheel 已在 UV5 固件 0.1.2 上通过
+CANFD 局部控制验证。Modbus 曾通过候选实现验证；最终 wheel 的 Modbus 复测未发现设备。
 
 默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
 零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。
@@ -123,3 +119,9 @@ python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode pos
 python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
 ./c/build/demo/discrete_control --scope thumb --mode current
 ```
+
+## 设置从站 ID（SDK 2.1.2）
+
+Python/C++ `device_operations` 新增 `--new-slave-id`，默认只读，添加 `--run` 才写入。
+实际写入后需关闭旧 Manager 并新建 Manager；示例包含重新连接和身份核验。
+命令与物理隔离要求见[从站 ID 示例](python/revo3/README.md#set-the-slave-id-sdk-212)。
