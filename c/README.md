@@ -308,7 +308,7 @@ Left-hand mechanical clearance, fingertip contact, object grasping, and holding
 behavior after connection close remain unverified. Start at a reduced tempo and
 calibrate candidate poses for the target hand before regular use.
 
-## Single-command control (SDK 2.1.1)
+## Single-command control (SDK 2.1.2)
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
@@ -331,3 +331,11 @@ On an error, inspect state before retrying because a command may have taken effe
 
 The firmware update example now reports transfer progress. 100% means transfer
 completion; reconnect and read the installed firmware version to verify success.
+
+2.1.2 adds `--scope joint|finger|thumb`, matching `move_*`: joints 0–20, fingers 1=Index through 4=Pinky, and a separate thumb scope. Scoped commands write only selected joints. Finger/thumb writes are sequential, not atomic; inspect state after failure. These commands are read-only; add `--run` to write.
+
+```bash
+python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode position
+python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
+./c/build/demo/discrete_control --scope thumb --mode current
+```

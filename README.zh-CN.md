@@ -1,5 +1,9 @@
 # BrainCo Revo3 SDK 示例
 
+> 2.1.2 候选示例；正式 SDK 安装包尚未发布。新接口需使用候选构建。
+
+候选版本请使用维护者提供的匹配平台 wheel 和 C 库；下述 2.1.2 下载命令供正式发布后使用。
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 本仓库提供使用 SDK 控制 BrainCo Revo3 灵巧手的示例应用和集成代码。
@@ -66,7 +70,7 @@ source .venv/bin/activate
 从 Ali OSS 安装与本仓库版本匹配的 wheel：
 
 ```bash
-bash python/install_whl.sh 2.1.1
+bash python/install_whl.sh __VERSION__
 ```
 
 #### 2. 运行示例
@@ -91,7 +95,7 @@ python gui/main.py
 
 Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MIT 阻抗计划：频率为 100 Hz，目标位置为各关节配置位置范围的 50%，每个向外和返回分段用时 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。初始位置容差默认 0.1 度；容差内的越界反馈会在运动前钳制到最近的配置限位。可复用的 C++ 采样器位于 `c/common/revo3_mit_plan.hpp`。
 
-## 单次控制（SDK 2.1.1）
+## 单次控制（SDK 2.1.2）
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
@@ -111,3 +115,11 @@ python python/revo3/discrete_control.py --mode mit --help
 
 固件升级示例已显示传输进度。100% 表示传输完成；需重新连接并读取固件版本
 确认安装成功。
+
+2.1.2 新增 `--scope joint|finger|thumb`，选择器与 `move_*` 一致：关节 0–20、手指 1=食指到 4=小指、拇指单独使用 thumb。局部下发只写所选关节；手指/拇指逐关节写入，非原子更新，失败后先检查状态。下面命令为只读；添加 `--run` 才下发。
+
+```bash
+python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode position
+python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
+./c/build/demo/discrete_control --scope thumb --mode current
+```

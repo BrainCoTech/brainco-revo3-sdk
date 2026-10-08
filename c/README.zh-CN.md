@@ -147,7 +147,7 @@ kill -9 <PID>
 
 默认姿态已在右手设备上完成有限的空载验证，但尚未通过全部 21 关节参与的验收。左手机械间隙、指尖接触、实物抓握和断开连接后的持续保持仍未验证。常规使用前，应降低节奏并针对目标手逐步标定候选姿态。
 
-## 单次控制（SDK 2.1.1）
+## 单次控制（SDK 2.1.2）
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
@@ -169,3 +169,11 @@ Linux、macOS 或 Windows 环境。本版本已用 UV5 固件 0.1.2 完成 Modbu
 确认安装成功。
 
 `device_operations` 示例也会刷新并打印电机 SN 和版本；触觉读取失败后保留已读取的电机缓存，并报告刷新错误。
+
+2.1.2 新增 `--scope joint|finger|thumb`，选择器与 `move_*` 一致：关节 0–20、手指 1=食指到 4=小指、拇指单独使用 thumb。局部下发只写所选关节；手指/拇指逐关节写入，非原子更新，失败后先检查状态。下面命令为只读；添加 `--run` 才下发。
+
+```bash
+python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode position
+python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
+./c/build/demo/discrete_control --scope thumb --mode current
+```

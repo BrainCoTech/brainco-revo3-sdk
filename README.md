@@ -1,5 +1,9 @@
 # BrainCo Revo3 SDK Examples
 
+> 2.1.2 candidate examples. Release packages are not published yet; new APIs require the candidate build.
+
+For the candidate, use the matching platform wheel and C library supplied by the maintainer. The 2.1.2 download commands below apply after publication.
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 This repository provides example applications and integration code demonstrating how to control BrainCo Revo3 dexterous hands using the SDK.
@@ -76,7 +80,7 @@ On Windows PowerShell, use `py -3.10 -m venv .venv` and
 Install the release-matched wheel from Ali OSS:
 
 ```bash
-bash python/install_whl.sh 2.1.1
+bash python/install_whl.sh __VERSION__
 ```
 
 #### 2. Run examples
@@ -107,7 +111,7 @@ in `c/common/revo3_mit_plan.hpp`. Initial-position tolerance defaults to 0.1
 degrees; accepted out-of-range feedback is clamped to the nearest configured
 limit before motion.
 
-## Single-command control (SDK 2.1.1)
+## Single-command control (SDK 2.1.2)
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
@@ -130,3 +134,11 @@ python python/revo3/discrete_control.py --mode mit --help
 
 The firmware update example now reports transfer progress. 100% means transfer
 completion; reconnect and read the installed firmware version to verify success.
+
+2.1.2 adds `--scope joint|finger|thumb`, matching `move_*`: joints 0–20, fingers 1=Index through 4=Pinky, and a separate thumb scope. Scoped commands write only selected joints. Finger/thumb writes are sequential, not atomic; inspect state after failure. These commands are read-only; add `--run` to write.
+
+```bash
+python python/revo3/discrete_control.py --scope joint --joint-index 0 --mode position
+python python/revo3/discrete_control.py --scope finger --finger-index 1 --mode mit
+./c/build/demo/discrete_control --scope thumb --mode current
+```

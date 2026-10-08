@@ -43,7 +43,7 @@ python python/gui/main.py
 
 独立的视觉触觉数据通道及其平台专用运行时不属于本 SDK 示例包。
 
-## 单次控制（SDK 2.1.1）
+## 单次控制（SDK 2.1.2）
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
