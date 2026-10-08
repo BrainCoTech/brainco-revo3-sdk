@@ -28,6 +28,23 @@ int main(int argc, char **argv) {
   try {
     revo3::Manager manager;
     auto hand = manager.connect_auto(discovery);
+    // A later touch read failure does not discard successful motor reads.
+    try {
+      hand.refresh_device_info();
+    } catch (const revo3::SdkError &error) {
+      std::fprintf(stderr, "Device metadata refresh incomplete: %s\n", error.what());
+    }
+    try {
+      hand.refresh_firmware_info();
+    } catch (const revo3::SdkError &error) {
+      std::fprintf(stderr, "Firmware metadata refresh incomplete: %s\n", error.what());
+    }
+    for (const auto &sn : hand.device_info().motor_serial_numbers) {
+      std::printf("Motor SN: %s\n", sn.c_str());
+    }
+    for (const auto &version : hand.firmware_info().motor_firmware_versions) {
+      std::printf("Motor firmware: %s\n", version.c_str());
+    }
     const auto config = hand.config().snapshot();
     const auto runtime = hand.config().runtime_options();
     std::printf("DeviceConfig: slave=%u RS485=%u CANFD=%u buzzer=%s vibration=%s "

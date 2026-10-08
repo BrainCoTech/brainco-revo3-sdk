@@ -119,7 +119,24 @@ int main(int argc, char **argv) {
     auto hand = manager.connect_auto(discovery);
     auto operation = hand.maintenance().update_firmware(
         firmware, target, static_cast<std::size_t>(wait_seconds));
-    const auto state = operation.wait(std::chrono::seconds(timeout_seconds));
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(timeout_seconds);
+    auto state = operation.state();
+    std::optional<float> last_progress;
+    do {
+      const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
+      if (remaining.count() <= 0) {
+        break;
+      }
+      state = operation.wait(std::min(remaining, std::chrono::milliseconds(100)));
+      const auto progress = operation.progress();
+      if (progress && progress != last_progress) {
+        std::printf("DFU transfer: %.1f%%\n", *progress * 100.0f);
+        last_progress = progress;
+      }
+    } while (state == revo3::OperationState::Pending ||
+             state == revo3::OperationState::Running);
     std::printf("DFU state: %s (%d)\n", state_name(state),
                 static_cast<int>(state));
     if (const auto error = operation.error()) {
@@ -137,7 +154,7 @@ int main(int argc, char **argv) {
                    "DFU did not succeed; inspect device state before retrying.\n");
       return 1;
     }
-    std::printf("Firmware update succeeded\n");
+    std::printf("DFU workflow completed; reconnect and verify firmware versions\n");
     return 0;
   } catch (const revo3::SdkError &error) {
     std::fprintf(stderr,

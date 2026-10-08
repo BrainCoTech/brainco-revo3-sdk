@@ -25,7 +25,7 @@ async def main():
         "--wait-secs",
         type=int,
         default=5,
-        help="Reboot wait time in seconds (default: 5)",
+        help="DFU readiness wait in seconds (default: 5; SDK minimum: 15)",
     )
     parser.add_argument(
         "--timeout",
@@ -74,10 +74,12 @@ async def main():
         logger.info("Target: %s", args.target)
         logger.info("Do not disconnect power or communication while DFU is running.")
         handle = ctx.hand.maintenance.update_firmware(
-            str(firmware_path), target=target, wait_secs=args.wait_secs
+            str(firmware_path), target=target, wait_secs=args.wait_secs,
+            on_progress=lambda progress: logger.info("DFU transfer: %.1f%%", progress * 100),
         )
         state = await handle.wait(timeout=args.timeout)
         logger.info("DFU state: %s", state)
+        logger.info("Final transfer progress: %s", handle.progress)
         if handle.error is not None:
             error = handle.error
             logger.error(
@@ -94,7 +96,7 @@ async def main():
                 "DFU ended in %s; inspect device state before retrying", state
             )
             return 1
-        logger.info("Firmware update succeeded")
+        logger.info("DFU workflow completed; reconnect and verify firmware versions")
         return 0
     finally:
         await cleanup_session(ctx)

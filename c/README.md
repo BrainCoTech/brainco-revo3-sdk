@@ -307,3 +307,27 @@ device, but have not passed an acceptance run with all 21 joints active.
 Left-hand mechanical clearance, fingertip contact, object grasping, and holding
 behavior after connection close remain unverified. Start at a reduced tempo and
 calibrate candidate poses for the target hand before regular use.
+
+## Single-command control (SDK 2.1.1)
+
+`discrete_control` sends one full-hand position, current, or MIT command without
+`open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
+Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. This
+release was verified with UV5 firmware 0.1.2 over Modbus; CANFD hardware
+validation remains pending.
+
+The default reads the current pose without writing. Add `--run` to send the
+current pose in position mode, zero current in current mode, or the current
+pose with kp=1, kd=0.1 and zero velocity/feedforward current in MIT mode.
+Even these targets can change hand support or motor behavior; clear the workspace.
+Arrays use logical joint order, degrees, rpm, and mA; MIT's fifth array is
+feedforward current in mA. Firmware determines target retention. Closing the
+connection does not stop control; plan stopping with the documented safety API.
+On an error, inspect state before retrying because a command may have taken effect.
+
+```bash
+./c/build/demo/discrete_control --mode mit --help
+```
+
+The firmware update example now reports transfer progress. 100% means transfer
+completion; reconnect and read the installed firmware version to verify success.

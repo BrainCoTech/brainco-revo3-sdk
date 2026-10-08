@@ -48,3 +48,10 @@ python python/gui/main.py
 
 Independent vision-tactile data channels and their platform-specific runtimes
 are outside this SDK example package.
+
+SDK 2.1.1 adds `revo3/discrete_control.py` for one position, current, or MIT command
+without a Servo session. It defaults to read-only; `--run` explicitly enables writes.
+See [the CLI examples](revo3/README.md) for units and stopping semantics.
+`revo3/firmware_update.py` reports transfer progress; reconnect to verify the
+installed version. `revo3/device_operations.py` refreshes motor SNs and versions
+and reports partial refresh failures before reading the cached results.

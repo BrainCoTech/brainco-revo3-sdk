@@ -24,6 +24,16 @@ async def run(args: argparse.Namespace) -> None:
     try:
         hand = await manager.connect_auto(port=args.port, slave_id=args.slave_id)
 
+        # A later touch read failure does not discard successful motor reads.
+        for refresh in (hand.refresh_device_info, hand.refresh_firmware_info):
+            try:
+                await refresh()
+            except sdk.SdkError as error:
+                print(f"Metadata refresh incomplete: {error}")
+        info = hand.device_info
+        print(f"Motor serial numbers: {info.motor_serial_numbers if info else []}")
+        print(f"Motor firmware versions: {hand.firmware_info.motor_firmware_versions}")
+
         device_config = await hand.config.snapshot()
         runtime = hand.config.runtime_options
         statistics = hand.statistics

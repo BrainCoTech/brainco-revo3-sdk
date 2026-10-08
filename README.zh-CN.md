@@ -66,7 +66,7 @@ source .venv/bin/activate
 从 Ali OSS 安装与本仓库版本匹配的 wheel：
 
 ```bash
-bash python/install_whl.sh 2.1.0
+bash python/install_whl.sh 2.1.1
 ```
 
 #### 2. 运行示例
@@ -90,3 +90,24 @@ python gui/main.py
 ```
 
 Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MIT 阻抗计划：频率为 100 Hz，目标位置为各关节配置位置范围的 50%，每个向外和返回分段用时 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。初始位置容差默认 0.1 度；容差内的越界反馈会在运动前钳制到最近的配置限位。可复用的 C++ 采样器位于 `c/common/revo3_mit_plan.hpp`。
+
+## 单次控制（SDK 2.1.1）
+
+`discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
+没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
+Linux、macOS 或 Windows 环境。本版本已用 UV5 固件 0.1.2 完成 Modbus 实机
+验证；CANFD 实机验证尚未完成。
+
+默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
+零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。
+这些命令也可能改变支撑状态或电机行为，执行前应清空工作空间。
+数组按逻辑关节顺序排列，单位为度、rpm、mA；MIT 第五项是前馈电流（mA）。
+目标保持由固件决定，关闭连接不会自动停止控制，应按安全 API 设计停止流程。
+发生错误后先检查状态再决定是否重试，命令可能已经生效。
+
+```bash
+python python/revo3/discrete_control.py --mode mit --help
+```
+
+固件升级示例已显示传输进度。100% 表示传输完成；需重新连接并读取固件版本
+确认安装成功。
