@@ -4,6 +4,8 @@
 
 本仓库提供使用 SDK 控制 BrainCo Revo3 灵巧手的示例应用和集成代码。
 
+SDK 2.2.0 保持 2.1.2 的控制用法，并修复压阻阵列掌心 36／71 点读取。SDK 根据已识别的三位 product code（如 `UT1`、`UF2`）确定触觉拓扑，旧版或未知型号使用只读元数据探测；阵列点数由运行时寄存器确定。GUI 的 `has_pressure_array_touch` 等标志来自 SDK 解析后的 `TouchLayout`（或显式布局覆盖），用于控制界面显示，无需重复识别型号。GUI 掌心热力图仍使用旧版 36 点坐标，71 点空间映射尚未适配。
+
 ## 目录结构
 
 - `c/`：使用 C ABI 的 C++ 示例，以及独立的 Linux EtherCAT 示例
@@ -66,7 +68,7 @@ source .venv/bin/activate
 从 Ali OSS 安装与本仓库版本匹配的 wheel：
 
 ```bash
-bash python/install_whl.sh __VERSION__
+bash python/install_whl.sh 2.2.0
 ```
 
 #### 2. 运行示例

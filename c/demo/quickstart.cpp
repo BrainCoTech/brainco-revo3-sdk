@@ -10,8 +10,8 @@
 namespace {
 
 enum class MoveScope { None, Hand, Joint, Finger, Thumb };
-constexpr std::uint8_t kSafetyRecoveryRequired = 1;
-constexpr std::uint8_t kSafetyFaulted = 2;
+constexpr std::uint8_t kSafetyRecoveryRequired = 2;
+constexpr std::uint8_t kSafetyFaulted = 3;
 
 bool health_has_fault(const revo3::HealthSnapshot &health) {
   return health.safety_state == kSafetyRecoveryRequired ||

@@ -165,7 +165,13 @@ class GuiHandAdapter:
         return "Touch" in model_name
 
     async def initialize_touch_metadata(self):
-        """Populate dynamic touch layout metadata before GUI capability checks."""
+        """Return the SDK-resolved touch layout for GUI capability checks.
+
+        Recognized product codes determine the SDK touch topology; legacy or
+        unknown variants use metadata detection. Runtime point counts describe
+        array sizes. The GUI consumes this layout instead of identifying the
+        product again. An explicit layout override is reflected here as well.
+        """
         touch = getattr(self.hand, "touch", None)
         if touch is None or not self.supports_touch:
             return None

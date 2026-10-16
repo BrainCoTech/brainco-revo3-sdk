@@ -2209,6 +2209,9 @@ class Revo3TouchSubPanel(QWidget):
                 self._detected_touch_layout = layout
             layout_ids = [str(getattr(m, "layout_id", "")) for m in modules]
 
+            # These flags describe the SDK-resolved (or explicitly overridden)
+            # layout, not a separate product detector. The SDK resolves known
+            # product codes to touch profiles and reads runtime array sizes.
             self.has_fingertip_force_torque_touch = any(lid.startswith("fingertip_force_torque_") for lid in layout_ids)
             self.has_high_density_matrix_touch = any(lid.startswith("high_density_matrix_") for lid in layout_ids)
             self.has_pressure_array_touch = any(lid.startswith("pressure_array_") for lid in layout_ids)

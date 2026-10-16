@@ -11,7 +11,7 @@ OSS_BASE="https://app.brainco.cn/universal/bc-revo3-sdk/libs"
 if [ -n "$1" ]; then
   VERSION="$1"
 else
-  VERSION="2.1.2"
+  VERSION="2.2.0"
 fi
 
 # Cargo prerelease versions use SemVer spelling while wheel filenames use
@@ -36,9 +36,14 @@ case "$OS" in
     esac
     ;;
   Linux)
+    LINUX_POLICY="manylinux_2_34"
+    RELEASE_VERSION="${VERSION%%-*}"
+    if [ "$(printf '%s\n' "2.2.0" "$RELEASE_VERSION" | sort -V | head -n 1)" = "2.2.0" ]; then
+      LINUX_POLICY="manylinux_2_31"
+    fi
     case "$ARCH" in
-      x86_64) PLATFORM="manylinux_2_34_x86_64" ;;
-      aarch64) PLATFORM="manylinux_2_34_aarch64" ;;
+      x86_64) PLATFORM="${LINUX_POLICY}_x86_64" ;;
+      aarch64) PLATFORM="${LINUX_POLICY}_aarch64" ;;
       *) echo "Unsupported Linux arch: $ARCH"; exit 1 ;;
     esac
     ;;

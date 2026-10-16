@@ -18,6 +18,7 @@ and object methods do not use the Legacy `revo3_` prefix.
 | `concurrent_control.py` | Concurrent servo control and State reads |
 | `touch_sensor.py` | Typed Touch layouts plus full, subset, and single-module snapshots, including detected VisionTouch main-link finger-pad/palm arrays |
 | `device_operations.py` | Config, runtime statistics, calibration, and reboot |
+| `rs485_baudrate.py` | Change RS485 baud rate, handle an unconfirmed write, and verify through a new connection |
 | `teaching_mode.py` | Teach and Replay operations |
 | `shared_ports.py` | Trusted serial port listing and VID/PID allowlist |
 | `manager_cli.py` | JSONL recording, replay, and diagnostic bundles |

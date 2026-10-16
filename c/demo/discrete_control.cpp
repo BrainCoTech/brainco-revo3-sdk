@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
       return 0;
     }
     const auto health = hand.health().snapshot();
-    if (health.safety_state == 1 || health.safety_state == 2 ||
+    if (health.safety_state == 2 || health.safety_state == 3 ||
         health.system_state != 0 || health.system_error_code != 0 ||
         health.faulted_motor_count != 0) {
       throw std::runtime_error("Refusing control because health reports a fault");
