@@ -4,13 +4,6 @@
 
 This repository provides example applications and integration code demonstrating how to control BrainCo Revo3 dexterous hands using the SDK.
 
-SDK 2.2.0 retains 2.1.2 control usage and fixes 36/71-point piezoresistive-array palm reads.
-Recognized three-character product codes, such as `UT1` and `UF2`, determine the SDK touch topology;
-legacy or unknown variants use read-only metadata detection. Runtime registers provide array point counts.
-GUI flags such as `has_pressure_array_touch` reflect the SDK-resolved `TouchLayout` (or an explicit
-layout override) and control the UI without identifying the product again. The GUI palm heatmap
-still uses legacy 36-point coordinates; the 71-point spatial mapping is not supported yet.
-
 ## Layout
 
 - `c/` - C++ examples using the C ABI, plus a standalone Linux EtherCAT example

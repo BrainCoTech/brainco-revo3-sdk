@@ -58,9 +58,13 @@ python python/gui/main.py --mock uf1
 
 `--mock` is for GUI debugging without hardware. Use a canonical three-character product code such as `UB1`, `UT1`, `UT2`, `UF1`, `PB1`, `PT1`, `DB1`, or `DT1`.
 
-The regular Revo3 touch UI is shown only when `hand.touch.layout` is available. If the SDK cannot identify the underlying register mapping, it fails closed; the GUI does not provide a manual override.
+The touch panel uses the SDK-provided `hand.touch.layout` to display available modules and signals without identifying the product again. If the layout is unavailable, it does not guess register mappings or physical coordinates.
 
 For `fingertip_force_torque`, the GUI shows force, torque, resultant force, status, and tare controls without a heatmap because the layout declares `point_count=0` and frames return `points=None`. The heatmap is shown only for fingertip force/torque layouts that declare point-array data.
+
+## Known Touch Display Limitations
+
+The piezoresistive-array palm heatmap still uses legacy 36-point coordinates. For a 71-point palm, the GUI displays only the first 36 values at those coordinates and shows a notice; do not use this view to infer physical contact locations. The 71-point spatial mapping is not supported yet. This display limitation does not affect the SDK's ability to read all 71 values.
 
 ## Logs and Diagnostics
 
