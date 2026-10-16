@@ -76,6 +76,10 @@ REVO3_MODULE_COLORS = [
     (255, 100, 255), (255, 160, 230),
 ]
 
+# These counts and coordinates apply to the piezoresistive-array touch profile
+# resolved from product identity and device metadata, not to all product codes.
+# Its palm heatmap uses the legacy 36-point layout. For 71-point palms, this
+# GUI shows only the first 36 values; the 71-point spatial map is not supported.
 REVO3_MODULE_POINTS = {
     "Palm": 36,
     "ThumbTip": 31, "ThumbPad": 57,
@@ -1033,6 +1037,9 @@ class Revo3TouchSubPanel(QWidget):
                     cols,
                     coord_map=coord_map,
                     cell_aspect=1.0,
+                    legacy_pressure_array_palm=(
+                        self.has_pressure_array_touch and mod_key == "Palm"
+                    ),
                 )
                 self.detail_charts[mod_idx] = chart
 
@@ -1101,6 +1108,9 @@ class Revo3TouchSubPanel(QWidget):
                     cols,
                     coord_map=coord_map,
                     cell_aspect=1.0,
+                    legacy_pressure_array_palm=(
+                        self.has_pressure_array_touch and mod_key == "Palm"
+                    ),
                 )
                 self.detail_charts[mod_idx] = chart
 

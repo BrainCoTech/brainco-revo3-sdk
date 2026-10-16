@@ -182,7 +182,8 @@ class HeatmapChart(QWidget):
 
     def __init__(self, module_name: str, point_count: int, color: tuple,
                  rows: int, cols: int, coord_map: list = None,
-                 cell_aspect: float = 1.0):
+                 cell_aspect: float = 1.0,
+                 legacy_pressure_array_palm: bool = False):
         super().__init__()
         self.module_name = module_name
         self.point_count = point_count
@@ -191,6 +192,7 @@ class HeatmapChart(QWidget):
         self.cols = cols
         self.coord_map = coord_map  # list of (row, col) tuples, or None for divmod fallback
         self.cell_aspect = cell_aspect
+        self.legacy_pressure_array_palm = legacy_pressure_array_palm
         self.current_values = [0] * point_count
         self.value_unit = "force"
         self.current_max_limit = 500.0
@@ -235,6 +237,17 @@ class HeatmapChart(QWidget):
         )
         header.addWidget(self.stats_label)
         layout.addWidget(header_frame)
+
+        self.palm_mapping_notice = QLabel(
+            "压阻阵列 71 点掌心空间映射尚未适配：当前仅按旧版坐标显示前 36 点，"
+            "请勿据此判断实际受压位置。\n"
+            "71-point piezoresistive-array palm mapping is not supported. Only the first 36 values "
+            "are shown at legacy coordinates; physical contact locations may differ."
+        )
+        self.palm_mapping_notice.setWordWrap(True)
+        self.palm_mapping_notice.setStyleSheet("color: #f59e0b;")
+        self.palm_mapping_notice.hide()
+        layout.addWidget(self.palm_mapping_notice)
 
         # -- Body: heatmap --
         if HAS_PYQTGRAPH and pg is not None:
@@ -378,6 +391,13 @@ class HeatmapChart(QWidget):
         stats_max_limit: float = None,
     ):
         """Update heatmap with new values"""
+        self.palm_mapping_notice.setVisible(
+            self.legacy_pressure_array_palm
+            and self.module_name == "Palm"
+            and self.point_count == 36
+            and self.coord_map is not None
+            and len(values) == 71
+        )
         self.value_unit = value_unit
         self.current_max_limit = max_limit
         self.current_stats_max_limit = stats_max_limit
