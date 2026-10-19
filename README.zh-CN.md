@@ -41,6 +41,8 @@ make -C c
 ./c/build/demo/streaming_control --move
 ```
 
+Linux 默认下载包含运行依赖的 portable 包，不会安装或覆盖系统库。若已安装兼容的 `libusb-1.0-0` 和 `libudev1`，可改用 `bash download-lib.sh --system-deps`，仅下载使用系统依赖的 SDK 包；脚本会检查依赖是否能解析，缺失时保留已有安装。Python wheel 不使用此开关。
+
 纯 C++ IgH EtherCAT 示例不使用下载的 SDK 库，因此需要单独构建。运行前请按照 `c/platform/linux/revo3_ec/README.md` 检查 IgH 主站、`/dev/EtherCAT0` 和所选网卡：
 
 ```bash
@@ -66,7 +68,7 @@ source .venv/bin/activate
 从 Ali OSS 安装与本仓库版本匹配的 wheel：
 
 ```bash
-bash python/install_whl.sh 2.2.0
+bash python/install_whl.sh 2.2.1
 ```
 
 #### 2. 运行示例

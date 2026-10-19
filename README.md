@@ -48,6 +48,13 @@ make -C c
 ./c/build/demo/streaming_control --move
 ```
 
+Linux downloads default to a portable package with bundled runtime dependencies;
+the script does not install or overwrite system libraries. If compatible
+`libusb-1.0-0` and `libudev1` are already installed, use
+`bash download-lib.sh --system-deps` to download the SDK without bundled copies.
+The script checks dependency resolution before replacing an existing installation.
+This option does not apply to Python wheels.
+
 The pure C++ IgH EtherCAT example is built separately because it does not use
 the downloaded SDK library. Before running it, verify the IgH master,
 `/dev/EtherCAT0`, and the selected NIC with `c/platform/linux/revo3_ec/README.md`:
@@ -76,7 +83,7 @@ On Windows PowerShell, use `py -3.10 -m venv .venv` and
 Install the release-matched wheel from Ali OSS:
 
 ```bash
-bash python/install_whl.sh 2.2.0
+bash python/install_whl.sh 2.2.1
 ```
 
 #### 2. Run examples

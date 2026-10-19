@@ -7,8 +7,20 @@ DIST_DIR="${SCRIPT_DIR}/dist"
 VERSION_FILE="${SCRIPT_DIR}/VERSION"
 
 # Configuration
-LIB_VERSION="v2.2.0"
+LIB_VERSION="v2.2.1"
 BASE_URL="https://app.brainco.cn/universal/bc-revo3-sdk/libs/${LIB_VERSION}"
+DEPENDENCY_MODE="bundled"
+for arg in "$@"; do
+  case "$arg" in
+    --system-deps) DEPENDENCY_MODE="system" ;;
+    -h|--help)
+      echo "Usage: bash download-lib.sh [--system-deps]"
+      echo "Default: portable SDK with bundled dependencies."
+      echo "--system-deps: Linux only; use system libusb/libudev without downloading bundled copies."
+      exit 0 ;;
+    *) echo "Unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 
 # Colorful output functions
 echo_y() { printf "\033[1;33m%s\033[0m\n" "$*"; } # Yellow
@@ -65,17 +77,53 @@ case "$OS_TYPE" in
   ;;
 esac
 
+if [ "$DEPENDENCY_MODE" = "system" ] && [ "$OS_TYPE" != "Linux" ]; then
+  echo_r "Error: --system-deps is supported only on Linux."
+  exit 2
+fi
+
+has_matching_dependency_mode() {
+  if [ "$DEPENDENCY_MODE" = "bundled" ]; then
+    ! grep -Fqx "Dependencies: system" "$VERSION_FILE"
+  else
+    grep -Fqx "Dependencies: system" "$VERSION_FILE"
+  fi
+}
+
+has_distribution_notices() {
+  [ -f "$DIST_DIR/LICENSE" ] || return 1
+  if [ "$OS_TYPE" = "Linux" ] && [ "$DEPENDENCY_MODE" = "bundled" ]; then
+    [ -d "$DIST_DIR/licenses" ] || return 1
+  fi
+}
+
+check_system_dependencies() {
+  [ "$DEPENDENCY_MODE" = "system" ] || return 0
+  local dependencies
+  if ! dependencies=$(ldd "$1" 2>&1) || [[ "$dependencies" == *"not found"* ]]; then
+    echo_r "Error: System SDK dependencies could not be resolved."
+    printf '%s\n' "$dependencies" >&2
+    echo_r "On Ubuntu/Debian: sudo apt-get install libusb-1.0-0 libudev1"
+    echo_r "Or omit --system-deps to use the portable package."
+    return 1
+  fi
+}
+
 # Reuse an installation only when its version and required public artifacts match.
 if [ -f "$VERSION_FILE" ] && grep -Fqx "[bc-revo3-sdk] Version: $LIB_VERSION" "$VERSION_FILE" && \
+  has_matching_dependency_mode && \
+  has_distribution_notices && \
   has_current_public_header "$DIST_DIR/include/revo3-sdk.h" && \
   has_current_cpp_header "$DIST_DIR/include/revo3/revo3.hpp" && \
   [ -f "$DIST_DIR/$SDK_LIBRARY_RELATIVE" ]; then
+  check_system_dependencies "$DIST_DIR/$SDK_LIBRARY_RELATIVE"
   echo_y "[bc-revo3-sdk] (${LIB_VERSION}) is already installed"
   cat "$VERSION_FILE"
   exit 0
 fi
 
 ZIP_NAME="${LIB_NAME}.zip"
+[ "$DEPENDENCY_MODE" != "system" ] || ZIP_NAME="${LIB_NAME}-system.zip"
 DOWNLOAD_URL="${BASE_URL}/${ZIP_NAME}?$(date +%s)" # Timestamp for uniqueness
 DOWNLOAD_DIR=$(mktemp -d "$SCRIPT_DIR/.bc-revo3-sdk.XXXXXX")
 ZIP_PATH="$DOWNLOAD_DIR/$ZIP_NAME"
@@ -135,6 +183,13 @@ if [ ! -d "$STAGED_DIST/include" ]; then
   echo_r "Error: Downloaded SDK package has an invalid directory layout."
   exit 1
 fi
+if [ -f "$EXTRACT_DIR/LICENSE" ]; then
+  cp "$EXTRACT_DIR/LICENSE" "$STAGED_DIST/LICENSE"
+fi
+if [ -d "$EXTRACT_DIR/licenses" ]; then
+  mkdir -p "$STAGED_DIST/licenses"
+  cp -R "$EXTRACT_DIR/licenses/." "$STAGED_DIST/licenses/"
+fi
 find "$STAGED_DIST/include" \
   -type f \
   ! -name 'revo3-sdk.h' \
@@ -156,6 +211,8 @@ if ! has_current_cpp_header "$STAGED_DIST/include/revo3/revo3.hpp"; then
   echo_r "Error: Downloaded SDK package contains an outdated public C++ header."
   exit 1
 fi
+
+check_system_dependencies "$STAGED_DIST/$SDK_LIBRARY_RELATIVE"
 
 echo_y "[bc-revo3-sdk] Replacing the previous validated distribution..."
 PREVIOUS_DIST="$DOWNLOAD_DIR/previous-dist"
@@ -189,6 +246,7 @@ esac
 echo_y "[bc-revo3-sdk] Creating version file..."
 cat >"$VERSION_FILE" <<EOF
 [bc-revo3-sdk] Version: ${LIB_VERSION}
+Dependencies: ${DEPENDENCY_MODE}
 Update Time: $(date)
 EOF
 
