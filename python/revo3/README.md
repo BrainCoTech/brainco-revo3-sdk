@@ -12,6 +12,7 @@ and object methods do not use the Legacy `revo3_` prefix.
 | File | Purpose |
 | --- | --- |
 | `quickstart.py` | Connect, inspect layouts, read State and Health, and optionally move |
+| `control_mode.py` | SDK >=2.3.0: explicitly read or change the whole-hand mode on supporting firmware |
 | `discover_devices.py` | Read-only device discovery and connection troubleshooting |
 | `multi_hand.py` | Multiple Hand lifecycle and shared transport behavior |
 | `subscriptions.py` | Finite State, optional Touch, and Health subscriptions |
