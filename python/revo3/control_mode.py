@@ -3,6 +3,8 @@
 Requires SDK >= 2.3.0. Position=0, Damping=5, and Mit=6 affect the whole
 hand, independently of the command type used by existing joint controls.
 Do not call these APIs on older firmware without whole-hand mode support.
+Before running a trajectory, replay, or Servo after selecting Position or
+Damping, explicitly select Mit. Existing commands do not restore Mit.
 """
 
 import argparse
@@ -31,6 +33,12 @@ async def run(args):
             await asyncio.wait_for(hand.motion.set_control_mode(modes[args.mode]), timeout=3.0)
         mode = await asyncio.wait_for(hand.motion.get_control_mode(), timeout=3.0)
         print(f"Whole-hand mode: {mode}")
+        if mode != sdk.HandControlMode.Mit:
+            print(
+                "Trajectory, replay, and Servo do not automatically select Mit or reject "
+                "a mode mismatch. Before starting them, explicitly call "
+                "await hand.motion.set_control_mode(sdk.HandControlMode.Mit)."
+            )
         print("No target command was sent; closing the connection does not restore a previous mode")
     finally:
         if hand is not None:
