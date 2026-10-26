@@ -228,7 +228,7 @@ MODE_TRAJECTORY = 5
 
 # Initial UI position ranges, aligned with the SDK defaults.
 # These values do not write device configuration.
-# Specification thumb MCP/PIP/DIP map to logical J20/J17/J18 respectively.
+# Specification thumb MCP/PIP/DIP map to logical J16/J17/J18 respectively.
 MOTOR_POSITION_RANGES = {
     # Pinky: [0]=Abd, [1]=MCP, [2]=PIP, [3]=DIP
     0:  (-30.0, 10.0),   # Pinky Abduction
@@ -250,12 +250,12 @@ MOTOR_POSITION_RANGES = {
     13: (-5.0, 90.0),     # Index MCP
     14: (-10.0, 90.0),     # Index PIP
     15: (-20.0, 90.0),     # Index DIP
-    # Thumb: [16]=CMC-Rot, [17]=MCP, [18]=IP, [19]=CMC-Abd(diff), [20]=CMC-Flex(diff)
-    16: (0.0, 105.0),     # Thumb CMC Rotation
+    # Thumb: [16]=CMC-Flex, [17]=MCP, [18]=IP, [19]=CMC-Abd(diff), [20]=CMC-Rot
+    16: (0.0, 75.0),     # Thumb base flexion
     17: (-10.0, 90.0),   # Thumb MCP (specification PIP)
     18: (-20.0, 90.0),   # Thumb IP (specification DIP)
     19: (0.0, 110.0),    # Thumb CMC Abduction (differential)
-    20: (0.0, 75.0),     # Thumb CMC Flexion (specification MCP)
+    20: (0.0, 105.0),     # Thumb CMC Rotation
 }
 
 # Joint labels for display (motor_id -> label)
@@ -264,8 +264,8 @@ MOTOR_JOINT_LABELS = {
     4: "Abd", 5: "MCP", 6: "PIP", 7: "DIP",       # Ring
     8: "Abd", 9: "MCP", 10: "PIP", 11: "DIP",     # Middle
     12: "Abd", 13: "MCP", 14: "PIP", 15: "DIP",   # Index
-    16: "Rot", 17: "MCP", 18: "IP",                # Thumb
-    19: "Abd", 20: "Flex",                          # Thumb CMC (diff)
+    16: "Flex", 17: "MCP", 18: "IP",                # Thumb
+    19: "Abd", 20: "Rot",                          # Thumb CMC (diff)
 }
 
 def get_motor_position_range(motor_id):
@@ -281,7 +281,7 @@ FLEXION_MOTOR_IDS = {
     5, 6, 7,          # Ring MCP, PIP, DIP
     9, 10, 11,        # Middle MCP, PIP, DIP
     13, 14, 15,       # Index MCP, PIP, DIP
-    17, 18, 20,       # Thumb MCP, IP, CMC-Flex(diff)
+    16, 17, 18,       # Thumb CMC Flex, MCP, IP
 }
 
 def get_motor_open_position(motor_id):

@@ -233,8 +233,8 @@ int main(int argc, char **argv) {
     plan_groups.push_back({"Ring", {5}});
     plan_groups.push_back({"Middle", {9}});
     plan_groups.push_back({"Index", {13}});
-    plan_groups.push_back({"Thumb Rot", {16}});
-    plan_groups.push_back({"Thumb Flex", {20}});
+    plan_groups.push_back({"Thumb Flex", {16}});
+    plan_groups.push_back({"Thumb Rot", {20}});
     joint = plan_groups.front().joints.front();
   }
 

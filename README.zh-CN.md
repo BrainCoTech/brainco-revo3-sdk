@@ -68,7 +68,7 @@ source .venv/bin/activate
 从 Ali OSS 安装与本仓库版本匹配的 wheel：
 
 ```bash
-bash python/install_whl.sh 2.3.1
+bash python/install_whl.sh 2.3.2
 ```
 
 #### 2. 运行示例

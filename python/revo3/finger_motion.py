@@ -23,7 +23,7 @@ async def main(port_name=None):
     try:
         status = await hand.state.snapshot()
         logger.info(
-            "Initial thumb positions [Rotation, MCP, IP, Abd, Flex]: %s",
+            "Initial thumb positions [Flex, MCP, IP, Abd, Rotation]: %s",
             format_angles(status.positions_deg[16:21]),
         )
 
