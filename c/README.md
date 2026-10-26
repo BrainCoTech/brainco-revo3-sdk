@@ -302,20 +302,13 @@ overlapping wave. Middle/ring lateral targets are +/-12 degrees; pinky is
 -12/+7 and index is -7/+12 degrees. Python and C++ use the same generated pose
 table.
 
-The default poses have received limited empty-hand validation on a right-hand
-device, but have not passed an acceptance run with all 21 joints active.
-Left-hand mechanical clearance, fingertip contact, object grasping, and holding
-behavior after connection close remain unverified. Start at a reduced tempo and
-calibrate candidate poses for the target hand before regular use.
+Built-in poses are uncalibrated, unloaded examples. Calibrate left and right hands separately and check clearance progressively across all joints. The examples do not guarantee fingertip contact, object grasping, or continued holding after disconnection. Start with slow, small motions and an independent stop procedure.
 
-## Single-command control (SDK 2.1.2)
+## Single-command control
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
-Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. The
-final 2.1.2 wheel validation passed for scoped controls on UV5 firmware 0.1.2 over
-CANFD. Modbus passed with an earlier candidate implementation; the final-wheel
-Modbus retest found no device.
+Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows.
 
 The default reads the current pose without writing. Add `--run` to send the
 current pose in position mode, zero current in current mode, or the current

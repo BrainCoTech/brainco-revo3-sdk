@@ -93,12 +93,11 @@ python gui/main.py
 
 Python `mit_plan.py` 和 C++ `mit_plan.cpp` 示例使用相同的默认五次 MIT 阻抗计划：频率为 100 Hz，目标位置为各关节配置位置范围的 50%，每个向外和返回分段用时 800 ms，`Kp=3.0`、`Kd=0.3`，前馈电流为零。初始位置容差默认 0.1 度；容差内的越界反馈会在运动前钳制到最近的配置限位。可复用的 C++ 采样器位于 `c/common/revo3_mit_plan.hpp`。
 
-## 单次控制（SDK 2.1.2）
+## 单次控制
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
-Linux、macOS 或 Windows 环境。2.1.2 最终 wheel 已在 UV5 固件 0.1.2 上通过
-CANFD 局部控制验证。Modbus 曾通过候选实现验证；最终 wheel 的 Modbus 复测未发现设备。
+Linux、macOS 或 Windows 环境。
 
 默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
 零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。

@@ -43,12 +43,11 @@ python python/gui/main.py
 
 独立的视觉触觉数据通道及其平台专用运行时不属于本 SDK 示例包。
 
-## 单次控制（SDK 2.1.2）
+## 单次控制
 
 `discrete_control` 演示整手单次位置、电流及 MIT 下发，无需 `open_servo()`，
 没有心跳或自动重发。需要已供电的 21 自由度 Revo3、SDK 支持的通信链路及
-Linux、macOS 或 Windows 环境。2.1.2 最终 wheel 已在 UV5 固件 0.1.2 上通过
-CANFD 局部控制验证。Modbus 曾通过候选实现验证；最终 wheel 的 Modbus 复测未发现设备。
+Linux、macOS 或 Windows 环境。
 
 默认只读取当前姿态。添加 `--run` 后，位置模式下发当前姿态，电流模式下发
 零电流，MIT 模式下发当前姿态、kp=1、kd=0.1、零速度及零前馈电流。

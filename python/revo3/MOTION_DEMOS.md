@@ -4,7 +4,7 @@
 
 Four Python examples use the SDK 2.x `Manager -> Hand` API for a 21-joint Revo3 hand. They default to offline preview without importing the SDK or connecting to a device. Pass `--run` to execute on hardware.
 
-The built-in poses are unloaded candidate values. They have received limited right-hand testing but have not passed full-joint acceptance. Calibrate left and right hands separately; position limits alone do not prove that fingers cannot interfere.
+The built-in poses are unloaded candidate values. Calibrate left and right hands separately; position limits alone do not prove that fingers cannot interfere.
 
 | Entry point | Demonstration |
 | --- | --- |
@@ -100,8 +100,6 @@ Standalone opposition first aligns the thumb for 0.6 seconds, completes the firs
 
 Defaults do not skip joints or release software stop, zero-force mode, or other device protection.
 
-## Validation Scope
+## Usage limits
 
-Offline regression covers SDK-free preview, profile I/O, position-limit rejection, speed calculation, sinusoid derivatives, filter convergence, model and side checks, timeout and cancellation handling, servo-failure cleanup, and connection release. It also covers overlapping wave derivatives, staggered opposition and endpoint velocity, zero gains on skipped joints, session close after send failure, and rejection under active motor faults, software stop, and zero-force mode.
-
-Default poses have received limited unloaded execution on a right-hand device but have not passed acceptance with all 21 joints active. Left-hand mechanical adaptation, fingertip contact, object grasping, and persistent holding after disconnect remain unverified. Confirm clear finger travel and calibrate candidate poses gradually at reduced speed before running the examples.
+Built-in poses are uncalibrated, unloaded examples. Calibrate left and right hands separately and check clearance progressively across all joints. The examples do not guarantee fingertip contact, object grasping, or continued holding after disconnection. Start with slow, small motions and an independent stop procedure.

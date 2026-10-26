@@ -114,14 +114,11 @@ in `c/common/revo3_mit_plan.hpp`. Initial-position tolerance defaults to 0.1
 degrees; accepted out-of-range feedback is clamped to the nearest configured
 limit before motion.
 
-## Single-command control (SDK 2.1.2)
+## Single-command control
 
 `discrete_control` sends one full-hand position, current, or MIT command without
 `open_servo()`, a heartbeat, or automatic resend. It requires a powered 21-DOF
-Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows. The
-final 2.1.2 wheel validation passed for scoped controls on UV5 firmware 0.1.2 over
-CANFD. Modbus passed with an earlier candidate implementation; the final-wheel
-Modbus retest found no device.
+Revo3 hand and an SDK-supported transport on Linux, macOS, or Windows.
 
 The default reads the current pose without writing. Add `--run` to send the
 current pose in position mode, zero current in current mode, or the current
