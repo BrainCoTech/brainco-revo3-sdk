@@ -9,6 +9,7 @@ c/build/
 __pycache__/
 **/__pycache__/
 *.py[cod]
+.pytest_cache/
 *.so
 *.dylib
 *.dll
