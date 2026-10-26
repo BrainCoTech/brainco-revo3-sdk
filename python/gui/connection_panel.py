@@ -710,7 +710,7 @@ class ConnectionPanel(QWidget):
             self.last_reconnect_port = detected_device.port_name
             self.last_reconnect_protocol = detected_device.protocol_type
             self.last_modbus_baudrate = (
-                detected_device.nominal_baudrate_bps
+                int_to_baudrate(detected_device.nominal_baudrate_bps)
                 if detected_device.protocol_type == sdk.ProtocolType.Modbus
                 else None
             )
