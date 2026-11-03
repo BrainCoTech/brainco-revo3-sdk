@@ -51,10 +51,7 @@ async def run(args: argparse.Namespace) -> None:
             "power_on_auto_calibration_enabled="
             f"{device_config.power_on_auto_calibration_enabled}, "
             f"auto_clear_motor_faults_enabled={device_config.auto_clear_motor_faults_enabled}, "
-            f"max_continuous_current_ma={device_config.max_continuous_current_ma}, "
-            f"global_protect_current_ma={device_config.global_protect_current_ma}"
         )
-        print(f"Joint protect currents (mA): {device_config.joint_protect_current_ma}")
         print(f"Joint position minimums (deg): {device_config.joint_min_position_deg}")
         print(f"Joint position maximums (deg): {device_config.joint_max_position_deg}")
         print(f"Joint speed minimums (rpm): {device_config.joint_min_speed_rpm}")

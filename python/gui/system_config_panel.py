@@ -169,19 +169,6 @@ class SystemConfigPanel(QWidget):
         runtime_layout.setColumnStretch(1, 1)
         layout.addWidget(self.runtime_group)
 
-        self.protection_group = QGroupBox("Protection")
-        protection_layout = QHBoxLayout(self.protection_group)
-        protection_layout.addWidget(QLabel("Global Protect Current (mA):"))
-        self.global_current_spin = QSpinBox()
-        self.global_current_spin.setRange(0, 10000)
-        self.global_current_spin.setValue(1500)
-        protection_layout.addWidget(self.global_current_spin)
-        self.apply_global_current_btn = QPushButton()
-        self.apply_global_current_btn.clicked.connect(self._apply_global_current)
-        protection_layout.addWidget(self.apply_global_current_btn)
-        protection_layout.addStretch()
-        layout.addWidget(self.protection_group)
-
         refresh = QHBoxLayout()
         self.refresh_runtime_btn = QPushButton()
         self.refresh_runtime_btn.clicked.connect(self._load_runtime_settings)
@@ -458,8 +445,6 @@ class SystemConfigPanel(QWidget):
         self.teaching_mode_check.setText(tr("v3_teaching_mode"))
         self.auto_clear_faults_check.setText(tr("v3_auto_clear_motor_faults"))
         self.runtime_group.setTitle(tr("runtime_flags"))
-        self.protection_group.setTitle(tr("protection"))
-        self.apply_global_current_btn.setText(tr("apply"))
         self.refresh_runtime_btn.setText(tr("refresh_settings"))
         self.refresh_comm_btn.setText(tr("refresh_settings"))
         self.refresh_revo3_btn.setText(tr("refresh_status_info"))
@@ -500,9 +485,6 @@ class SystemConfigPanel(QWidget):
                 self.auto_clear_faults_check.setChecked(
                     bool(getattr(config, "auto_clear_motor_faults_enabled", False))
                 )
-                current = getattr(config, 'global_protect_current_ma', None)
-                if current is not None:
-                    self.global_current_spin.setValue(int(float(current)))
             self._log("Runtime settings loaded")
         except Exception as e:
             self._log(f"Failed to load runtime settings: {e}")
@@ -841,18 +823,6 @@ class SystemConfigPanel(QWidget):
             self._log(f"{label}: {enabled}")
         except Exception as e:
             self._log(f"Failed to set {label}: {e}")
-
-    def _apply_global_current(self):
-        if not self.device:
-            return
-        value = self.global_current_spin.value()
-        try:
-            run_async(lambda: self.device.set_global_protect_current(value))
-            self._log(f"Global protect current set to {value} mA")
-        except Exception as e:
-            self._log(f"Failed to set global protect current: {e}")
-        except Exception as e:
-            self._log(f"Failed to set global protect current: {e}")
 
     def _set_modbus_baudrate(self):
         if not self.device or not hasattr(self.device, "set_rs485_baudrate"):

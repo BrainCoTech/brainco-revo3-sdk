@@ -438,9 +438,7 @@ TRANSLATIONS_EN = {
 
     "v3_position_limits": "Joint Position Limits",
     "v3_speed_limits": "Joint Speed Limits",
-    "v3_joint_protect_current": "Joint Protect Current",
     "v3_global_settings": "Global Settings",
-    "v3_global_protect_current": "Global Protect Current",
     "v3_auto_refresh": "Auto Refresh (3s)",
     "v3_read_parameters": "Read Parameters",
     "btn_apply": "Apply",
@@ -972,9 +970,7 @@ TRANSLATIONS_ZH = {
 
     "v3_position_limits": "关节位置限制",
     "v3_speed_limits": "关节速度限制",
-    "v3_joint_protect_current": "关节保护电流",
     "v3_global_settings": "全局设置",
-    "v3_global_protect_current": "全局保护电流",
     "v3_auto_refresh": "自动刷新 (3s)",
     "v3_read_parameters": "读取参数",
     "btn_apply": "应用",

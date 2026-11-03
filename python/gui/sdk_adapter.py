@@ -765,18 +765,6 @@ class GuiHandAdapter:
             enabled = _slave_id_or_enabled
         return await self.hand.config.set_vibration(bool(enabled))
 
-    async def get_global_protect_current(self, _slave_id=None):
-        return (await self._config()).global_protect_current_ma
-
-    async def set_global_protect_current(self, _slave_id, value):
-        return await self.hand.config.set_global_protect_current(value)
-
-    async def get_all_joint_protect_currents(self, _slave_id=None):
-        return list((await self._config()).joint_protect_current_ma)
-
-    async def set_joint_protect_current(self, _slave_id, joint, value):
-        return await self.hand.config.set_joint_protect_current(joint, value)
-
     async def get_all_joint_position_limits(self, _slave_id=None):
         cfg = await self._config()
         return list(zip(cfg.joint_min_position_deg, cfg.joint_max_position_deg))
@@ -802,9 +790,6 @@ class GuiHandAdapter:
 
     async def set_auto_clear_motor_faults(self, _slave_id, enabled):
         return await self.hand.config.set_auto_clear_motor_faults(bool(enabled))
-
-    async def get_max_continuous_current(self, _slave_id=None):
-        return (await self._config()).max_continuous_current_ma
 
     async def set_max_continuous_current(self, _slave_id, value):
         return await self.hand.config.set_max_continuous_current(value)

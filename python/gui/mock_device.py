@@ -195,9 +195,7 @@ class MockHand:
             "touch_read_mode": 0,
             "touch_modules_enabled": 0x7FF,
         }
-        self.global_protect_current = 1500
         self.max_continuous_current = 1000.0
-        self.joint_protect_currents = [1200] * REVO3_ULTRA_JOINT_COUNT
         self.joint_position_limits = [(0.0, 100.0)] * REVO3_ULTRA_JOINT_COUNT
         self.joint_speed_limits = [(0.0, 360.0)] * REVO3_ULTRA_JOINT_COUNT
 
@@ -286,23 +284,11 @@ class MockHand:
     async def get_system_status(self, _slave_id):
         return MockRevo3SystemStatus(time.time() - self.start_time)
 
-    async def get_global_protect_current(self, _slave_id):
-        return self.global_protect_current
-
-    async def set_global_protect_current(self, _slave_id, value):
-        self.global_protect_current = value
-
     async def set_calibration_current(self, _slave_id, _value):
         return True
 
     async def manual_calibration(self, _slave_id):
         return True
-
-    async def get_all_joint_protect_currents(self, _slave_id):
-        return list(self.joint_protect_currents)
-
-    async def set_joint_protect_current(self, _slave_id, motor_id, value):
-        self.joint_protect_currents[int(motor_id)] = value
 
     async def get_all_joint_position_limits(self, _slave_id):
         return list(self.joint_position_limits)
@@ -409,9 +395,6 @@ class MockHand:
         config.auto_clear_motor_faults_enabled = self.flags[
             "auto_clear_motor_faults"
         ]
-        config.global_protect_current_ma = float(self.global_protect_current)
-        config.max_continuous_current_ma = float(self.max_continuous_current)
-        config.joint_protect_current_ma = list(self.joint_protect_currents)
         config.joint_min_position_deg = [
             limits[0] for limits in self.joint_position_limits
         ]
