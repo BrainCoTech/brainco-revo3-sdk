@@ -372,6 +372,7 @@ class MainWindow(QMainWindow):
         self.statusbar.showMessage(message, 20000)
 
     def _update_fps_display(self):
+        self.fps_label.setToolTip(tr("fps_read_tooltip"))
         if self.device is None:
             self.fps_label.setText("")
             return
@@ -391,11 +392,11 @@ class MainWindow(QMainWindow):
             self.teaching_panel,
         )
         if current_widget in motor_fps_widgets:
-            parts.append(f"{motor_name}: {motor_fps:.1f} FPS")
+            parts.append(f"{motor_name}: {motor_fps:.1f} Hz")
         elif current_widget == self.touch_panel and supports_touch:
-            parts.append(f"{touch_name}: {touch_fps:.1f} FPS")
+            parts.append(f"{touch_name}: {touch_fps:.1f} Hz")
         if ui_fps > 0:
-            parts.append(f"{ui_name}: {ui_fps:.1f} FPS")
+            parts.append(f"{ui_name}: {ui_fps:.1f} Hz")
 
         if not parts:
             self.fps_label.setText("")

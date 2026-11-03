@@ -41,7 +41,7 @@ python -m pip install './python[gui]'
 python python/gui/main.py
 ```
 
-独立的视觉触觉数据通道及其平台专用运行时不属于本 SDK 示例包。
+独立的视触觉数据通道及其平台专用运行时不属于本 SDK 示例包。
 
 ## 单次控制
 

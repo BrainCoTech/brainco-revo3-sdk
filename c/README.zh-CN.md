@@ -81,14 +81,14 @@ make -C c/platform/linux/revo3_ec
 ./c/build/demo/teaching_mode --move
 ```
 
-`touch_sensor` 只读。对于 Ultra VisionTouch，它仅报告检测到的主链压力阵列或高密度阵列指垫和掌部模块；独立视觉触觉指尖不属于本 SDK snapshot。如果序列号和寄存器 135 无法识别具有压力阵列主链拓扑的设备，请仅在确认硬件布局后应用会话级 override：
+`touch_sensor` 只读。对于 Ultra VisionTouch，它仅报告检测到的主链压力阵列或高密度阵列指垫和掌部模块；独立视触觉指尖不属于本 SDK snapshot。如果序列号和寄存器 135 无法识别具有压力阵列主链拓扑的设备，请仅在确认硬件布局后应用会话级 override：
 
 ```bash
 ./c/build/demo/touch_sensor --port /dev/ttyUSB0 \
   --model ultra-vision-touch --layout vision-mt
 ```
 
-确认高密度触觉阵列后，可使用 `--layout vision-mx --mx-point-counts <11 comma-separated counts>`。这些 override 不写入设备寄存器，并且不包含独立视觉触觉指尖。
+确认高密度触觉阵列后，可使用 `--layout vision-mx --mx-point-counts <11 comma-separated counts>`。这些 override 不写入设备寄存器，并且不包含独立视触觉指尖。
 
 `firmware_update` 是独立的破坏性维护流程。它支持 `main`、`image` 和 `motor` 目标，默认超时为 600 秒，且没有 `--run` 时拒绝连接。结果为 `Indeterminate` 时不要立即重试；先检查 operation effect 和 recovery requirement，再验证设备状态。
 

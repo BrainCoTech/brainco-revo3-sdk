@@ -90,6 +90,8 @@ are logged; native crashes and operating-system termination are not covered.
 
 ## Touch Sampling and Rendering
 
+The status bar shows completed full State snapshots and touch reads in the last 1 second, in Hz, refreshed approximately every 200 ms. The first second after startup or reset fills the window. State snapshots contain positions, velocities, currents, and operating states; separate single-field calls are excluded. The GUI update rate counts data dispatches, not rendered frames. These rates differ from the SDK lifetime average `state_read_fps` and do not measure bus frame rates or firmware update rates. With a mock device, they count simulated data.
+
 The GUI separates touch sampling from rendering. It keeps only the latest pending touch payload, dispatches visible charts at an approximately 16 ms interval (up to about 60 FPS), and refreshes numeric labels at a 100 ms interval. Hidden panels and hidden inner charts do not render incoming frames.
 
 The touch sampling request depends on the detected layout and operating system:

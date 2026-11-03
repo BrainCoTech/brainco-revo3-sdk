@@ -17,12 +17,14 @@ from .motor_control_panel_revo3 import (
 )
 
 # Parameter Type ID
+MODE_JOINT_PROTECT = 1
 MODE_POS_LIMITS = 2
 MODE_SPEED_LIMITS = 3
 
 PARAM_DEF = {
     MODE_POS_LIMITS: (tr("v3_position_limits"), -30.0, 130.0, "°"),
     MODE_SPEED_LIMITS: (tr("v3_speed_limits"), 0.0, 110.0, "rpm"),
+    MODE_JOINT_PROTECT: (tr("v3_joint_protect_current"), 0.0, 2000.0, "mA"),
 }
 
 class QRangeSlider(QWidget):
@@ -203,22 +205,32 @@ class ConfigSlider(QWidget):
             sp.setSuffix(f" {suffix}")
             decimals = 1 if mode_id == MODE_POS_LIMITS else 0
             sp.setDecimals(decimals)
-            sp.setSingleStep(1.0)
+            sp.setSingleStep(100.0 if mode_id == MODE_JOINT_PROTECT else 1.0)
             sp.blockSignals(False)
 
-        self.spin_min.show()
-        self.range_slider.show()
-        self.single_slider.hide()
+        if mode_id == MODE_JOINT_PROTECT:
+            self.spin_min.hide()
+            self.range_slider.hide()
+            self.single_slider.show()
+        else:
+            self.spin_min.show()
+            self.range_slider.show()
+            self.single_slider.hide()
 
     def set_value_silently(self, max_val, min_val=0.0):
+        # We pass max_val first to handle MODE_JOINT_PROTECT easily
         self.spin_min.blockSignals(True)
         self.spin_max.blockSignals(True)
         self.single_slider.blockSignals(True)
         self.range_slider.blockSignals(True)
 
-        self.spin_min.setValue(min_val)
-        self.spin_max.setValue(max_val)
-        self.range_slider.setValues(min_val, max_val)
+        if self.current_mode == MODE_JOINT_PROTECT:
+            self.spin_max.setValue(max_val)
+            self.single_slider.setValue(int(max_val * self._slider_scale))
+        else:
+            self.spin_min.setValue(min_val)
+            self.spin_max.setValue(max_val)
+            self.range_slider.setValues(min_val, max_val)
 
         self.spin_min.blockSignals(False)
         self.spin_max.blockSignals(False)
@@ -251,20 +263,27 @@ class ConfigSlider(QWidget):
         self.set_callback(self.motor_id, self.current_mode, high, low)
 
     def _on_spin_changed(self):
-        low = self.spin_min.value()
-        high = self.spin_max.value()
-        if low > high:
-            if self.sender() == self.spin_min:
-                low = high
-                self.spin_min.setValue(low)
-            else:
-                high = low
-                self.spin_max.setValue(high)
+        if self.current_mode == MODE_JOINT_PROTECT:
+            val = self.spin_max.value()
+            self.single_slider.blockSignals(True)
+            self.single_slider.setValue(int(val * self._slider_scale))
+            self.single_slider.blockSignals(False)
+            self.set_callback(self.motor_id, self.current_mode, val, 0.0)
+        else:
+            low = self.spin_min.value()
+            high = self.spin_max.value()
+            if low > high:
+                if self.sender() == self.spin_min:
+                    low = high
+                    self.spin_min.setValue(low)
+                else:
+                    high = low
+                    self.spin_max.setValue(high)
 
-        self.range_slider.blockSignals(True)
-        self.range_slider.setValues(low, high)
-        self.range_slider.blockSignals(False)
-        self.set_callback(self.motor_id, self.current_mode, high, low)
+            self.range_slider.blockSignals(True)
+            self.range_slider.setValues(low, high)
+            self.range_slider.blockSignals(False)
+            self.set_callback(self.motor_id, self.current_mode, high, low)
 
 class ConfigFingerGroup(QGroupBox):
     def __init__(self, name, motor_ids, set_callback):
@@ -311,6 +330,7 @@ class Revo3MotorConfigPanel(QWidget):
         self.consecutive_failures = 0
 
         self.current_mode = MODE_POS_LIMITS
+        self._parameters_ready = False
         self.finger_groups = {}
         self.all_sliders = {}
 
@@ -325,6 +345,7 @@ class Revo3MotorConfigPanel(QWidget):
         self.slave_id = slave_id
         self.shared_data = shared_data
         self.consecutive_failures = 0
+        self._set_parameter_state(False)
         if self.auto_refresh_cb.isChecked() and self.isVisible():
             self.auto_refresh_timer.start()
         self._on_refresh_data()
@@ -333,6 +354,7 @@ class Revo3MotorConfigPanel(QWidget):
         self.device = None
         self.consecutive_failures = 0
         self.auto_refresh_timer.stop()
+        self._set_parameter_state(False)
 
     def update_texts(self):
         pass # Handle any translations later
@@ -364,6 +386,11 @@ class Revo3MotorConfigPanel(QWidget):
 
         top_bar.addStretch()
         layout.addLayout(top_bar)
+
+        self.parameter_status = QLabel()
+        self.parameter_status.setWordWrap(True)
+        self.parameter_status.hide()
+        layout.addWidget(self.parameter_status)
 
         # --- 2x3 Grid layout for joints ---
         scroll = QScrollArea()
@@ -542,6 +569,7 @@ class Revo3MotorConfigPanel(QWidget):
         super().hideEvent(event)
 
     def _on_mode_changed(self, idx):
+        self._set_parameter_state(False)
         self.current_mode = self.mode_combo.itemData(idx)
         for group in self.finger_groups.values():
             group.update_mode(self.current_mode)
@@ -576,13 +604,24 @@ class Revo3MotorConfigPanel(QWidget):
     def _on_set_single_parameter(self, motor_id, mode, val, sister_val):
         if not self.device:
             return
+        if not getattr(self, "_parameters_ready", True):
+            return
 
-        if mode == MODE_POS_LIMITS:
+        if mode == MODE_JOINT_PROTECT:
+            run_async(lambda: self.device.set_joint_protect_current(self.slave_id, motor_id, val))
+        elif mode == MODE_POS_LIMITS:
             run_async(lambda: self.device.set_joint_position_limits(
                 self.slave_id, motor_id, sister_val, val))
         elif mode == MODE_SPEED_LIMITS:
             run_async(lambda: self.device.set_joint_speed_limits(
                 self.slave_id, motor_id, int(sister_val), int(val)))
+
+    def _set_parameter_state(self, ready, message=""):
+        self._parameters_ready = ready
+        for slider in self.all_sliders.values():
+            slider.setEnabled(ready)
+        self.parameter_status.setText(message)
+        self.parameter_status.setVisible(bool(message))
 
     def _on_refresh_data(self):
         device = self.device
@@ -593,7 +632,35 @@ class Revo3MotorConfigPanel(QWidget):
 
         try:
             config = run_async(lambda: device.get_config_snapshot(self.slave_id))
+            if config is None:
+                self._set_parameter_state(False)
+                return
+            if self.current_mode == MODE_JOINT_PROTECT:
+                if not hasattr(config, "joint_protect_current_ma"):
+                    self._set_parameter_state(False, tr("v3_joint_protect_sdk_required"))
+                    return
+                values = list(config.joint_protect_current_ma)
+                if len(values) != 21:
+                    raise ValueError("Expected 21 joint protection current values")
+                for joint, value in enumerate(values):
+                    if joint in self.all_sliders:
+                        self.all_sliders[joint].set_value_silently(value)
+            elif self.current_mode == MODE_POS_LIMITS:
+                min_pos = list(config.joint_min_position_deg)
+                max_pos = list(config.joint_max_position_deg)
+                if len(min_pos) != 21 or len(max_pos) != 21:
+                    raise ValueError("Expected 21 joint position limits")
+                for i in self.all_sliders:
+                    self.all_sliders[i].set_value_silently(max_pos[i], min_pos[i])
+            elif self.current_mode == MODE_SPEED_LIMITS:
+                min_spd = list(config.joint_min_speed_rpm)
+                max_spd = list(config.joint_max_speed_rpm)
+                if len(min_spd) != 21 or len(max_spd) != 21:
+                    raise ValueError("Expected 21 joint speed limits")
+                for i in self.all_sliders:
+                    self.all_sliders[i].set_value_silently(max_spd[i], min_spd[i])
         except Exception as error:
+            self._set_parameter_state(False, tr("v3_parameter_refresh_failed"))
             self.consecutive_failures += 1
             logger.warning(
                 "[MotorConfig] Refresh failed (%s consecutive): %s",
@@ -602,21 +669,5 @@ class Revo3MotorConfigPanel(QWidget):
             )
             return
 
-        if config is None:
-            return
         self.consecutive_failures = 0
-        if self.current_mode == MODE_POS_LIMITS:
-            min_pos = list(config.joint_min_position_deg)
-            max_pos = list(config.joint_max_position_deg)
-            if len(min_pos) >= 21 and len(max_pos) >= 21:
-                for i in range(21):
-                    if i in self.all_sliders:
-                        self.all_sliders[i].set_value_silently(max_pos[i], min_pos[i])
-
-        elif self.current_mode == MODE_SPEED_LIMITS:
-            min_spd = list(config.joint_min_speed_rpm)
-            max_spd = list(config.joint_max_speed_rpm)
-            if len(min_spd) >= 21 and len(max_spd) >= 21:
-                for i in range(21):
-                    if i in self.all_sliders:
-                        self.all_sliders[i].set_value_silently(max_spd[i], min_spd[i])
+        self._set_parameter_state(True)

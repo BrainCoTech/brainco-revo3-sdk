@@ -436,6 +436,9 @@ TRANSLATIONS_EN = {
     "refresh_status_info": "Refresh Status & Info",
     "v3_settings": "⚙ Settings",
 
+    "v3_joint_protect_current": "Joint Protection Current",
+    "v3_joint_protect_sdk_required": "This GUI and the loaded SDK do not match. Joint protection current cannot be read. Use the matching SDK to enable this setting.",
+    "v3_parameter_refresh_failed": "Could not read parameters. Refresh to retry; editing is disabled until valid values are available.",
     "v3_position_limits": "Joint Position Limits",
     "v3_speed_limits": "Joint Speed Limits",
     "v3_global_settings": "Global Settings",
@@ -569,9 +572,15 @@ TRANSLATIONS_EN = {
     "vision_tactile_slip_detection": "Slip Detection",
 
     # FPS
-    "fps_motor_prefix": "Motor",
-    "fps_touch_prefix": "Touch",
+    "fps_motor_prefix": "State Reads",
+    "fps_touch_prefix": "Touch Reads",
     "fps_ui_prefix": "GUI Update Rate",
+    "fps_read_tooltip": (
+        "Completed reads in the last 1 second; the first second fills the window. "
+        "State reads include positions, velocities, currents, and operating states. "
+        "GUI updates count dispatches, not rendered frames. "
+        "These are not bus frame rates or firmware sample rates."
+    ),
     "touch_latency_timer_hint": (
         "Touch sampling is {actual:.1f} Hz (target {target:.0f} Hz) on FTDI port "
         "{port}. Check Windows Device Manager > Ports > Port Settings > Advanced > "
@@ -968,6 +977,9 @@ TRANSLATIONS_ZH = {
     "refresh_status_info": "刷新状态与信息",
     "v3_settings": "⚙ 设置",
 
+    "v3_joint_protect_current": "关节保护电流",
+    "v3_joint_protect_sdk_required": "GUI 与已加载的 SDK 不匹配，无法读取逐关节保护电流。请使用配套 SDK 后重试。",
+    "v3_parameter_refresh_failed": "参数读取失败，请刷新重试；读到有效参数前暂停编辑。",
     "v3_position_limits": "关节位置限制",
     "v3_speed_limits": "关节速度限制",
     "v3_global_settings": "全局设置",
@@ -1101,9 +1113,15 @@ TRANSLATIONS_ZH = {
     "vision_tactile_slip_detection": "防滑检测",
 
     # FPS
-    "fps_motor_prefix": "电机",
-    "fps_touch_prefix": "触觉",
+    "fps_motor_prefix": "状态读取",
+    "fps_touch_prefix": "触觉读取",
     "fps_ui_prefix": "GUI 更新频率",
+    "fps_read_tooltip": (
+        "统计最近 1 秒成功完成的读取次数；启动后首秒逐步填满窗口。"
+        "状态读取包含位置、速度、电流和运行状态。"
+        "GUI 更新频率统计界面分发次数，不是实际绘制帧率。"
+        "这些数值不是总线帧率，也不是固件采样频率。"
+    ),
     "touch_latency_timer_hint": (
         "FTDI 端口 {port} 的触觉采样为 {actual:.1f} Hz（目标 {target:.0f} Hz）。"
         "请检查 Windows 设备管理器 > 端口 > 端口设置 > 高级 > Latency Timer "

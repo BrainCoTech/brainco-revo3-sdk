@@ -12,6 +12,7 @@ JOINT_COUNT = 21
 FINGERS = {"pinky": 0, "ring": 4, "middle": 8, "index": 12}
 FLEX_JOINTS = tuple(base + offset for base in FINGERS.values() for offset in (1, 2, 3))
 MOTOR_FAULT_MASK = 0x0037
+CLOSE_TIMEOUT_SECONDS = 3.0
 
 
 def pose(flex=(0.0, 0.0, 0.0), spread=False, thumb=None):
@@ -457,11 +458,20 @@ async def run_connected(args, profile):
                 print(f"Software stop not confirmed: {error}; use the independent stop path", file=sys.stderr)
         raise
     finally:
-        try:
-            if hand is not None:
-                await hand.close()
-        finally:
-            await manager.close()
+        failure_in_flight = sys.exc_info()[0] is not None
+        cleanup_error = None
+        for name, resource in (("Hand", hand), ("Manager", manager)):
+            if resource is None:
+                continue
+            try:
+                await asyncio.wait_for(resource.close(), timeout=CLOSE_TIMEOUT_SECONDS)
+            except BaseException as error:
+                detail = str(error) or type(error).__name__
+                print(f"{name} close not confirmed: {detail}", file=sys.stderr)
+                if cleanup_error is None:
+                    cleanup_error = error
+        if cleanup_error is not None and not failure_in_flight:
+            raise cleanup_error
 
 
 def parser_for(kind):

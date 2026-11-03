@@ -195,6 +195,7 @@ class MockHand:
             "touch_read_mode": 0,
             "touch_modules_enabled": 0x7FF,
         }
+        self.joint_protect_currents = [1200.0] * REVO3_ULTRA_JOINT_COUNT
         self.max_continuous_current = 1000.0
         self.joint_position_limits = [(0.0, 100.0)] * REVO3_ULTRA_JOINT_COUNT
         self.joint_speed_limits = [(0.0, 360.0)] * REVO3_ULTRA_JOINT_COUNT
@@ -289,6 +290,12 @@ class MockHand:
 
     async def manual_calibration(self, _slave_id):
         return True
+
+    async def get_all_joint_protect_currents(self, _slave_id):
+        return list(self.joint_protect_currents)
+
+    async def set_joint_protect_current(self, _slave_id, motor_id, value):
+        self.joint_protect_currents[int(motor_id)] = value
 
     async def get_all_joint_position_limits(self, _slave_id):
         return list(self.joint_position_limits)
@@ -395,6 +402,7 @@ class MockHand:
         config.auto_clear_motor_faults_enabled = self.flags[
             "auto_clear_motor_faults"
         ]
+        config.joint_protect_current_ma = list(self.joint_protect_currents)
         config.joint_min_position_deg = [
             limits[0] for limits in self.joint_position_limits
         ]

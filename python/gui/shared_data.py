@@ -4,6 +4,7 @@ import asyncio
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -98,48 +99,35 @@ def _is_ftdi_serial_port(port_name):
 
 
 class FpsCounter:
-    """Thread-safe sliding-window FPS / frequency counter."""
+    """Count completed events per second over a fixed trailing window."""
 
-    def __init__(self, window_seconds: float = 1.0, min_samples: int = 2):
+    def __init__(self, window_seconds: float = 1.0):
         self._window_seconds = max(0.1, float(window_seconds))
-        self._min_samples = max(2, int(min_samples))
-        self._timestamps = []
+        self._timestamps = deque()
         self._lock = threading.Lock()
-        self._last_fps = 0.0
+
+    def _expire(self, now):
+        cutoff = now - self._window_seconds
+        while self._timestamps and self._timestamps[0] <= cutoff:
+            self._timestamps.popleft()
 
     def tick(self):
         """Record one incoming frame/event timestamp."""
-        now = time.monotonic()
         with self._lock:
+            now = time.monotonic()
             self._timestamps.append(now)
-            cutoff = now - self._window_seconds
-            # Retain only timestamps within the window
-            while self._timestamps and self._timestamps[0] < cutoff:
-                self._timestamps.pop(0)
+            self._expire(now)
 
     def fps(self) -> float:
-        """Calculate and return current instantaneous FPS."""
-        now = time.monotonic()
+        """Return events in (now - window, now] divided by the full window."""
         with self._lock:
-            cutoff = now - self._window_seconds
-            while self._timestamps and self._timestamps[0] < cutoff:
-                self._timestamps.pop(0)
-            n = len(self._timestamps)
-            if n < self._min_samples:
-                self._last_fps = 0.0
-                return 0.0
-            duration = self._timestamps[-1] - self._timestamps[0]
-            if duration <= 1e-6:
-                self._last_fps = float(n) / max(self._window_seconds, 1e-3)
-            else:
-                self._last_fps = (n - 1) / duration
-            return self._last_fps
+            self._expire(time.monotonic())
+            return len(self._timestamps) / self._window_seconds
 
     def reset(self):
         """Reset all recorded timestamps."""
         with self._lock:
             self._timestamps.clear()
-            self._last_fps = 0.0
 
 
 class RepeatedErrorLogger:
